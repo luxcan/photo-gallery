@@ -1,0 +1,45 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\PhotoGallery.Application\PhotoGallery.Application.csproj" />
+    <ProjectReference Include="..\PhotoGallery.Infrastructure\PhotoGallery.Infrastructure.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="9.*" />
+    <!-- The diagnostic log, off unless switched on. The activity log is for the
+         user and says what the app did; this is for working out why it did not,
+         and needs levels, exceptions and a sink that can be reconfigured. -->
+    <PackageReference Include="Serilog" Version="4.*" />
+    <PackageReference Include="Serilog.Sinks.File" Version="7.*" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <AssemblyName>PhotoGallery</AssemblyName>
+    <!-- Both windows leave Icon unset, so they inherit this one from the
+         executable, as do the taskbar and the Start menu shortcut.
+         Assets\AppIcon.svg is the drawing it was rendered from. -->
+    <ApplicationIcon>Assets\AppIcon.ico</ApplicationIcon>
+  </PropertyGroup>
+
+  <!-- One self-contained file, so the app runs on a machine with no .NET and
+       carries its config beside itself. Compression roughly halves it; trimming
+       is off because WPF resolves a great deal by reflection and a trimmed
+       build fails at runtime rather than at publish. -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <PublishTrimmed>false</PublishTrimmed>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+  </PropertyGroup>
+
+</Project>

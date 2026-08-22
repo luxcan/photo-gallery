@@ -1,0 +1,38 @@
+﻿using Microsoft.EntityFrameworkCore.Migrations;
+
+#nullable disable
+
+namespace PhotoGallery.Infrastructure.Persistence.Migrations
+{
+    /// <inheritdoc />
+    public partial class AddGpsCoordinates : Migration
+    {
+        /// <inheritdoc />
+        protected override void Up(MigrationBuilder migrationBuilder)
+        {
+            migrationBuilder.AddColumn<double>(
+                name: "Latitude",
+                table: "Assets",
+                type: "REAL",
+                nullable: true);
+
+            migrationBuilder.AddColumn<double>(
+                name: "Longitude",
+                table: "Assets",
+                type: "REAL",
+                nullable: true);
+        }
+
+        /// <inheritdoc />
+        protected override void Down(MigrationBuilder migrationBuilder)
+        {
+            migrationBuilder.DropColumn(
+                name: "Latitude",
+                table: "Assets");
+
+            migrationBuilder.DropColumn(
+                name: "Longitude",
+                table: "Assets");
+        }
+    }
+}

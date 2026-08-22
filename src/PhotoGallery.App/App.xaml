@@ -1,0 +1,16 @@
+<Application x:Class="PhotoGallery.App.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             ShutdownMode="OnExplicitShutdown">
+  <Application.Resources>
+    <ResourceDictionary>
+      <ResourceDictionary.MergedDictionaries>
+        <!-- Slot 0 is the palette; ThemeManager replaces it at runtime. Light
+             here so the very first frame matches the default, rather than
+             flashing dark before start-up applies it. -->
+        <ResourceDictionary Source="Theme/Light.xaml" />
+        <ResourceDictionary Source="Theme/Controls.xaml" />
+      </ResourceDictionary.MergedDictionaries>
+    </ResourceDictionary>
+  </Application.Resources>
+</Application>

@@ -1,0 +1,15 @@
+<Project>
+
+  <ItemGroup>
+    <!-- UseWPF removes System.IO from the implicit usings, because WPF's
+         System.Windows.Shapes.Path would collide with System.IO.Path. This
+         project never brings the WPF shape namespaces in globally, so there is
+         no collision - and losing System.IO silently breaks files that have
+         nothing to do with the UI.
+
+         It has to go here rather than in Directory.Build.props: the SDK's
+         removal happens after props is imported, and would strip it. -->
+    <Using Include="System.IO" />
+  </ItemGroup>
+
+</Project>
