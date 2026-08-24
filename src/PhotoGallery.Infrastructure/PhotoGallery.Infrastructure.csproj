@@ -1,0 +1,63 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\PhotoGallery.Application\PhotoGallery.Application.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The gazetteer, compiled in rather than installed beside the app. Every
+         populated place of 500 or more people - GeoNames' cities500, trimmed to
+         the six fields this app reads and compressed: 38.8 MB of download
+         becomes 2.8 MB of executable, which is the whole reason place names
+         need no setup at all. See docs/gazetteer.md for how it was made and how
+         to remake it. Licensed CC BY 4.0, credited in About. -->
+    <EmbeddedResource Include="Places\cities500.br"
+                      LogicalName="PhotoGallery.Infrastructure.Places.cities500.br" />
+
+    <!-- What "MY.06" is called: Pahang. The gazetteer stores the code and not
+         the name, so without this a region can be filtered on but never shown
+         or typed. 3,865 rows, 27 KB compressed - small enough that there is no
+         argument for making it a download. -->
+    <EmbeddedResource Include="Places\admin1.br"
+                      LogicalName="PhotoGallery.Infrastructure.Places.admin1.br" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- So that a detail can be tested without being made part of the surface.
+         The tokenizer is the clearest case: nothing outside the content encoder
+         should construct one, and it is also the piece most able to be silently
+         wrong, so it needs pinning against CLIP's own documented output. -->
+    <InternalsVisibleTo Include="PhotoGallery.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="9.*">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="9.*" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="9.*" />
+    <!-- Runs the two face models. A native library with a thin managed wrapper,
+         so nothing is installed on the target machine and no interpreter is
+         involved; the single-file publish already carries native libraries. -->
+    <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.*" />
+    <!-- CLIP's byte-pair tokenizer. Written by hand it is a few hundred lines
+         and every one is a chance to be subtly wrong - which does not throw, it
+         returns a confident vector for the wrong words. Checked against the
+         documented output of CLIP's own tokenizer in ClipTokenizerTests. -->
+    <PackageReference Include="Microsoft.ML.Tokenizers" Version="1.*" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <!-- Windows-targeted, and UseWPF, purely for System.Windows.Media.Imaging:
+         its decoders read JPEG, PNG, TIFF, BMP and GIF, and HEIC when Windows
+         has the codec, with DecodePixelWidth doing the downscale during decode
+         rather than after. That avoids taking a large native imaging dependency
+         just to build thumbnails. -->
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>

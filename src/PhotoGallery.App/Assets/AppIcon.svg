@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <title>Photo Gallery</title>
+  <clipPath id="photo">
+    <rect x="36" y="38" width="56" height="52" rx="4" />
+  </clipPath>
+  <g transform="rotate(-15 64 106)">
+    <rect x="30" y="30" width="68" height="72" rx="8" fill="#4C7FA6" />
+  </g>
+  <g transform="rotate(15 64 106)">
+    <rect x="30" y="30" width="68" height="72" rx="8" fill="#2E6C99" />
+  </g>
+  <rect x="30" y="30" width="68" height="72" rx="8" fill="#0B4F7D" />
+  <g clip-path="url(#photo)">
+    <rect x="36" y="38" width="56" height="52" rx="4" fill="#007ACC" />
+    <circle cx="51" cy="53" r="6" fill="#CFE9FF" />
+    <path d="M36 90 L58 62 L72 79 L80 70 L92 90 Z" fill="#EAF4FC" />
+  </g>
+</svg>

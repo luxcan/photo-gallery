@@ -1,0 +1,60 @@
+<Window x:Class="PhotoGallery.App.Shell.WelcomeWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Photo Gallery"
+        Width="620" Height="520"
+        WindowStartupLocation="CenterScreen"
+        ResizeMode="NoResize"
+        Background="{DynamicResource Editor.Background}">
+  <Grid Margin="44,38,44,32">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="*" />
+      <RowDefinition Height="Auto" />
+    </Grid.RowDefinitions>
+
+    <TextBlock Grid.Row="0" Text="SET UP" Style="{DynamicResource Eyebrow}" />
+
+    <TextBlock Grid.Row="1" Text="Pick a working folder"
+               Style="{DynamicResource Heading}" />
+
+    <TextBlock Grid.Row="2" Style="{DynamicResource BodyText}" MaxWidth="470"
+               HorizontalAlignment="Left">
+      Photo Gallery needs one folder of its own. It keeps everything it makes
+      there — small previews of your pictures, and the names you give to the
+      people it finds. Your photos stay exactly where they are: nothing is
+      moved, changed, or sent anywhere.
+    </TextBlock>
+
+    <StackPanel Grid.Row="3" Margin="0,26,0,0">
+      <TextBlock Text="Folder location" Style="{DynamicResource FieldLabel}" />
+      <Grid>
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="*" />
+          <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+        <TextBox x:Name="FolderBox" Grid.Column="0"
+                 Style="{DynamicResource InputTextBox}"
+                 TextChanged="OnFolderTextChanged"
+                 AutomationProperties.Name="Folder location" />
+        <Button Grid.Column="1" Margin="10,0,0,0" MinWidth="92"
+                Style="{DynamicResource SecondaryButton}"
+                Content="Browse..." Click="OnBrowseClicked" />
+      </Grid>
+      <TextBlock x:Name="HintText" Style="{DynamicResource HintText}" />
+      <TextBlock x:Name="ErrorText" Style="{DynamicResource HintText}"
+                 Foreground="{DynamicResource Status.Danger}" />
+    </StackPanel>
+
+    <StackPanel Grid.Row="5" Orientation="Horizontal" HorizontalAlignment="Right">
+      <Button MinWidth="96" Style="{DynamicResource SecondaryButton}"
+              Content="Cancel" IsCancel="True" Click="OnCancelClicked" />
+      <Button x:Name="ContinueButton" Margin="10,0,0,0" MinWidth="120"
+              Style="{DynamicResource PrimaryButton}"
+              Content="Continue" IsDefault="True" Click="OnContinueClicked" />
+    </StackPanel>
+  </Grid>
+</Window>
