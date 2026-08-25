@@ -1,6 +1,6 @@
 # 11 — Collections
 
-**Status: ⬜ Unbuilt — the reason the rest of the second half exists**
+**Status: 🟨 In progress — the reason the rest of the second half exists**
 
 Twelve years of photos nobody has time to organise. The app should propose the
 groupings itself: *"Genting Trip, 3–5 March"*.
@@ -10,7 +10,9 @@ groupings itself: *"Genting Trip, 3–5 March"*.
 ## Goal
 
 Offer collections the user never asked for, named well enough to be worth
-opening.
+opening, and let them make their own. A photograph belongs to at most one
+collection, so opening a collection is a complete answer rather than one view of
+many.
 
 ## Depends on
 
@@ -19,40 +21,82 @@ people. [07](07-content-search.md) is additive, not required.
 
 ---
 
+## What the signals actually are
+
+Measured on this library rather than assumed, because the first draft of this
+document assumed a great deal and two of the assumptions were wrong.
+
+| Signal | Coverage | Consequence |
+|---|---|---|
+| `TakenUtc` | 9,544 of 15,823 (60%) | 6,279 photographs and **every one of the 4,743 videos** carry no capture date at all |
+| Coordinates | 1,709 (11%) | the earlier estimate of "four in ten" was wrong by a factor of four |
+| Resolved place | 1,709 (11%) | the same rows; a place is never known without coordinates |
+
+Two things follow. **Distance can refine a grouping but can never make one** —
+it is knowable for one photograph in nine, so time carries the feature. And the
+naming ladder lands on its lower rungs most of the time, which is why the bottom
+rung has to be a name somebody is content to see.
+
+Videos are absent from every proposal until an extractor reads their capture
+metadata. That is honest — a video with no date cannot be placed on a timeline —
+but it is worth saying on screen rather than leaving as a silence.
+
+---
+
 ## The clusterer is not a model
 
-Apple and Google build these by grouping on **time and place first**, then
-labelling the group with who and what is in it. Nothing here needs weights. The
-signals do — faces and content — but the grouping itself is two thresholds and a
-sort.
+Grouping is time and place first, then labelling with who and what is in it.
+Nothing here needs weights: it is two thresholds and a sort.
 
-A new collection starts when either gap opens:
+### Why one gap threshold does not work
 
-| | Threshold | Why |
-|---|---|---|
-| Time gap | more than **6 hours** with no photos | a night's sleep separates two days of a trip; a lunch does not |
-| Distance gap | more than **50 km** from the group's centre | far enough that it is somewhere else, loose enough that a day out stays one place |
+The obvious rule — start a new collection after a gap of six hours — was
+simulated over all 9,544 dated photographs before it was built:
 
-Then a group must earn its place:
+| Gap | Collections | Photos covered | Spanning > 1 day | Longest |
+|---|---|---|---|---|
+| 6 h | 180 | 4,966 | **0** | 0.7 days |
+| 14 h | 230 | 6,111 | 53 | 4.6 days |
+| 20 h | 227 | 6,820 | 96 | 8.8 days |
+| 24 h | 238 | 7,460 | 132 | 25.5 days |
+| 36 h | 231 | 8,174 | 172 | 32.0 days |
 
-- at least **8 photos**, or it is a handful of shots rather than an occasion;
-- spanning at least **90 minutes**, or a single burst becomes a "collection";
-- collections that overlap in time are merged, not offered twice.
+At six hours **not one collection spans more than a day**, because everybody
+sleeps: a night's gap ends the group, so "Genting Trip, 3–5 March" — this
+document's own headline example — could never have been produced. Widening the
+one threshold until trips appear is worse, not better: by twenty-four hours a
+single collection swallows twenty-five days.
+
+### Two levels, which is what a trip actually is
+
+1. **A session** is photographs with no gap longer than **6 hours** — a morning
+   at the beach, an evening out.
+2. **A collection** is a run of sessions on **consecutive days**. A day with no
+   photographs ends it.
+3. A run longer than **10 days** is not an occasion, it is ordinary life. Those
+   days are offered as separate day collections instead of one long one.
+
+Measured over the same library, that produces **243 collections, 178 of them
+spanning more than one day**, covering 6,841 photographs, plus 49 day
+collections rescued from the runs that were too long. The longest uncapped run
+in this library is 63 days, which is exactly the thing the cap exists to stop.
+
+A group must still earn its place: at least **8 photographs**, and at least
+**90 minutes** from first to last, or a single burst becomes a "collection".
 
 > **Use `TakenUtc`, never `CreatedUtc`.** [Asset.cs](../../src/PhotoGallery.Domain/Assets/Asset.cs)
 > records the measurement: 3,000 photos spanning eight years carry **13 distinct
 > creation days**, one per bulk copy. Clustering on creation time would propose
 > thirteen enormous collections named after the days the files were copied.
-> A photo with no `TakenUtc` cannot be clustered on time and is left out rather
-> than dropped into whichever group it lands beside.
+> A photo with no `TakenUtc` is left out rather than dropped into whichever group
+> it lands beside — it can still be put into a collection by hand.
 
 ---
 
-## Naming, and the 61% problem
+## Naming, and the 89% problem
 
-Only about four photos in ten carry coordinates ([10](10-location.md)), so a
-collection is often a set of photos with no place at all. The name degrades down
-a ladder rather than failing:
+Nine photographs in ten have no place attached, so the name degrades down a
+ladder rather than failing:
 
 | What is known | Name |
 |---|---|
@@ -65,7 +109,8 @@ a ladder rather than failing:
 
 A collection is only called a *Trip* when its photos sit more than 50 km from
 where that period's photos usually are — otherwise every weekend at home becomes
-a trip.
+a trip. With coordinates on one photograph in nine, most collections will not be
+called trips, and that is the correct outcome rather than a shortfall.
 
 Never invent. If the only honest name is a month and a count, that is the name.
 
@@ -76,15 +121,24 @@ Never invent. If the only honest name is a month and a count, that is the name.
 - Collections are **proposed, never imposed**. Nothing is moved, renamed or
   deleted on disk — the app only ever reads a source
   ([01](01-photo-sources.md)).
-- A proposal the user dismisses stays dismissed, and is not offered again after
-  the next refresh.
-- A user can rename a collection; the app never renames it back.
+- **A photograph belongs to at most one collection.** Adding it to a second
+  moves it, and the app says which collection it came out of. The alternative —
+  refusing until the user removes it themselves — turns one action into two for
+  a rule they did not ask about.
+- **A rejection is remembered, per photograph per collection.** Rejecting a
+  photograph from *Genting Trip* does not stop it being proposed for a different
+  collection later, and does not touch the rest of that collection. Dismissing a
+  whole proposal is remembered the same way.
+- **The user can make their own collections**, name them, add photographs to
+  them and take them out again. A collection made by hand is never rebuilt,
+  renamed or removed by a pass.
+- A user can rename a proposed collection; the app never renames it back.
 - Recomputing is idempotent. Adding a folder does not renumber or duplicate
   collections that already exist.
 - A collection with no cover picture is not shown. The cover is the photo in it
   with a face if there is one, else the middle photo of the span.
-- Building runs after the library changes, resumable and stoppable like every
-  other pass.
+- Building runs as a phase of the scan, resumable and stoppable like every other
+  pass.
 
 ---
 
@@ -92,13 +146,20 @@ Never invent. If the only honest name is a month and a count, that is the name.
 
 ```
 Collection            Id, Name, StartUtc, EndUtc, PlaceId?, CoverAssetId,
-                      Kind (Trip | Day | Event | Period), IsDismissed, WasRenamed
-CollectionMember      CollectionId, AssetId
+                      Kind (Trip | Day | Event | Period), Origin (Proposed | Made),
+                      IsDismissed, WasRenamed
+CollectionMember      CollectionId, AssetId   -- AssetId is UNIQUE across the table
+RejectedMembership    CollectionId, AssetId   -- never propose this pairing again
 BuildCollectionsHandler   (IProgress, ct) -> CollectionsResult
 ```
 
 `Kind` exists so the wording rules above are a property of the row rather than
-of a formatting function that has to guess.
+of a formatting function that has to guess. `Origin` exists so a pass knows what
+it is allowed to touch: it rebuilds what it proposed and never a collection
+somebody made.
+
+The uniqueness of `AssetId` is the one-collection rule, enforced by the database
+rather than by whichever handler happens to remember it.
 
 ---
 
@@ -106,7 +167,7 @@ of a formatting function that has to guess.
 
 Nothing to read. Every input is already in the index by the time this runs:
 capture dates from [03](03-thumbnails.md), coordinates and places from
-[10](10-location.md), people from [06](06-faces.md). Clustering 11,481 rows
+[10](10-location.md), people from [06](06-faces.md). Clustering 9,544 dated rows
 sorted by time is one pass in memory.
 
 ---
@@ -114,11 +175,20 @@ sorted by time is one pass in memory.
 ## Acceptance
 
 - [ ] A weekend away with coordinates is proposed as a named trip.
+- [ ] A multi-day trip is one collection, not one per day.
+- [ ] A run of daily photographs longer than the cap is not offered as a single
+      two-month collection.
 - [ ] A day at home is not called a trip.
 - [ ] A group with no coordinates is still proposed, named by people or by date.
-- [ ] Photos with no capture date are left out, not misfiled.
+- [ ] Photos with no capture date are left out of proposals, not misfiled, and
+      can still be added by hand.
+- [ ] A photograph added to a second collection leaves the first, and the app
+      says so.
+- [ ] Rejecting a photograph from a collection is remembered, and does not stop
+      it being proposed elsewhere.
 - [ ] Dismissing a proposal is remembered.
 - [ ] A rename survives a rebuild.
+- [ ] A collection made by hand survives a rebuild untouched.
 - [ ] Rebuilding after adding a folder does not duplicate existing collections.
 - [ ] Nothing on disk is moved or renamed.
 
@@ -128,4 +198,5 @@ sorted by time is one pass in memory.
 
 Sharing. Slideshows and music. Anniversary or "on this day" resurfacing.
 Learning from what the user opens. Collections spanning years — a holiday is an
-occasion, not a theme.
+occasion, not a theme. Reading capture dates out of video containers, which is
+what would let videos join a collection.
