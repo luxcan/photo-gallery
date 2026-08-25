@@ -25,6 +25,18 @@ public sealed partial class GalleryTile : ObservableObject
         ThumbnailName = item.ThumbnailName;
     }
 
+    /// <summary>
+    /// Whether this one is switched on, where the grid is asking a question.
+    /// </summary>
+    /// <remarks>
+    /// Only the collection suggestions use it, and they start every tile on -
+    /// the same bargain the face review makes, so a screenful is accepted with
+    /// one press and the odd wrong one is switched off first. Everywhere else
+    /// the grid shows rather than asks, and nothing reads this.
+    /// </remarks>
+    [ObservableProperty]
+    private bool _isChosen;
+
     public GalleryItem Item { get; }
 
     /// <summary>

@@ -52,6 +52,25 @@ public interface ICollectionRepository
     /// <summary>Makes a collection of the user's own, and returns its id.</summary>
     Task<int> CreateAsync(string name, CancellationToken cancellationToken = default);
 
+    /// <summary>What one collection is looking for.</summary>
+    Task<CollectionRule> GetRuleAsync(
+        int collectionId, CancellationToken cancellationToken = default);
+
+    /// <summary>Sets what it is looking for, replacing whatever was there.</summary>
+    Task SetRuleAsync(
+        int collectionId, CollectionRule rule, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The photographs that fit a collection's rule and are not in it yet.
+    /// </summary>
+    /// <remarks>
+    /// Suggestions, not additions: nothing is put anywhere until the user says
+    /// so. Photographs already in another collection are left out - one
+    /// collection each - and so is anything refused for this one before.
+    /// </remarks>
+    Task<IReadOnlyList<int>> SuggestAsync(
+        int collectionId, CancellationToken cancellationToken = default);
+
     /// <summary>Keeps a proposal, so no pass may change it again.</summary>
     Task AcceptAsync(int collectionId, CancellationToken cancellationToken = default);
 

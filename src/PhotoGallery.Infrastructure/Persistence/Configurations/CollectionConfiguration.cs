@@ -19,6 +19,20 @@ public sealed class CollectionConfiguration : IEntityTypeConfiguration<Collectio
             .HasForeignKey(m => m.CollectionId)
             .OnDelete(DeleteBehavior.Cascade);
 
+        builder.HasMany(c => c.RulePeople)
+            .WithOne(rule => rule.Collection!)
+            .HasForeignKey(rule => rule.CollectionId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        builder.HasMany(c => c.RulePlaces)
+            .WithOne(rule => rule.Collection!)
+            .HasForeignKey(rule => rule.CollectionId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // A computed property, not a column: it reads the three parts of the
+        // rule that are stored.
+        builder.Ignore(c => c.HasRule);
+
         // How a rebuild finds the row it wrote last time instead of adding a
         // second one. Unique because two occasions cannot cover the same run of
         // days - runs are disjoint by construction.

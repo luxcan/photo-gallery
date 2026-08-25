@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using PhotoGallery.Application.Ports;
 using PhotoGallery.Domain.Assets;
 using PhotoGallery.Domain.Collections;
+using PhotoGallery.Domain.People;
 
 namespace PhotoGallery.Infrastructure.Persistence;
 
@@ -187,6 +188,155 @@ public sealed class SqliteCollectionRepository : ICollectionRepository
         return collection.Id;
     }
 
+    public async Task<CollectionRule> GetRuleAsync(
+        int collectionId, CancellationToken cancellationToken = default)
+    {
+        Collection? collection = await _db.Collections
+            .AsNoTracking()
+            .Include(row => row.RulePeople)
+            .Include(row => row.RulePlaces)
+            .FirstOrDefaultAsync(row => row.Id == collectionId, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (collection is null)
+        {
+            return CollectionRule.None;
+        }
+
+        return new CollectionRule(
+            collection.RuleFromUtc is DateTime from ? DateOnly.FromDateTime(from) : null,
+            collection.RuleToUtc is DateTime to ? DateOnly.FromDateTime(to) : null,
+            [.. collection.RulePeople.Select(rule => rule.PersonId).Order()],
+            [.. collection.RulePlaces.Select(rule => rule.PlaceId).Order()]);
+    }
+
+    public async Task SetRuleAsync(
+        int collectionId, CollectionRule rule, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(rule);
+
+        Collection? collection = await _db.Collections
+            .Include(row => row.RulePeople)
+            .Include(row => row.RulePlaces)
+            .FirstOrDefaultAsync(row => row.Id == collectionId, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (collection is null)
+        {
+            return;
+        }
+
+        collection.RuleFromUtc = rule.From?.ToDateTime(TimeOnly.MinValue);
+        collection.RuleToUtc = rule.To?.ToDateTime(TimeOnly.MinValue);
+
+        // Replaced rather than merged: the rule the user is looking at is the
+        // whole rule, so a person they took out has to go.
+        _db.CollectionRulePeople.RemoveRange(collection.RulePeople);
+        _db.CollectionRulePlaces.RemoveRange(collection.RulePlaces);
+        await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+
+        _db.CollectionRulePeople.AddRange(rule.PersonIds.Distinct().Select(personId =>
+            new CollectionRulePerson { CollectionId = collectionId, PersonId = personId }));
+        _db.CollectionRulePlaces.AddRange(rule.PlaceIds.Distinct().Select(placeId =>
+            new CollectionRulePlace { CollectionId = collectionId, PlaceId = placeId }));
+
+        await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<IReadOnlyList<int>> SuggestAsync(
+        int collectionId, CancellationToken cancellationToken = default)
+    {
+        CollectionRule rule = await GetRuleAsync(collectionId, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (!rule.IsSomething)
+        {
+            // No rule, nothing to look for. Answering with the whole library
+            // would be the opposite of a suggestion.
+            return [];
+        }
+
+        string span = await SpanKeyAsync(collectionId, cancellationToken).ConfigureAwait(false);
+
+        IQueryable<Asset> fitting = _db.Assets
+            .AsNoTracking()
+            .Where(asset => asset.Status == AssetStatus.Ready
+                         && asset.QuarantinedUtc == null
+                         && asset.ThumbnailName != null
+
+                         // One collection each: what is spoken for stays where
+                         // it is rather than being offered away from it.
+                         && !_db.CollectionMembers.Any(member => member.AssetId == asset.Id)
+
+                         // And what was refused for this collection is not
+                         // offered for it a second time.
+                         && !_db.CollectionRejections.Any(rejection =>
+                                rejection.AssetId == asset.Id && rejection.ProposalKey == span));
+
+        if (rule.From is DateOnly from)
+        {
+            DateTime start = from.ToDateTime(TimeOnly.MinValue);
+            fitting = fitting.Where(asset => asset.TakenUtc != null && asset.TakenUtc >= start);
+        }
+
+        if (rule.To is DateOnly to)
+        {
+            // The last day is included whole - somebody who types one date means
+            // that day, not the instant it begins.
+            DateTime end = to.AddDays(1).ToDateTime(TimeOnly.MinValue);
+            fitting = fitting.Where(asset => asset.TakenUtc != null && asset.TakenUtc < end);
+        }
+
+        if (rule.PlaceIds.Count > 0)
+        {
+            // Any of them: a photograph was taken in one place.
+            fitting = fitting.Where(asset =>
+                asset.PlaceId != null && rule.PlaceIds.Contains(asset.PlaceId.Value));
+        }
+
+        // Every one of them: a photograph can hold several people, and the rule
+        // asks for all of the named ones. Only confirmed faces count - a
+        // proposal is a question the user has not answered, and answering it by
+        // quietly using it would make the question pointless.
+        foreach (int personId in rule.PersonIds)
+        {
+            fitting = fitting.Where(asset => _db.Faces.Any(face =>
+                face.AssetId == asset.Id
+                && _db.FaceAssignments.Any(assignment =>
+                    assignment.FaceId == face.Id
+                    && assignment.PersonId == personId
+                    && assignment.Source == AssignmentSource.Confirmed)));
+        }
+
+        return await fitting
+            .OrderByDescending(asset => asset.TakenUtc ?? asset.ModifiedUtc)
+            .ThenByDescending(asset => asset.Id)
+            .Select(asset => asset.Id)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// The key a refusal is remembered under for this collection.
+    /// </summary>
+    /// <remarks>
+    /// A proposal is remembered by its run of days, because the row itself is
+    /// rebuilt. A collection somebody made is permanent, so its own id is a
+    /// stable name - and the two are kept in one table because they answer the
+    /// same question: never offer this photograph here again.
+    /// </remarks>
+    private async Task<string> SpanKeyAsync(int collectionId, CancellationToken cancellationToken)
+    {
+        string? key = await _db.Collections
+            .AsNoTracking()
+            .Where(row => row.Id == collectionId)
+            .Select(row => row.ProposalKey)
+            .FirstOrDefaultAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        return key ?? $"made:{collectionId}";
+    }
+
     public async Task AcceptAsync(int collectionId, CancellationToken cancellationToken = default)
     {
         Collection? collection = await _db.Collections
@@ -218,13 +368,10 @@ public sealed class SqliteCollectionRepository : ICollectionRepository
         // itself goes: a dismissed row would hold its photographs hostage
         // against the one-collection rule for ever, and two stores for one
         // decision is how they come to disagree.
-        if (collection.ProposalKey is string span)
-        {
-            await RememberAsync(
-                span,
-                [.. collection.Members.Select(member => member.AssetId)],
-                cancellationToken).ConfigureAwait(false);
-        }
+        await RememberAsync(
+            await SpanKeyAsync(collectionId, cancellationToken).ConfigureAwait(false),
+            [.. collection.Members.Select(member => member.AssetId)],
+            cancellationToken).ConfigureAwait(false);
 
         _db.Collections.Remove(collection);
         await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
@@ -349,13 +496,14 @@ public sealed class SqliteCollectionRepository : ICollectionRepository
         // Taking a photograph out of something the app suggested is a rejection
         // and is remembered. Taking one out of a collection somebody made
         // themselves is not - they are rearranging their own shelf.
-        if (collection.Origin != CollectionOrigin.Made && collection.ProposalKey is string span)
-        {
-            await RememberAsync(
-                span,
-                [.. members.Select(member => member.AssetId)],
-                cancellationToken).ConfigureAwait(false);
-        }
+        // Taking a photograph out is a refusal wherever it happens: out of a
+        // suggestion it means "not this occasion", and out of a collection with
+        // a rule it means "not this one, whatever the rule says" - otherwise the
+        // next press of Find photos that fit would offer it straight back.
+        await RememberAsync(
+            await SpanKeyAsync(collectionId, cancellationToken).ConfigureAwait(false),
+            [.. members.Select(member => member.AssetId)],
+            cancellationToken).ConfigureAwait(false);
 
         await EnsureCoverAsync(collectionId, cancellationToken).ConfigureAwait(false);
         await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);

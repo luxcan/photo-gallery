@@ -44,6 +44,10 @@ public sealed class GalleryDbContext : DbContext
 
     public DbSet<CollectionRejection> CollectionRejections => Set<CollectionRejection>();
 
+    public DbSet<CollectionRulePerson> CollectionRulePeople => Set<CollectionRulePerson>();
+
+    public DbSet<CollectionRulePlace> CollectionRulePlaces => Set<CollectionRulePlace>();
+
     public DbSet<LibrarySettings> LibrarySettings => Set<LibrarySettings>();
 
     public DbSet<PhotoSource> PhotoSources => Set<PhotoSource>();

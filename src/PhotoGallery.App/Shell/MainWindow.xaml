@@ -845,15 +845,76 @@
                      screen is for. They are behind Edit now. -->
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right"
                             VerticalAlignment="Center">
+                  <!-- The rule made useful. Quiet until somebody wants it, and
+                       it offers rather than adds. -->
+                  <Button Style="{DynamicResource SecondaryButton}" MinWidth="150"
+                          Margin="0,0,8,0" Content="Find photos that fit"
+                          ToolTip="Look for photographs that match this collection's rule"
+                          Command="{Binding Collections.SuggestCommand}" />
                   <Button Style="{DynamicResource SecondaryButton}" MinWidth="80"
                           Content="Edit"
-                          ToolTip="Rename it, keep it, or throw it away"
+                          ToolTip="Its name, its rule, and whether to keep it"
                           Command="{Binding Collections.EditCommand}" />
                 </StackPanel>
               </Grid>
 
+              <!-- What the rule found, waiting to be kept or refused. Above the
+                   photographs already in the collection, because it is a
+                   question and they are the answer to an older one. -->
+              <Border DockPanel.Dock="Top" Margin="0,0,0,12" Padding="12,10"
+                      Background="{DynamicResource Status.InfoBack}"
+                      BorderBrush="{DynamicResource Status.Info}" BorderThickness="1"
+                      CornerRadius="4"
+                      Visibility="{Binding Collections.HasSuggestions,
+                                   Converter={StaticResource BoolToVisibility}}">
+                <DockPanel>
+                  <Grid DockPanel.Dock="Top" Margin="0,0,0,8">
+                    <TextBlock VerticalAlignment="Center" FontSize="12" TextWrapping="Wrap"
+                               MaxWidth="620" HorizontalAlignment="Left"
+                               Foreground="{DynamicResource Editor.Foreground}"
+                               Text="{Binding Collections.SuggestionNote}" />
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right"
+                                VerticalAlignment="Center">
+                      <Button Style="{DynamicResource PrimaryButton}" MinWidth="150"
+                              Content="Add the ones still on"
+                              ToolTip="Add what is switched on. What is switched off will not be offered again."
+                              Command="{Binding Collections.KeepSuggestionsCommand}" />
+                      <Button Style="{DynamicResource LinkButton}" Margin="14,0,0,0"
+                              VerticalAlignment="Center" Content="Not now"
+                              ToolTip="Put these down without deciding anything"
+                              Command="{Binding Collections.ForgetSuggestionsCommand}" />
+                    </StackPanel>
+                  </Grid>
+
+                  <ScrollViewer MaxHeight="260" VerticalScrollBarVisibility="Auto"
+                                HorizontalScrollBarVisibility="Disabled">
+                    <ItemsControl ItemsSource="{Binding Collections.Suggestions}"
+                                  Focusable="False">
+                      <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                          <WrapPanel Orientation="Horizontal" />
+                        </ItemsPanelTemplate>
+                      </ItemsControl.ItemsPanel>
+                      <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                          <!-- The same shape the face review uses: on to begin
+                               with, and clicking switches it off. -->
+                          <ToggleButton Style="{DynamicResource FaceChoice}"
+                                        Width="110" Height="110"
+                                        ToolTip="{Binding Caption}"
+                                        AutomationProperties.Name="{Binding FileName}"
+                                        IsChecked="{Binding IsChosen, Mode=TwoWay}">
+                            <Image Source="{Binding Picture}" Stretch="UniformToFill" />
+                          </ToggleButton>
+                        </DataTemplate>
+                      </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                  </ScrollViewer>
+                </DockPanel>
+              </Border>
+
               <TextBlock DockPanel.Dock="Bottom" Style="{DynamicResource HintText}"
-                         Text="Nothing in it yet. Open any picture and choose Add to a collection."
+                         Text="Nothing in it yet. Open any picture and choose Add to a collection, or give it a rule under Edit and let it find them."
                          Visibility="{Binding Collections.HasPhotos,
                                       Converter={StaticResource InverseBoolToVisibility}}" />
 
@@ -944,6 +1005,103 @@
                             ToolTip="Your name for it. A scan never writes over it."
                             Command="{Binding Collections.RenameCommand}" />
                   </Grid>
+
+                  <!-- What this collection is looking for. Everything is ANDed:
+                       a photograph has to be inside the dates, hold every person
+                       named, and have been taken in one of the places. -->
+                  <TextBlock Style="{DynamicResource FieldLabel}" Margin="0,16,0,0"
+                             Text="What it is looking for" />
+                  <TextBlock Style="{DynamicResource HintText}" Margin="0,0,0,6"
+                             TextWrapping="Wrap"
+                             Text="All of it has to be true at once. Leave a part empty and it asks nothing about it." />
+
+                  <Grid>
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width="*" />
+                      <ColumnDefinition Width="Auto" />
+                      <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <TextBox Grid.Column="0" Style="{DynamicResource InputTextBox}"
+                             AutomationProperties.Name="From this day"
+                             ToolTip="The first day, as 2019-03-03. Leave both empty for any day."
+                             Text="{Binding Collections.RuleFrom,
+                                    UpdateSourceTrigger=PropertyChanged}" />
+                    <TextBlock Grid.Column="1" Margin="8,0,8,0" VerticalAlignment="Center"
+                               Style="{DynamicResource HintText}" Text="to" />
+                    <TextBox Grid.Column="2" Style="{DynamicResource InputTextBox}"
+                             AutomationProperties.Name="To this day"
+                             ToolTip="The last day, included whole. The same date in both boxes means that one day."
+                             Text="{Binding Collections.RuleTo,
+                                    UpdateSourceTrigger=PropertyChanged}" />
+                  </Grid>
+                  <TextBlock Style="{DynamicResource HintText}" TextWrapping="Wrap"
+                             Foreground="{DynamicResource Status.Danger}"
+                             Text="{Binding Collections.RuleProblem}"
+                             Visibility="{Binding Collections.HasRuleProblem,
+                                          Converter={StaticResource BoolToVisibility}}" />
+
+                  <TextBlock Style="{DynamicResource FieldLabel}" Margin="0,12,0,0"
+                             Text="Everyone in it" />
+                  <TextBlock Style="{DynamicResource HintText}" Margin="0,0,0,4"
+                             TextWrapping="Wrap"
+                             Text="Every person ticked has to be in the photograph, not just one of them." />
+                  <ScrollViewer MaxHeight="120" VerticalScrollBarVisibility="Auto"
+                                HorizontalScrollBarVisibility="Disabled">
+                    <ItemsControl ItemsSource="{Binding Collections.People}" Focusable="False">
+                      <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                          <ToggleButton Style="{DynamicResource CheckRow}" Margin="0,1,0,1"
+                                        HorizontalAlignment="Stretch"
+                                        IsChecked="{Binding IsChosen, Mode=TwoWay}">
+                            <StackPanel Orientation="Horizontal">
+                              <TextBlock Text="{Binding Name}" FontSize="12.5" />
+                              <TextBlock Text="{Binding Caption}" FontSize="11" Margin="8,0,0,0"
+                                         VerticalAlignment="Center"
+                                         Foreground="{DynamicResource Editor.Placeholder}" />
+                            </StackPanel>
+                          </ToggleButton>
+                        </DataTemplate>
+                      </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                  </ScrollViewer>
+                  <TextBlock Style="{DynamicResource HintText}"
+                             Text="Nobody has been named yet."
+                             Visibility="{Binding Collections.HasPeopleToPick,
+                                          Converter={StaticResource InverseBoolToVisibility}}" />
+
+                  <TextBlock Style="{DynamicResource FieldLabel}" Margin="0,12,0,0"
+                             Text="Taken in" />
+                  <TextBlock Style="{DynamicResource HintText}" Margin="0,0,0,4"
+                             TextWrapping="Wrap"
+                             Text="Any one of the places ticked - a photograph was only taken in one of them." />
+                  <ScrollViewer MaxHeight="120" VerticalScrollBarVisibility="Auto"
+                                HorizontalScrollBarVisibility="Disabled">
+                    <ItemsControl ItemsSource="{Binding Collections.Places}" Focusable="False">
+                      <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                          <ToggleButton Style="{DynamicResource CheckRow}" Margin="0,1,0,1"
+                                        HorizontalAlignment="Stretch"
+                                        IsChecked="{Binding IsChosen, Mode=TwoWay}">
+                            <StackPanel Orientation="Horizontal">
+                              <TextBlock Text="{Binding Name}" FontSize="12.5" />
+                              <TextBlock Text="{Binding Caption}" FontSize="11" Margin="8,0,0,0"
+                                         VerticalAlignment="Center"
+                                         Foreground="{DynamicResource Editor.Placeholder}" />
+                            </StackPanel>
+                          </ToggleButton>
+                        </DataTemplate>
+                      </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                  </ScrollViewer>
+                  <TextBlock Style="{DynamicResource HintText}"
+                             Text="No photograph has a place yet - that needs coordinates in the file."
+                             Visibility="{Binding Collections.HasPlacesToPick,
+                                          Converter={StaticResource InverseBoolToVisibility}}" />
+
+                  <Button Style="{DynamicResource PrimaryButton}" Margin="0,12,0,0"
+                          HorizontalAlignment="Stretch" Content="Save the rule"
+                          ToolTip="Keep this as what the collection is looking for"
+                          Command="{Binding Collections.SaveRuleCommand}" />
 
                   <!-- A suggestion is a question: keep it or do not. -->
                   <StackPanel Margin="0,16,0,0"

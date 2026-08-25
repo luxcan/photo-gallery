@@ -59,5 +59,32 @@ public sealed class Collection
     /// <summary>When the pass last wrote this row.</summary>
     public DateTime BuiltUtc { get; set; }
 
+    /// <summary>
+    /// The first and last day a photograph may have been taken on to fit this
+    /// collection's rule, or null where the rule says nothing about dates.
+    /// </summary>
+    /// <remarks>
+    /// A rule is what makes a collection something you can add to rather than
+    /// only a bag you have filled: "these people, in these places, between these
+    /// dates" is enough to go and look for what fits. Both ends are optional, so
+    /// one day is a rule with the same date at both ends.
+    /// </remarks>
+    public DateTime? RuleFromUtc { get; set; }
+
+    public DateTime? RuleToUtc { get; set; }
+
     public List<CollectionMember> Members { get; } = [];
+
+    /// <summary>Everybody a photograph must hold to fit. All of them, not any.</summary>
+    public List<CollectionRulePerson> RulePeople { get; } = [];
+
+    /// <summary>The places a photograph may have been taken in. Any of them.</summary>
+    public List<CollectionRulePlace> RulePlaces { get; } = [];
+
+    /// <summary>Whether this collection has anything to look for.</summary>
+    public bool HasRule =>
+        RuleFromUtc is not null
+        || RuleToUtc is not null
+        || RulePeople.Count > 0
+        || RulePlaces.Count > 0;
 }

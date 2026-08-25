@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Globalization;
 using System.Windows.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -44,10 +45,21 @@ public sealed partial class CollectionsViewModel : ObservableObject
     /// </remarks>
     private bool _rebuilding;
 
+    /// <summary>
+    /// True while this screen is reading or writing.
+    /// </summary>
+    /// <remarks>
+    /// Every command on the screen is listed below, and that is not tidiness: a
+    /// button realised while the screen happens to be busy evaluates CanExecute
+    /// once, finds it false, and stays dead for the rest of the session unless
+    /// something tells it to ask again. Both buttons on the rule panel were
+    /// exactly that until they were added here.
+    /// </remarks>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsIdle))]
     [NotifyCanExecuteChangedFor(nameof(CreateCollectionCommand), nameof(AcceptCommand),
-        nameof(DismissCommand), nameof(RenameCommand), nameof(DeleteCommand))]
+        nameof(DismissCommand), nameof(RenameCommand), nameof(DeleteCommand),
+        nameof(SaveRuleCommand), nameof(SuggestCommand), nameof(EditCommand))]
     private bool _isBusy;
 
     [ObservableProperty]
@@ -64,7 +76,8 @@ public sealed partial class CollectionsViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(HasSelected), nameof(SelectedIsProposed),
         nameof(SelectedIsMine), nameof(SelectedName))]
     [NotifyCanExecuteChangedFor(nameof(AcceptCommand), nameof(DismissCommand),
-        nameof(RenameCommand), nameof(DeleteCommand), nameof(EditCommand))]
+        nameof(RenameCommand), nameof(DeleteCommand), nameof(EditCommand),
+        nameof(SaveRuleCommand), nameof(SuggestCommand))]
     private CollectionItem? _selected;
 
     /// <summary>The name being typed for a new collection.</summary>
@@ -76,6 +89,23 @@ public sealed partial class CollectionsViewModel : ObservableObject
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(RenameCommand))]
     private string _renameTo = string.Empty;
+
+    /// <summary>The first day the rule admits, typed as yyyy-mm-dd.</summary>
+    /// <remarks>
+    /// Two text boxes rather than a date picker: the app has no themed picker,
+    /// and a typed date is the one control that behaves the same in every
+    /// culture. What is typed is shown back as it was typed, so a half-finished
+    /// date does not vanish under the cursor.
+    /// </remarks>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(RuleProblem), nameof(HasRuleProblem))]
+    [NotifyCanExecuteChangedFor(nameof(SaveRuleCommand))]
+    private string _ruleFrom = string.Empty;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(RuleProblem), nameof(HasRuleProblem))]
+    [NotifyCanExecuteChangedFor(nameof(SaveRuleCommand))]
+    private string _ruleTo = string.Empty;
 
     /// <summary>
     /// True while the collection is being edited.
@@ -153,6 +183,49 @@ public sealed partial class CollectionsViewModel : ObservableObject
 
     public bool HasNone => Showing.Count == 0;
 
+    /// <summary>Everybody who has been named, to build a rule from.</summary>
+    public ObservableCollection<RuleChoice> People { get; } = [];
+
+    /// <summary>Every place photographs have been resolved to.</summary>
+    public ObservableCollection<RuleChoice> Places { get; } = [];
+
+    public bool HasPeopleToPick => People.Count > 0;
+
+    public bool HasPlacesToPick => Places.Count > 0;
+
+    /// <summary>What a rule that cannot be read says about itself.</summary>
+    public string RuleProblem
+    {
+        get
+        {
+            if (ParseDay(RuleFrom) is null && RuleFrom.Trim().Length > 0)
+            {
+                return $"\"{RuleFrom.Trim()}\" is not a date. Write it as 2019-03-03.";
+            }
+
+            if (ParseDay(RuleTo) is null && RuleTo.Trim().Length > 0)
+            {
+                return $"\"{RuleTo.Trim()}\" is not a date. Write it as 2019-03-03.";
+            }
+
+            return ParseDay(RuleFrom) is DateOnly from && ParseDay(RuleTo) is DateOnly to
+                   && to < from
+                ? "The last day is before the first one."
+                : string.Empty;
+        }
+    }
+
+    public bool HasRuleProblem => RuleProblem.Length > 0;
+
+    /// <summary>The photographs the rule found, waiting to be kept or refused.</summary>
+    public ObservableCollection<GalleryTile> Suggestions { get; } = [];
+
+    public bool HasSuggestions => Suggestions.Count > 0;
+
+    /// <summary>What the suggestion run found, said once.</summary>
+    [ObservableProperty]
+    private string _suggestionNote = string.Empty;
+
     /// <summary>What an empty tab says, which differs by tab.</summary>
     public string EmptyMessage => ShowMine
         ? "Nothing of your own yet. Name one above, then add photographs to it from any picture."
@@ -173,16 +246,304 @@ public sealed partial class CollectionsViewModel : ObservableObject
     private void CloseCollection()
     {
         IsEditing = false;
+        ForgetSuggestions();
         Selected = null;
     }
 
     /// <summary>Opens the panel that renames, keeps or throws this one away.</summary>
     [RelayCommand(CanExecute = nameof(HasSelected))]
-    private void Edit()
+    private async Task EditAsync()
     {
+        if (Selected is not CollectionItem collection)
+        {
+            return;
+        }
+
         RenameTo = SelectedName;
         Status = string.Empty;
         IsEditing = true;
+
+        await LoadRuleAsync(collection.Id).ConfigureAwait(true);
+    }
+
+    /// <summary>
+    /// Reads the rule and the two directories it is built from.
+    /// </summary>
+    /// <remarks>
+    /// Read when the panel opens rather than when the screen loads: a library
+    /// with fifteen people and four hundred places should not pay for either
+    /// list until somebody asks to edit a rule.
+    /// </remarks>
+    private async Task LoadRuleAsync(int collectionId)
+    {
+        try
+        {
+            CollectionRule rule;
+            IReadOnlyList<PersonDirectoryEntry> people;
+            IReadOnlyList<PlaceDirectoryEntry> places;
+
+            using (IServiceScope scope = _scopeFactory.CreateScope())
+            {
+                rule = await scope.ServiceProvider
+                    .GetRequiredService<ICollectionRepository>()
+                    .GetRuleAsync(collectionId)
+                    .ConfigureAwait(true);
+
+                people = await scope.ServiceProvider
+                    .GetRequiredService<IPeopleReader>()
+                    .GetDirectoryAsync()
+                    .ConfigureAwait(true);
+
+                places = await scope.ServiceProvider
+                    .GetRequiredService<IPlaceReader>()
+                    .GetDirectoryAsync()
+                    .ConfigureAwait(true);
+            }
+
+            RuleFrom = rule.From?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? string.Empty;
+            RuleTo = rule.To?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? string.Empty;
+
+            People.Clear();
+            foreach (PersonDirectoryEntry person in people)
+            {
+                People.Add(new RuleChoice(
+                    person.Id,
+                    person.DisplayName,
+                    person.Photos == 1 ? "1 photo" : $"{person.Photos:N0} photos",
+                    rule.PersonIds.Contains(person.Id)));
+            }
+
+            Places.Clear();
+            OnPropertyChanged(nameof(HasPeopleToPick));
+
+            // Exact places only. A rule that admitted a whole country would be
+            // a different question, and one nobody has asked for.
+            foreach (PlaceDirectoryEntry place in places
+                .Where(entry => entry.Filter.Scope == PlaceScope.Place))
+            {
+                Places.Add(new RuleChoice(
+                    place.Filter.PlaceId,
+                    place.Name,
+                    place.Photos == 1 ? "1 photo" : $"{place.Photos:N0} photos",
+                    rule.PlaceIds.Contains(place.Filter.PlaceId)));
+            }
+
+            OnPropertyChanged(nameof(HasPlacesToPick));
+        }
+        catch (Exception ex) when (ex is IOException or InvalidOperationException)
+        {
+            Status = $"The rule could not be read: {ex.Message}";
+        }
+    }
+
+    /// <summary>Saves what the rule asks for.</summary>
+    [RelayCommand(CanExecute = nameof(CanSaveRule))]
+    private async Task SaveRuleAsync()
+    {
+        if (Selected is not CollectionItem collection)
+        {
+            return;
+        }
+
+        var rule = new CollectionRule(
+            ParseDay(RuleFrom),
+            ParseDay(RuleTo),
+            [.. People.Where(choice => choice.IsChosen).Select(choice => choice.Id)],
+            [.. Places.Where(choice => choice.IsChosen).Select(choice => choice.Id)]);
+
+        IsBusy = true;
+        try
+        {
+            using (IServiceScope scope = _scopeFactory.CreateScope())
+            {
+                await scope.ServiceProvider
+                    .GetRequiredService<ICollectionRepository>()
+                    .SetRuleAsync(collection.Id, rule)
+                    .ConfigureAwait(true);
+            }
+
+            IsEditing = false;
+            Status = rule.IsSomething
+                ? "Saved. Choose Find photos that fit to see what matches."
+                : "Saved. This collection has no rule, so nothing is looked for.";
+        }
+        catch (Exception ex) when (ex is IOException or InvalidOperationException)
+        {
+            Status = $"That rule could not be saved: {ex.Message}";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    private bool CanSaveRule() => IsIdle && HasSelected && !HasRuleProblem;
+
+    /// <summary>Looks for photographs that fit, and offers them.</summary>
+    /// <remarks>
+    /// Offers, rather than adds. The user keeps the ones they want, and what
+    /// they leave behind is refused for this collection so the same button does
+    /// not hand it back next time.
+    /// </remarks>
+    [RelayCommand(CanExecute = nameof(CanSuggest))]
+    private async Task SuggestAsync()
+    {
+        if (Selected is not CollectionItem collection)
+        {
+            return;
+        }
+
+        IsBusy = true;
+        Suggestions.Clear();
+        try
+        {
+            IReadOnlyList<int> fitting;
+            GalleryPage page;
+
+            using (IServiceScope scope = _scopeFactory.CreateScope())
+            {
+                fitting = await scope.ServiceProvider
+                    .GetRequiredService<ICollectionRepository>()
+                    .SuggestAsync(collection.Id)
+                    .ConfigureAwait(true);
+
+                if (fitting.Count == 0)
+                {
+                    SuggestionNote = "Nothing else fits this rule.";
+                    return;
+                }
+
+                page = await scope.ServiceProvider
+                    .GetRequiredService<QueryGalleryHandler>()
+                    .HandleAsync(new GalleryQuery(RankedAssetIds: fitting))
+                    .ConfigureAwait(true);
+            }
+
+            foreach (GalleryItem item in page.Items)
+            {
+                // Chosen to begin with, as a face proposal is: a screenful is
+                // accepted with one press and the odd wrong one is switched off.
+                var tile = new GalleryTile(item) { IsChosen = true };
+                Suggestions.Add(tile);
+            }
+
+            SuggestionNote = Suggestions.Count == 1
+                ? "1 photograph fits. Keep it, or switch it off and it will not be offered again."
+                : $"{Suggestions.Count:N0} photographs fit. Switch off any that do not belong - "
+                  + "they will not be offered for this collection again.";
+
+            await DecodeSuggestionsAsync().ConfigureAwait(true);
+        }
+        catch (Exception ex) when (ex is IOException or InvalidOperationException)
+        {
+            SuggestionNote = $"Nothing could be looked for: {ex.Message}";
+        }
+        finally
+        {
+            IsBusy = false;
+            OnPropertyChanged(nameof(HasSuggestions));
+        }
+    }
+
+    private bool CanSuggest() => IsIdle && HasSelected;
+
+    /// <summary>Keeps the ones still switched on, and refuses the rest.</summary>
+    [RelayCommand]
+    private async Task KeepSuggestionsAsync()
+    {
+        if (Selected is not CollectionItem collection)
+        {
+            return;
+        }
+
+        int[] keeping = [.. Suggestions.Where(tile => tile.IsChosen).Select(tile => tile.Item.Id)];
+        int[] refusing = [.. Suggestions.Where(tile => !tile.IsChosen).Select(tile => tile.Item.Id)];
+
+        IsBusy = true;
+        try
+        {
+            using (IServiceScope scope = _scopeFactory.CreateScope())
+            {
+                ICollectionRepository collections = scope.ServiceProvider
+                    .GetRequiredService<ICollectionRepository>();
+
+                if (keeping.Length > 0)
+                {
+                    await collections.AddAsync(collection.Id, keeping).ConfigureAwait(true);
+                }
+
+                if (refusing.Length > 0)
+                {
+                    // Refused without ever having been in it: added and taken
+                    // straight out is the same decision, and this is the one
+                    // path that records it without a round trip through
+                    // membership.
+                    await collections.AddAsync(collection.Id, refusing).ConfigureAwait(true);
+                    await collections.RemoveAsync(collection.Id, refusing).ConfigureAwait(true);
+                }
+            }
+
+            Suggestions.Clear();
+            SuggestionNote = string.Empty;
+            Status = keeping.Length == 1
+                ? "1 photograph added."
+                : $"{keeping.Length:N0} photographs added.";
+        }
+        catch (Exception ex) when (ex is IOException or InvalidOperationException)
+        {
+            SuggestionNote = $"They could not be added: {ex.Message}";
+        }
+        finally
+        {
+            IsBusy = false;
+            OnPropertyChanged(nameof(HasSuggestions));
+        }
+
+        await ReloadAsync().ConfigureAwait(true);
+        if (Selected is CollectionItem still)
+        {
+            await LoadPhotosAsync(still.Id).ConfigureAwait(true);
+        }
+
+        LibraryChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>Puts the suggestions down without deciding anything.</summary>
+    [RelayCommand]
+    private void ForgetSuggestions()
+    {
+        Suggestions.Clear();
+        SuggestionNote = string.Empty;
+        OnPropertyChanged(nameof(HasSuggestions));
+    }
+
+    /// <summary>A date as the boxes take it, or null when it says nothing.</summary>
+    private static DateOnly? ParseDay(string typed) =>
+        DateOnly.TryParse(
+            typed.Trim(), CultureInfo.CurrentCulture, DateTimeStyles.None, out DateOnly day)
+            ? day
+            : null;
+
+    private async Task DecodeSuggestionsAsync()
+    {
+        GalleryTile[] waiting = [.. Suggestions.Where(tile => tile.Picture is null)];
+        if (waiting.Length == 0)
+        {
+            return;
+        }
+
+        var arrived = new Progress<(GalleryTile Tile, ImageSource? Picture)>(
+            pair => pair.Tile.Picture = pair.Picture);
+
+        await Task.Run(() => Parallel.ForEachAsync(
+            waiting,
+            new ParallelOptions { MaxDegreeOfParallelism = DecodeParallelism },
+            (tile, token) =>
+            {
+                ImageSource? picture = TileImageLoader.LoadTile(_store, tile.ThumbnailName);
+                ((IProgress<(GalleryTile, ImageSource?)>)arrived).Report((tile, picture));
+                return ValueTask.CompletedTask;
+            })).ConfigureAwait(true);
     }
 
     [RelayCommand]
