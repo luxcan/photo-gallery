@@ -3,6 +3,7 @@ using System.IO;
 using System.IO.Compression;
 using System.Reflection;
 using PhotoGallery.Application.Ports;
+using PhotoGallery.Domain.Places;
 
 namespace PhotoGallery.Infrastructure.Places;
 
@@ -52,7 +53,6 @@ public sealed class GeoNamesGazetteer : IGeocoder
     public const double MaxKilometres = 30d;
 
     /// <summary>Kilometres in one degree of latitude, which does not vary.</summary>
-    private const double KilometresPerDegree = 111.32d;
 
     private const string ResourceName = "PhotoGallery.Infrastructure.Places.cities500.br";
 
@@ -106,7 +106,7 @@ public sealed class GeoNamesGazetteer : IGeocoder
         // columns to sweep depends on where we are. Latitude never varies, so
         // one row either side always covers the radius.
         double kilometresPerLongitudeDegree =
-            KilometresPerDegree * Math.Cos(latitude * Math.PI / 180d);
+            Coordinates.KilometresPerDegree * Math.Cos(latitude * Math.PI / 180d);
 
         int columns = kilometresPerLongitudeDegree < 0.001d
             ? 180
@@ -131,7 +131,7 @@ public sealed class GeoNamesGazetteer : IGeocoder
 
                 foreach (int at in candidates)
                 {
-                    double kilometres = Kilometres(
+                    double kilometres = Coordinates.Kilometres(
                         latitude, longitude, places.Latitudes[at], places.Longitudes[at]);
 
                     if (kilometres < bestKilometres)
@@ -156,25 +156,6 @@ public sealed class GeoNamesGazetteer : IGeocoder
             places.Latitudes[best],
             places.Longitudes[best],
             bestKilometres);
-    }
-
-    /// <summary>
-    /// Straight-line distance, flat-earth style.
-    /// </summary>
-    /// <remarks>
-    /// Equirectangular rather than haversine. Over the tens of kilometres this
-    /// ever compares, the error against the true great-circle distance is
-    /// centimetres - and it costs one cosine per lookup instead of four
-    /// trigonometric calls per candidate, of which there are hundreds.
-    /// </remarks>
-    private static double Kilometres(
-        double latitude, double longitude, double otherLatitude, double otherLongitude)
-    {
-        double meanLatitude = (latitude + otherLatitude) / 2d * Math.PI / 180d;
-        double x = (longitude - otherLongitude) * Math.Cos(meanLatitude);
-        double y = latitude - otherLatitude;
-
-        return Math.Sqrt((x * x) + (y * y)) * KilometresPerDegree;
     }
 
     /// <summary>One cell of the grid, as a single comparable number.</summary>
