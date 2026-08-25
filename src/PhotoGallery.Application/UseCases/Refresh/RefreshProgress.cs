@@ -45,6 +45,19 @@ public enum RefreshPhase
     /// wait for the following scan.
     /// </remarks>
     FindingFaces = 5,
+
+    /// <summary>
+    /// Grouping the photographs into occasions, so a weekend away opens as one
+    /// thing.
+    /// </summary>
+    /// <remarks>
+    /// Last, and the cheapest of the six: it reads what every earlier phase
+    /// wrote - capture dates from generating, places from locating, the people
+    /// from faces - and decodes nothing. Appended rather than inserted, because
+    /// these members are numbered and a number that moves is a number stored in
+    /// somebody's library that now means a different phase.
+    /// </remarks>
+    Collecting = 6,
 }
 
 /// <summary>Progress of a refresh, reported as it goes.</summary>

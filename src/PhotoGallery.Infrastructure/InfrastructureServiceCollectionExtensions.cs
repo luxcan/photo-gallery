@@ -38,6 +38,8 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddScoped<ILibraryIndex, SqliteLibraryIndex>();
         services.AddScoped<IAssetRepository, SqliteAssetRepository>();
         services.AddScoped<IDuplicateRepository, SqliteDuplicateRepository>();
+        services.AddScoped<ICollectionRepository, SqliteCollectionRepository>();
+        services.AddScoped<ICollectionFactsReader, SqliteCollectionFactsReader>();
         services.AddSingleton<IQuarantineStore, FileSystemQuarantine>();
         services.AddSingleton<IMediaFileWalker, MediaFileWalker>();
         services.AddSingleton<IThumbnailStore, FileSystemThumbnailStore>();

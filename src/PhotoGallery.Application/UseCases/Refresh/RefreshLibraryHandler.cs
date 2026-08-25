@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using PhotoGallery.Application.UseCases.Collections;
 using PhotoGallery.Application.UseCases.Faces;
 using PhotoGallery.Application.UseCases.Places;
 using PhotoGallery.Application.UseCases.Scanning;
@@ -77,6 +78,7 @@ public sealed class RefreshLibraryHandler
     private readonly LocatePhotosHandler _locate;
     private readonly BuildVideoKeyframesHandler _videos;
     private readonly DetectFacesHandler _faces;
+    private readonly BuildCollectionsHandler _collect;
 
     public RefreshLibraryHandler(
         ScanPhotoSourceHandler scan,
@@ -84,7 +86,8 @@ public sealed class RefreshLibraryHandler
         IndexContentHandler describe,
         LocatePhotosHandler locate,
         BuildVideoKeyframesHandler videos,
-        DetectFacesHandler faces)
+        DetectFacesHandler faces,
+        BuildCollectionsHandler collect)
     {
         _scan = scan;
         _generate = generate;
@@ -92,6 +95,7 @@ public sealed class RefreshLibraryHandler
         _locate = locate;
         _videos = videos;
         _faces = faces;
+        _collect = collect;
     }
 
     public async Task<RefreshResult> HandleAsync(
@@ -146,6 +150,7 @@ public sealed class RefreshLibraryHandler
                 Located: null,
                 Videos: null,
                 Faces: null,
+                Collected: null,
                 stopwatch.Elapsed,
                 WasCancelled: true);
         }
@@ -170,6 +175,7 @@ public sealed class RefreshLibraryHandler
                 Located: null,
                 Videos: null,
                 Faces: null,
+                Collected: null,
                 stopwatch.Elapsed,
                 WasCancelled: true);
         }
@@ -218,6 +224,7 @@ public sealed class RefreshLibraryHandler
                 located,
                 Videos: null,
                 Faces: null,
+                Collected: null,
                 stopwatch.Elapsed,
                 WasCancelled: true);
         }
@@ -252,6 +259,7 @@ public sealed class RefreshLibraryHandler
                 located,
                 Videos: null,
                 Faces: null,
+                Collected: null,
                 stopwatch.Elapsed,
                 WasCancelled: true);
         }
@@ -296,6 +304,7 @@ public sealed class RefreshLibraryHandler
                 located,
                 videos,
                 Faces: null,
+                Collected: null,
                 stopwatch.Elapsed,
                 WasCancelled: true);
         }
@@ -320,6 +329,37 @@ public sealed class RefreshLibraryHandler
             .HandleAsync(progress: finding, cancellationToken: cancellationToken)
             .ConfigureAwait(false);
 
+        if (faces.WasCancelled || cancellationToken.IsCancellationRequested)
+        {
+            stopwatch.Stop();
+            return new RefreshResult(
+                scans,
+                generated,
+                described,
+                located,
+                videos,
+                faces,
+                Collected: null,
+                stopwatch.Elapsed,
+                WasCancelled: true);
+        }
+
+        // Grouping into occasions last of all, because it reads what every
+        // phase before it wrote and decodes nothing itself: capture dates from
+        // generating, places from locating, and the names on faces from the
+        // phase above. Dependency-last rather than cost-last - one sorted pass
+        // over dates the index already holds is the cheapest thing in the run.
+        progress?.Report(new RefreshProgress(RefreshPhase.Collecting, string.Empty, 0, 0, 0));
+
+        var collecting = new PhaseProgress<CollectionsProgress>(
+            p => new RefreshProgress(
+                RefreshPhase.Collecting, string.Empty, p.Done, p.Total, 0),
+            progress);
+
+        CollectionsResult collected = await _collect
+            .HandleAsync(progress: collecting, cancellationToken: cancellationToken)
+            .ConfigureAwait(false);
+
         stopwatch.Stop();
         return new RefreshResult(
             scans,
@@ -328,8 +368,9 @@ public sealed class RefreshLibraryHandler
             located,
             videos,
             faces,
+            collected,
             stopwatch.Elapsed,
-            faces.WasCancelled || cancellationToken.IsCancellationRequested);
+            collected.WasCancelled || cancellationToken.IsCancellationRequested);
     }
 
     /// <summary>

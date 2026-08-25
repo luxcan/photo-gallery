@@ -8,6 +8,7 @@ using PhotoGallery.App.Theme;
 using PhotoGallery.App.ViewModels;
 using PhotoGallery.Application.Ports;
 using PhotoGallery.Application.UseCases.Duplicates;
+using PhotoGallery.Application.UseCases.Collections;
 using PhotoGallery.Application.UseCases.Faces;
 using PhotoGallery.Application.UseCases.Gallery;
 using PhotoGallery.Application.UseCases.Models;
@@ -135,6 +136,7 @@ public partial class App : System.Windows.Application
             .AddScoped<BuildThumbnailsHandler>()
             .AddScoped<BuildVideoKeyframesHandler>()
             .AddScoped<DetectFacesHandler>()
+            .AddScoped<BuildCollectionsHandler>()
             .AddScoped<IndexContentHandler>()
             .AddScoped<LocatePhotosHandler>()
             .AddScoped<FindPlacesHandler>()

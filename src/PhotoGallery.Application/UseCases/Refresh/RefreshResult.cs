@@ -1,3 +1,4 @@
+using PhotoGallery.Application.UseCases.Collections;
 using PhotoGallery.Application.UseCases.Faces;
 using PhotoGallery.Application.UseCases.Places;
 using PhotoGallery.Application.UseCases.Scanning;
@@ -43,6 +44,7 @@ public sealed record RefreshResult(
     LocatePhotosResult? Located,
     VideoBuildResult? Videos,
     FaceDetectionResult? Faces,
+    CollectionsResult? Collected,
     TimeSpan Elapsed,
     bool WasCancelled)
 {
@@ -59,6 +61,9 @@ public sealed record RefreshResult(
 
     /// <summary>How many faces were found this run.</summary>
     public int FacesFound => Faces?.FacesFound ?? 0;
+
+    /// <summary>How many occasions are on offer after this run.</summary>
+    public int CollectionsProposed => Collected?.Proposed ?? 0;
 
     /// <summary>How many photographs were given the name of a place this run.</summary>
     public int PhotosPlaced => Located?.Named ?? 0;

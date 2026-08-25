@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using PhotoGallery.Application.Ports;
+using PhotoGallery.Application.UseCases.Collections;
 using PhotoGallery.Application.UseCases.Faces;
 using PhotoGallery.Application.UseCases.Places;
 using PhotoGallery.Application.UseCases.Refresh;
@@ -329,6 +330,7 @@ public sealed class RefreshLibraryHandlerTests : IDisposable
     [InlineData(RefreshPhase.Locating)]
     [InlineData(RefreshPhase.PreparingVideos)]
     [InlineData(RefreshPhase.FindingFaces)]
+    [InlineData(RefreshPhase.Collecting)]
     public async Task Refresh_StoppedAsAPhaseBeginsAnswersRatherThanThrowing(RefreshPhase phase)
     {
         WriteMedia("a.jpg");
@@ -428,6 +430,7 @@ public sealed class RefreshLibraryHandlerTests : IDisposable
                 RefreshPhase.Locating,
                 RefreshPhase.PreparingVideos,
                 RefreshPhase.FindingFaces,
+                RefreshPhase.Collecting,
             ],
             watching.InOrder);
     }
@@ -483,7 +486,9 @@ public sealed class RefreshLibraryHandlerTests : IDisposable
             new BuildVideoKeyframesHandler(_reader, _assets, _store, _extractor),
             new DetectFacesHandler(
                 _reader, _store, new NeverScanned(), new SqliteFaceRepository(_db),
-                models ?? new NoModels()));
+                models ?? new NoModels()),
+            new BuildCollectionsHandler(
+                new SqliteCollectionRepository(_db), new SqliteCollectionFactsReader(_db)));
 
     /// <summary>
     /// A camera that recorded no position, which is five photographs in six.

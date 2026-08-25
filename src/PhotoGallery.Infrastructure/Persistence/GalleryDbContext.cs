@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using PhotoGallery.Domain.Assets;
+using PhotoGallery.Domain.Collections;
 using PhotoGallery.Domain.Duplicates;
 using PhotoGallery.Domain.Faces;
 using PhotoGallery.Domain.Library;
@@ -36,6 +37,12 @@ public sealed class GalleryDbContext : DbContext
     public DbSet<DuplicateSet> DuplicateSets => Set<DuplicateSet>();
 
     public DbSet<DuplicateMember> DuplicateMembers => Set<DuplicateMember>();
+
+    public DbSet<Collection> Collections => Set<Collection>();
+
+    public DbSet<CollectionMember> CollectionMembers => Set<CollectionMember>();
+
+    public DbSet<CollectionRejection> CollectionRejections => Set<CollectionRejection>();
 
     public DbSet<LibrarySettings> LibrarySettings => Set<LibrarySettings>();
 
