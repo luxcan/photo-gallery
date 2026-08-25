@@ -82,9 +82,10 @@ public sealed class CollectionNamerTests
     public void WithNeitherPlaceNorPeopleItIsTheMonth()
     {
         // The normal case on a real library, not an edge case.
-        Assert.Equal(
-            "March 2019",
-            Name(CollectionKind.Period).ToString(CultureInfo.CurrentCulture));
+        // Which days, not only which month. A fortnight of daily photographs
+        // that the cap breaks apart would otherwise come back as eleven
+        // collections all called "September 2019".
+        Assert.Equal("3-5 March 2019", Name(CollectionKind.Period));
     }
 
     [Fact]
@@ -93,11 +94,13 @@ public sealed class CollectionNamerTests
         // A capture time carries no offset. Converting it would shift the name
         // by whatever the machine's timezone happens to be - which no test on a
         // UTC build server would ever catch.
-        var newYearsEve = new DateTime(2019, 12, 31, 23, 30, 0, DateTimeKind.Unspecified);
+        // Late on the last evening of the year: converted by even an hour, this
+        // photograph's collection would be named after New Year's Day.
+        var newYearsEve = new DateTime(2019, 12, 31, 22, 30, 0, DateTimeKind.Unspecified);
         var facts = new CollectionFacts(
-            CollectionKind.Period, newYearsEve, newYearsEve.AddMinutes(120), [], [], 9);
+            CollectionKind.Period, newYearsEve, newYearsEve.AddMinutes(60), [], [], 9);
 
-        Assert.StartsWith("December", CollectionNamer.Name(facts), StringComparison.Ordinal);
+        Assert.Equal("31 December 2019", CollectionNamer.Name(facts));
     }
 
     private static string Name(

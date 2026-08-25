@@ -19,6 +19,11 @@ namespace PhotoGallery.Application.Ports;
 /// landscapes can have been scanned properly and hold no faces at all, and a
 /// screen that read that as "not looked at yet" would say so for ever.
 /// </param>
+/// <param name="Collections">
+/// How many occasions the library holds, suggested and made together. A size
+/// rather than a to-do: the number of suggestions still unanswered belongs on
+/// the tab that shows them, and one number cannot mean two things.
+/// </param>
 /// <param name="AwaitingDescription">
 /// The same question for the describing pass. Both exist because the models are
 /// downloaded after a library has been scanned, so the ordinary first install
@@ -34,7 +39,8 @@ public sealed record LibraryCounts(
     int People,
     int UnresolvedDuplicateSets,
     int AwaitingFaces = 0,
-    int AwaitingDescription = 0)
+    int AwaitingDescription = 0,
+    int Collections = 0)
 {
     public static LibraryCounts Empty { get; } = new(0, 0, 0, 0, 0, 0, 0, 0);
 

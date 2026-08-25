@@ -95,6 +95,34 @@ public sealed class SqliteCollectionFactsReader : ICollectionFactsReader
             : null;
     }
 
+    public async Task<int> CoverOfAsync(
+        IReadOnlyList<int> assetIds, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(assetIds);
+
+        if (assetIds.Count == 0)
+        {
+            return 0;
+        }
+
+        // The one with the most faces in it. Counted in the database rather
+        // than by reading rows: this runs once per collection.
+        var best = await _db.Faces
+            .AsNoTracking()
+            .Where(face => assetIds.Contains(face.AssetId))
+            .GroupBy(face => face.AssetId)
+            .Select(photo => new { AssetId = photo.Key, Faces = photo.Count() })
+            .OrderByDescending(photo => photo.Faces)
+            .ThenBy(photo => photo.AssetId)
+            .FirstOrDefaultAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        // Nobody in any of them: the middle of the span, which samples an
+        // occasion better than either end - the first is arriving and the last
+        // is leaving.
+        return best?.AssetId ?? assetIds[assetIds.Count / 2];
+    }
+
     /// <summary>The names that appear most, and often enough to be worth saying.</summary>
     private static List<string> Commonest(List<string> names, double atLeast) =>
     [

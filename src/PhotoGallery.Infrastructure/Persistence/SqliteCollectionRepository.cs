@@ -122,6 +122,29 @@ public sealed class SqliteCollectionRepository : ICollectionRepository
             .ConfigureAwait(false);
     }
 
+    public async Task<CollectionSummary?> FindForAssetAsync(
+        int assetId, CancellationToken cancellationToken = default)
+    {
+        return await _db.CollectionMembers
+            .AsNoTracking()
+            .Where(member => member.AssetId == assetId)
+            .Join(
+                _db.Collections.AsNoTracking(),
+                member => member.CollectionId,
+                collection => collection.Id,
+                (member, collection) => new CollectionSummary(
+                    collection.Id,
+                    collection.Name,
+                    collection.StartUtc,
+                    collection.EndUtc,
+                    collection.Kind,
+                    collection.Origin,
+                    collection.Members.Count,
+                    null))
+            .FirstOrDefaultAsync(cancellationToken)
+            .ConfigureAwait(false);
+    }
+
     public async Task<IReadOnlyList<int>> GetMembersAsync(
         int collectionId, CancellationToken cancellationToken = default)
     {
@@ -370,8 +393,10 @@ public sealed class SqliteCollectionRepository : ICollectionRepository
     /// Gives a collection a cover if it has none, or has lost the one it had.
     /// </summary>
     /// <remarks>
-    /// The middle photograph of the span, which is a better sample of an
-    /// occasion than either end: the first is arriving and the last is leaving.
+    /// One with people in it, and the middle of the span only when there are
+    /// none - the same rule the pass uses, because a collection whose cover
+    /// changed depending on which code path last touched it would be worse than
+    /// either rule on its own.
     /// </remarks>
     private async Task EnsureCoverAsync(int collectionId, CancellationToken cancellationToken)
     {
@@ -396,7 +421,23 @@ public sealed class SqliteCollectionRepository : ICollectionRepository
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
 
-        collection.CoverAssetId = members.Count == 0 ? 0 : members[members.Count / 2];
+        if (members.Count == 0)
+        {
+            collection.CoverAssetId = 0;
+            return;
+        }
+
+        var withFaces = await _db.Faces
+            .AsNoTracking()
+            .Where(face => members.Contains(face.AssetId))
+            .GroupBy(face => face.AssetId)
+            .Select(photo => new { AssetId = photo.Key, Faces = photo.Count() })
+            .OrderByDescending(photo => photo.Faces)
+            .ThenBy(photo => photo.AssetId)
+            .FirstOrDefaultAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        collection.CoverAssetId = withFaces?.AssetId ?? members[members.Count / 2];
     }
 
     private static Collection New(ProposedCollection proposal, DateTime now)

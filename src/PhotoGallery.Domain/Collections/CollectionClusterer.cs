@@ -26,8 +26,8 @@ namespace PhotoGallery.Domain.Collections;
 ///
 /// <para><strong>Why the cap.</strong> Somebody who photographs something every
 /// day has runs that never end - the longest in that library is 63 consecutive
-/// days. That is not an occasion, it is ordinary life, so a run longer than ten
-/// days is offered as its separate days instead.</para>
+/// days. That is not an occasion, it is ordinary life, so a run longer than
+/// three weeks is offered as its separate days instead.</para>
 ///
 /// <para>Pure, and deliberately so: everything it needs is passed in, so the
 /// rules can be tested against a handful of timestamps rather than a library.</para>
@@ -41,7 +41,24 @@ public static class CollectionClusterer
     public static readonly TimeSpan SessionGap = TimeSpan.FromHours(6);
 
     /// <summary>How long a run of consecutive days may be and still be an occasion.</summary>
-    public const int LongestRunDays = 10;
+    /// <remarks>
+    /// Three weeks, chosen by measurement rather than by taste. Ten was the
+    /// first guess and a fortnight away came back as eleven separate days;
+    /// fourteen still broke a fifteen-day run apart. Over the whole library:
+    ///
+    /// <list type="bullet">
+    /// <item>14 days splits 5 runs, 148 days between them;</item>
+    /// <item>21 days splits 3 runs, and the longest occasion kept whole is 20 days;</item>
+    /// <item>28 days splits only 1 - but calls a 26-day stretch an occasion,
+    /// which it is not.</item>
+    /// </list>
+    ///
+    /// Twenty-one keeps every plausible holiday whole and still catches the case
+    /// this exists for: the longest uncapped run measured is 63 consecutive
+    /// days, which is somebody photographing something daily rather than a
+    /// journey.
+    /// </remarks>
+    public const int LongestRunDays = 21;
 
     /// <summary>Fewer than this and it is a handful of shots, not an occasion.</summary>
     public const int FewestPhotos = 8;

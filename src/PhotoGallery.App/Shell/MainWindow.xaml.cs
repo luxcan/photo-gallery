@@ -7,6 +7,7 @@ using System.Windows.Media;
 using System.Windows.Navigation;
 using System.Windows.Media.Animation;
 using Microsoft.Win32;
+using PhotoGallery.App.Collections;
 using PhotoGallery.App.Duplicates;
 using PhotoGallery.App.Gallery;
 using PhotoGallery.App.People;
@@ -385,6 +386,58 @@ public partial class MainWindow : Window
         {
             PersonPhotoGrid.ScrollIntoView(landing);
         }
+    }
+
+    /// <summary>
+    /// Keeps the open collection's grid in step with its own size, exactly as
+    /// the People grid does.
+    /// </summary>
+    private void OnCollectionPhotosSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        CollectionsViewModel collections = _viewModel.Collections;
+        double cellSize = _viewModel.Gallery.CellSize;
+
+        collections.SetVisibleRows(GalleryLayout.RowsOnScreen(e.NewSize.Height, cellSize));
+
+        if (!e.WidthChanged)
+        {
+            return;
+        }
+
+        int columns = GalleryLayout.ColumnsFor(e.NewSize.Width, cellSize);
+        if (columns == collections.Columns)
+        {
+            return;
+        }
+
+        bool firstLayout = e.PreviousSize.Width == 0 || e.PreviousSize.Height == 0;
+        int firstItem = firstLayout
+            ? 0
+            : Math.Max(0, FirstVisibleItem(CollectionPhotoGrid, collections.PhotoCount));
+
+        collections.SetColumns(columns);
+
+        GalleryRow? landing = collections.PhotoRows
+            .LastOrDefault(row => row.FirstIndex <= firstItem);
+        if (landing is not null)
+        {
+            CollectionPhotoGrid.ScrollIntoView(landing);
+        }
+    }
+
+    private void OnCollectionPhotosScrolled(object sender, ScrollChangedEventArgs e)
+    {
+        if (e.VerticalChange == 0)
+        {
+            return;
+        }
+
+        CollectionsViewModel collections = _viewModel.Collections;
+        collections.SetVisibleRows(
+            GalleryLayout.RowsOnScreen(e.ViewportHeight, _viewModel.Gallery.CellSize));
+
+        _ = collections.ShowRangeAsync(
+            FirstVisibleItem(CollectionPhotoGrid, collections.PhotoCount));
     }
 
     private void OnPersonPhotosScrolled(object sender, ScrollChangedEventArgs e)

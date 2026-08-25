@@ -3,6 +3,7 @@ using PhotoGallery.Application.Ports;
 using PhotoGallery.Application.UseCases.Collections;
 using PhotoGallery.Domain.Assets;
 using PhotoGallery.Domain.Collections;
+using PhotoGallery.Domain.Faces;
 using PhotoGallery.Domain.Library;
 using PhotoGallery.Infrastructure.Persistence;
 
@@ -41,6 +42,22 @@ public sealed class BuildCollectionsHandlerTests : IDisposable
         Assert.Equal("2019-03-03..2019-03-05", collection.ProposalKey);
         Assert.Equal(18, collection.Members.Count);
         Assert.NotEqual(0, collection.CoverAssetId);
+    }
+
+    [Fact]
+    public async Task TheCoverIsAPhotographWithSomebodyInIt()
+    {
+        // Left to the middle of the span alone, the covers on a real library
+        // came out as a hotel blanket and a ceiling: each genuinely the middle
+        // photograph, and none of them any use for recognising the holiday.
+        AddDays(Trip, days: 3, perDay: 6);
+        int[] ids = [.. _db.Assets.OrderBy(a => a.Id).Select(a => a.Id)];
+        int withPeople = ids[^2];
+        AddFace(withPeople);
+
+        await NewHandler().HandleAsync();
+
+        Assert.Equal(withPeople, await _db.Collections.Select(c => c.CoverAssetId).SingleAsync());
     }
 
     [Fact]
@@ -261,6 +278,21 @@ public sealed class BuildCollectionsHandlerTests : IDisposable
                     start.AddDays(day).AddMinutes(i * 40));
             }
         }
+    }
+
+    /// <summary>Puts one face on a photograph, so it can be a cover.</summary>
+    private void AddFace(int assetId)
+    {
+        _db.Faces.Add(new Face
+        {
+            AssetId = assetId,
+            Bounds = new FaceBounds(10, 10, 40, 40),
+            DetectScore = 0.9f,
+            Embedding = new FaceEmbedding(new float[FaceEmbedding.Dimensions]),
+        });
+
+        _db.SaveChanges();
+        _db.ChangeTracker.Clear();
     }
 
     private void Add(string relativePath, DateTime? takenUtc)

@@ -29,6 +29,8 @@ public sealed record ActivitySection(
 
     public const string PeopleKey = "people";
 
+    public const string CollectionsKey = "collections";
+
     public const string DuplicatesKey = "duplicates";
 
     public const string SourcesKey = "sources";

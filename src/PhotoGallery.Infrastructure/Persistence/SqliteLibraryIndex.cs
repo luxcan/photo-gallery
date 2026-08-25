@@ -150,9 +150,12 @@ public sealed class SqliteLibraryIndex : ILibraryIndex
                 cancellationToken)
             .ConfigureAwait(false);
 
+        int collections = await _db.Collections
+            .CountAsync(cancellationToken).ConfigureAwait(false);
+
         return new LibraryCounts(
             photos, videos, videosPrepared, videosUnreadable,
             thumbnails, faces, people, duplicateSets,
-            awaitingFaces, awaitingDescription);
+            awaitingFaces, awaitingDescription, collections);
     }
 }

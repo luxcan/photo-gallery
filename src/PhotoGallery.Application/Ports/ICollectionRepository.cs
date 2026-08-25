@@ -37,6 +37,14 @@ public interface ICollectionRepository
     Task<IReadOnlyList<CollectionSummary>> GetAsync(
         CancellationToken cancellationToken = default);
 
+    /// <summary>Which collection a photograph is in, if any.</summary>
+    /// <remarks>
+    /// At most one, always - the membership table's key says so - which is why
+    /// this answers with a collection rather than a list.
+    /// </remarks>
+    Task<CollectionSummary?> FindForAssetAsync(
+        int assetId, CancellationToken cancellationToken = default);
+
     /// <summary>One collection's photographs, in the order they were taken.</summary>
     Task<IReadOnlyList<int>> GetMembersAsync(
         int collectionId, CancellationToken cancellationToken = default);

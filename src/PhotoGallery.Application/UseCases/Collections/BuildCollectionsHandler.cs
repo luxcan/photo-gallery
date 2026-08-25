@@ -96,7 +96,7 @@ public sealed class BuildCollectionsHandler
                 group.EndUtc,
                 facts.Kind,
                 await _facts.PlaceOfAsync(members, cancellationToken).ConfigureAwait(false),
-                members[members.Count / 2],
+                await _facts.CoverOfAsync(members, cancellationToken).ConfigureAwait(false),
                 members));
 
             grouped += members.Count;

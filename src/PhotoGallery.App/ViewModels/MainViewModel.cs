@@ -5,6 +5,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.DependencyInjection;
 using PhotoGallery.App.About;
+using PhotoGallery.App.Collections;
 using PhotoGallery.App.Duplicates;
 using PhotoGallery.App.Gallery;
 using PhotoGallery.App.Imaging;
@@ -258,6 +259,7 @@ public sealed partial class MainViewModel : ObservableObject
         _activityLog = activityLog;
 
         About = new AboutViewModel();
+        Collections = new CollectionsViewModel(scopeFactory, thumbnails);
         Models = new ModelsViewModel(scopeFactory);
 
         // The nav and the search box both gate on what is installed, and neither
@@ -271,6 +273,8 @@ public sealed partial class MainViewModel : ObservableObject
             new ActivitySection(ActivitySection.LibraryKey, "Library", "\uE91B", true),
             new ActivitySection(
                 ActivitySection.PeopleKey, "People", "\uE716", true, RequiresFaces: true),
+            new ActivitySection(
+                ActivitySection.CollectionsKey, "Collections", "\uE8FD", true),
             new ActivitySection(ActivitySection.DuplicatesKey, "Duplicates", "\uE8C8", true),
             new ActivitySection(ActivitySection.SourcesKey, "Photo sources", "\uED25", false),
         ];
@@ -311,6 +315,7 @@ public sealed partial class MainViewModel : ObservableObject
         Gallery.LibraryChanged += OnLibraryChanged;
         People.LibraryChanged += OnLibraryChanged;
         Duplicates.LibraryChanged += OnLibraryChanged;
+        Collections.LibraryChanged += OnLibraryChanged;
     }
 
     /// <remarks>
@@ -351,6 +356,8 @@ public sealed partial class MainViewModel : ObservableObject
     public PeopleViewModel People { get; }
 
     public DuplicatesViewModel Duplicates { get; }
+
+    public CollectionsViewModel Collections { get; }
 
     /// <summary>
     /// Built here rather than injected, unlike its three siblings above. About
@@ -542,6 +549,8 @@ public sealed partial class MainViewModel : ObservableObject
     public bool ShowSettings => SelectedSection.Key == ActivitySection.SettingsKey;
 
     public bool ShowPeople => SelectedSection.Key == ActivitySection.PeopleKey;
+
+    public bool ShowCollections => SelectedSection.Key == ActivitySection.CollectionsKey;
 
     public bool ShowDuplicates => SelectedSection.Key == ActivitySection.DuplicatesKey;
 
@@ -1274,6 +1283,19 @@ public sealed partial class MainViewModel : ObservableObject
                           + $"about {togo.TotalMinutes:N0} min left"
                         : $"{p.Done:N0} of {p.Total:N0} videos{failed}";
                 }
+                else if (p.Phase == RefreshPhase.Collecting)
+                {
+                    // Its own arm, and not optional: the chain below ends in the
+                    // generating branch, so a phase without one would paint
+                    // "Preparing pictures" and set off a gallery reload on every
+                    // report - thousands of tiles rebuilt by a phase that
+                    // changed none of them.
+                    OverlayTitle = "Grouping your photos into collections";
+                    OverlayTarget = "so a weekend away opens as one thing";
+                    OverlayStatus = p.Total == 0
+                        ? "reading the dates..."
+                        : $"{p.Done:N0} of {p.Total:N0} groups";
+                }
                 else if (p.Phase == RefreshPhase.FindingFaces)
                 {
                     OverlayTitle = "Finding faces";
@@ -1667,6 +1689,18 @@ public sealed partial class MainViewModel : ObservableObject
     private void OpenPersonPhoto(GalleryTile? tile) => Gallery.OpenFrom(People.Photos, tile);
 
     /// <summary>
+    /// Opens one of a collection's photographs, stepping through that collection.
+    /// </summary>
+    /// <remarks>
+    /// The same wiring the People screen needs, and for the same reason: told
+    /// nothing, the viewer's arrows would walk the library instead of the twelve
+    /// pictures the user is actually looking at.
+    /// </remarks>
+    [RelayCommand]
+    private void OpenCollectionPhoto(GalleryTile? tile) =>
+        Gallery.OpenFrom(Collections.Photos, tile);
+
+    /// <summary>
     /// Tells everything that gates on an optional model to look again.
     /// </summary>
     /// <remarks>
@@ -1699,6 +1733,7 @@ public sealed partial class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(ShowLibrary));
         OnPropertyChanged(nameof(ShowSettings));
         OnPropertyChanged(nameof(ShowPeople));
+        OnPropertyChanged(nameof(ShowCollections));
         OnPropertyChanged(nameof(ShowDuplicates));
         OnPropertyChanged(nameof(ShowAbout));
 
@@ -1712,6 +1747,13 @@ public sealed partial class MainViewModel : ObservableObject
             // screen is stale the moment a face is named somewhere else - which
             // is how a person added a minute ago failed to appear at all.
             _ = People.ReloadAsync();
+        }
+        else if (ShowCollections)
+        {
+            // Rebuilt on every visit, like the two screens above: a photograph
+            // put into a collection from the viewer changes what belongs here.
+            Collections.Reopened();
+            _ = Collections.ReloadAsync();
         }
         else if (ShowDuplicates)
         {

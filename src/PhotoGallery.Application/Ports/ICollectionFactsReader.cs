@@ -27,4 +27,17 @@ public interface ICollectionFactsReader
     /// </summary>
     Task<int?> PlaceOfAsync(
         IReadOnlyList<int> assetIds, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The photograph to show for a group.
+    /// </summary>
+    /// <remarks>
+    /// One with people in it, because that is what anybody recognises an
+    /// occasion by. Falling back to the middle of the span alone produced
+    /// covers of a hotel blanket and a ceiling - each of them genuinely the
+    /// middle photograph, and none of them any use for finding the holiday
+    /// again.
+    /// </remarks>
+    Task<int> CoverOfAsync(
+        IReadOnlyList<int> assetIds, CancellationToken cancellationToken = default);
 }

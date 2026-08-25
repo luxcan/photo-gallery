@@ -3,6 +3,8 @@ using System.Windows.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.DependencyInjection;
+using PhotoGallery.App.Collections;
+using PhotoGallery.Domain.Collections;
 using PhotoGallery.App.Imaging;
 using PhotoGallery.App.People;
 using PhotoGallery.App.Shell;
@@ -120,6 +122,8 @@ public sealed partial class GalleryViewModel : ObservableObject
             IgnoreFaceAsync,
             "Nobody — stop asking",
             closed: () => FacingBeingNamed = null);
+
+        Collections = new CollectionPicker(PutInCollectionAsync);
     }
 
     /// <summary>
@@ -152,6 +156,38 @@ public sealed partial class GalleryViewModel : ObservableObject
     public bool IsFolderViewVisible => ShowFolders;
 
     public bool IsViewerOpen => OpenTile is not null;
+
+    /// <summary>
+    /// The collection the open photograph is in, or null while it is in none.
+    /// </summary>
+    /// <remarks>
+    /// At most one, because a photograph belongs to one occasion. Shown in the
+    /// strip so that moving it somewhere else is a change the user can see they
+    /// are making rather than a rule they discover afterwards.
+    /// </remarks>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CollectionCaption), nameof(IsInACollection))]
+    [NotifyCanExecuteChangedFor(nameof(TakeOutOfCollectionCommand))]
+    private CollectionSummary? _openPhotoCollection;
+
+    /// <summary>What just happened to this photograph's collection, said once.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CollectionCaption))]
+    private string _collectionNotice = string.Empty;
+
+    public bool IsInACollection => OpenPhotoCollection is not null;
+
+    /// <summary>What the strip says about this photograph's collection.</summary>
+    public string CollectionCaption => CollectionNotice.Length > 0
+        ? CollectionNotice
+        : OpenPhotoCollection is CollectionSummary collection
+            ? $"In {collection.Name}"
+            : string.Empty;
+
+    public bool HasCollectionCaption => CollectionCaption.Length > 0;
+
+    /// <summary>Choosing which collection this photograph belongs in.</summary>
+    public CollectionPicker Collections { get; }
 
     public bool IsEmpty => _window.Count == 0;
 
@@ -609,6 +645,14 @@ public sealed partial class GalleryViewModel : ObservableObject
         // grid opens none of them.
         WarmPlayer(value);
 
+        OpenPhotoCollection = null;
+        CollectionNotice = string.Empty;
+        Collections.Close();
+        if (value is not null)
+        {
+            _ = LoadOpenCollectionAsync(value.Item.Id);
+        }
+
         TurnNotice = value?.Item.IsTurnedInAppOnly == true ? TurnNotices.HereOnly : null;
         TurnNoticeTip = value?.Item.IsTurnedInAppOnly == true ? TurnNotices.HereOnlyTip : null;
 
@@ -631,6 +675,153 @@ public sealed partial class GalleryViewModel : ObservableObject
         }
 
         _ = LoadOpenFacesAsync();
+    }
+
+    /// <summary>Reads which collection the open photograph is in.</summary>
+    /// <remarks>
+    /// Only the picture still open may fill it in, for the same reason the
+    /// detail panel checks: holding an arrow key down starts one of these per
+    /// press, and whichever finished last would otherwise win.
+    /// </remarks>
+    private async Task LoadOpenCollectionAsync(int assetId)
+    {
+        CollectionSummary? collection;
+        try
+        {
+            using IServiceScope scope = _scopeFactory.CreateScope();
+            collection = await scope.ServiceProvider
+                .GetRequiredService<ICollectionRepository>()
+                .FindForAssetAsync(assetId)
+                .ConfigureAwait(true);
+        }
+        catch (Exception ex) when (ex is IOException or InvalidOperationException)
+        {
+            DiagnosticLog.Write($"could not read the collection of asset {assetId}", ex);
+            return;
+        }
+
+        if (OpenTile?.Item.Id == assetId)
+        {
+            OpenPhotoCollection = collection;
+        }
+    }
+
+    /// <summary>Offers every collection, so this photograph can join one.</summary>
+    [RelayCommand]
+    private async Task AddToCollectionAsync()
+    {
+        if (OpenTile is null)
+        {
+            return;
+        }
+
+        IReadOnlyList<CollectionSummary> all;
+        using (IServiceScope scope = _scopeFactory.CreateScope())
+        {
+            all = await scope.ServiceProvider
+                .GetRequiredService<ICollectionRepository>()
+                .GetAsync()
+                .ConfigureAwait(true);
+        }
+
+        Collections.Open(
+            all,
+            OpenPhotoCollection?.Id ?? 0,
+            "Put this photograph in a collection",
+            "A photograph belongs to one collection, so choosing another moves it. "
+                + "Type a name that is not there to make one.");
+    }
+
+    /// <summary>
+    /// Puts the open photograph into the collection named, making it if it is new.
+    /// </summary>
+    /// <remarks>
+    /// A name rather than an id, because the picker's box is both the filter and
+    /// the way to make a new one - so what comes back may name something that
+    /// does not exist yet.
+    /// </remarks>
+    private async Task PutInCollectionAsync(string name)
+    {
+        if (OpenTile is not GalleryTile tile)
+        {
+            return;
+        }
+
+        Collections.Close();
+
+        try
+        {
+            CollectionMoveResult moved;
+            using (IServiceScope scope = _scopeFactory.CreateScope())
+            {
+                ICollectionRepository collections = scope.ServiceProvider
+                    .GetRequiredService<ICollectionRepository>();
+
+                IReadOnlyList<CollectionSummary> all =
+                    await collections.GetAsync().ConfigureAwait(true);
+
+                CollectionSummary? chosen = all.FirstOrDefault(collection =>
+                    string.Equals(collection.Name, name, StringComparison.CurrentCultureIgnoreCase));
+
+                int id = chosen?.Id
+                    ?? await collections.CreateAsync(name).ConfigureAwait(true);
+
+                moved = await collections
+                    .AddAsync(id, [tile.Item.Id])
+                    .ConfigureAwait(true);
+            }
+
+            // The rule nobody asked about, said out loud rather than applied
+            // quietly: it left somewhere to be here.
+            CollectionNotice = moved.Moved > 0 && moved.From.Count > 0
+                ? $"Moved into {name}, out of {string.Join(" and ", moved.From)}"
+                : $"Added to {name}";
+
+            await LoadOpenCollectionAsync(tile.Item.Id).ConfigureAwait(true);
+            LibraryChanged?.Invoke(this, EventArgs.Empty);
+        }
+        catch (Exception ex) when (ex is IOException or InvalidOperationException)
+        {
+            CollectionNotice = $"That could not be done: {ex.Message}";
+        }
+    }
+
+    /// <summary>Takes the open photograph out of the collection it is in.</summary>
+    /// <remarks>
+    /// Out of something the app suggested, this is a rejection and is
+    /// remembered: that photograph is never offered for those days again. Out of
+    /// a collection the user made, it is only a rearrangement.
+    /// </remarks>
+    [RelayCommand(CanExecute = nameof(IsInACollection))]
+    private async Task TakeOutOfCollectionAsync()
+    {
+        if (OpenTile is not GalleryTile tile
+            || OpenPhotoCollection is not CollectionSummary collection)
+        {
+            return;
+        }
+
+        try
+        {
+            using (IServiceScope scope = _scopeFactory.CreateScope())
+            {
+                await scope.ServiceProvider
+                    .GetRequiredService<ICollectionRepository>()
+                    .RemoveAsync(collection.Id, [tile.Item.Id])
+                    .ConfigureAwait(true);
+            }
+
+            CollectionNotice = collection.Origin == CollectionOrigin.Made
+                ? $"Taken out of {collection.Name}"
+                : $"Taken out of {collection.Name}. It will not be suggested for those days again.";
+
+            OpenPhotoCollection = null;
+            LibraryChanged?.Invoke(this, EventArgs.Empty);
+        }
+        catch (Exception ex) when (ex is IOException or InvalidOperationException)
+        {
+            CollectionNotice = $"That could not be done: {ex.Message}";
+        }
     }
 
     /// <summary>

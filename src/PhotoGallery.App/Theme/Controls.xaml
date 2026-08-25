@@ -1,5 +1,6 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:collections="clr-namespace:PhotoGallery.App.Collections"
                     xmlns:people="clr-namespace:PhotoGallery.App.People"
                     xmlns:shell="clr-namespace:PhotoGallery.App.Shell"
                     xmlns:theme="clr-namespace:PhotoGallery.App.Theme">
@@ -917,6 +918,41 @@
     <Setter Property="VirtualizingPanel.ScrollUnit" Value="Pixel" />
   </Style>
 
+  <!--
+    One album on the collections wall: a cover, a name and what is in it. The
+    whole card is the button - half a card that opens and half that does not is
+    a coin toss - and the picture is clipped to the card's own corners so a
+    landscape cover does not square off a rounded tile.
+  -->
+  <Style x:Key="AlbumCard" TargetType="Button">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="Cursor" Value="Hand" />
+    <Setter Property="Margin" Value="0,0,16,18" />
+    <Setter Property="HorizontalContentAlignment" Value="Left" />
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="Button">
+          <Border x:Name="Root" Background="{TemplateBinding Background}"
+                  BorderBrush="Transparent" BorderThickness="1"
+                  CornerRadius="{StaticResource Radius.Control}" Padding="6"
+                  SnapsToDevicePixels="True">
+            <ContentPresenter />
+          </Border>
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+              <Setter TargetName="Root" Property="Background"
+                      Value="{DynamicResource List.HoverBackground}" />
+            </Trigger>
+            <Trigger Property="IsKeyboardFocused" Value="True">
+              <Setter TargetName="Root" Property="BorderBrush"
+                      Value="{DynamicResource Focus.Border}" />
+            </Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
   <Style x:Key="GalleryCell" TargetType="Button">
     <Setter Property="Background" Value="{DynamicResource Neutral.3}" />
     <Setter Property="Cursor" Value="Hand" />
@@ -1372,6 +1408,77 @@
                  FontFamily="{StaticResource Font.Mono}" FontSize="11"
                  Text="{Binding Fingerprint}" />
     </StackPanel>
+  </DataTemplate>
+
+  <!--
+    Saying which collection a photograph belongs in. The same shape as the name
+    picker below, because it is the same question in a different subject: one box
+    that narrows the list and, when nothing is left, becomes the new name.
+  -->
+  <DataTemplate DataType="{x:Type collections:CollectionPicker}">
+    <Border MaxWidth="340" HorizontalAlignment="Center" VerticalAlignment="Center"
+            Background="{DynamicResource SideBar.Background}"
+            BorderBrush="{DynamicResource Panel.Border}" BorderThickness="1"
+            CornerRadius="{StaticResource Radius.Control}" Padding="16,14">
+      <StackPanel>
+        <TextBlock Style="{DynamicResource FieldLabel}" Text="{Binding Prompt}" />
+        <TextBlock Style="{DynamicResource HintText}" Margin="0,2,0,10"
+                   TextWrapping="Wrap" Text="{Binding Hint}" />
+
+        <ScrollViewer MaxHeight="300" VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Disabled">
+          <ItemsControl ItemsSource="{Binding Choices}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate>
+                <Button Style="{DynamicResource SearchResult}" Padding="10,6"
+                        Command="{Binding DataContext.ChooseCommand,
+                                  RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                        CommandParameter="{Binding}">
+                  <Grid>
+                    <StackPanel HorizontalAlignment="Left">
+                      <TextBlock Text="{Binding Name}"
+                                 Style="{DynamicResource FaceChoiceName}" />
+                      <TextBlock Text="{Binding Caption}" FontSize="11"
+                                 Foreground="{DynamicResource Editor.Placeholder}" />
+                    </StackPanel>
+                    <TextBlock Text="&#xE73E;" FontFamily="Segoe MDL2 Assets"
+                               FontSize="11" HorizontalAlignment="Right"
+                               VerticalAlignment="Center"
+                               Foreground="{DynamicResource Status.Success}"
+                               Visibility="{Binding IsCurrent,
+                                            Converter={StaticResource BoolToVisibility}}" />
+                  </Grid>
+                </Button>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </ScrollViewer>
+
+        <TextBlock Style="{DynamicResource HintText}" Margin="0,8,0,4"
+                   Text="Type to narrow the list, or to make a new collection" />
+        <Grid>
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="Auto" />
+          </Grid.ColumnDefinitions>
+          <TextBox Grid.Column="0" Style="{DynamicResource InputTextBox}"
+                   AutomationProperties.Name="Find or name a collection"
+                   Text="{Binding Typed, UpdateSourceTrigger=PropertyChanged}">
+            <TextBox.InputBindings>
+              <KeyBinding Key="Return" Command="{Binding AddCommand}" />
+            </TextBox.InputBindings>
+          </TextBox>
+          <Button Grid.Column="1" Style="{DynamicResource SecondaryButton}"
+                  Margin="6,0,0,0" MinWidth="52" Content="Make"
+                  ToolTip="Make a collection with this name and put the photograph in it"
+                  Command="{Binding AddCommand}" />
+        </Grid>
+
+        <Button Style="{DynamicResource LinkButton}" Margin="0,10,0,0"
+                HorizontalAlignment="Center" Content="Cancel"
+                Command="{Binding CancelCommand}" />
+      </StackPanel>
+    </Border>
   </DataTemplate>
 
   <!--

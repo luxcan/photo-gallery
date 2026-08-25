@@ -57,15 +57,16 @@ public sealed class CollectionClustererTests
     [Fact]
     public void ARunLongerThanTheCapIsOfferedAsItsDaysInstead()
     {
-        // Somebody who photographs something every day for a fortnight has not
-        // been on a fortnight-long holiday.
+        // A month of photographs every single day is not a month-long holiday.
+        // Three weeks still counts as one occasion - see the test below - and
+        // the line sits there because measuring the alternatives put it there.
         List<DatedPhoto> photos = [.. Enumerable
-            .Range(0, 14)
+            .Range(0, 30)
             .SelectMany(day => Day(Noon.AddDays(day), count: 9))];
 
         IReadOnlyList<PhotoGroup> groups = CollectionClusterer.Group(photos);
 
-        Assert.Equal(14, groups.Count);
+        Assert.Equal(30, groups.Count);
         Assert.All(groups, group => Assert.Equal(1, group.Days));
         Assert.All(groups, group => Assert.Equal(CollectionKind.Period, group.Kind));
     }

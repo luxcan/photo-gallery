@@ -73,13 +73,24 @@ single collection swallows twenty-five days.
    at the beach, an evening out.
 2. **A collection** is a run of sessions on **consecutive days**. A day with no
    photographs ends it.
-3. A run longer than **10 days** is not an occasion, it is ordinary life. Those
+3. A run longer than **21 days** is not an occasion, it is ordinary life. Those
    days are offered as separate day collections instead of one long one.
 
-Measured over the same library, that produces **243 collections, 178 of them
-spanning more than one day**, covering 6,841 photographs, plus 49 day
-collections rescued from the runs that were too long. The longest uncapped run
-in this library is 63 days, which is exactly the thing the cap exists to stop.
+Measured over the same library, that produces **250 collections, 185 of them
+spanning more than one day**, plus the days rescued from the three runs that
+were too long. The longest uncapped run here is 63 days, which is exactly what
+the cap exists to stop.
+
+The cap was measured rather than chosen. Ten was the first guess, and a genuine
+fortnight away came back as eleven separate days; fourteen still broke a
+fifteen-day run apart. Twenty-eight splits only one run — but calls a 26-day
+stretch an occasion, which it is not.
+
+| Cap | Runs split | Longest occasion kept whole |
+|---|---|---|
+| 14 days | 5 | 14 days |
+| **21 days** | **3** | **20 days** |
+| 28 days | 1 | 26 days |
 
 A group must still earn its place: at least **8 photographs**, and at least
 **90 minutes** from first to last, or a single burst becomes a "collection".
@@ -105,7 +116,7 @@ ladder rather than failing:
 | Place spans several | **Genting and Kuala Lumpur**, 3–7 March |
 | No place, people known | **A weekend with Ana Lim**, 3–5 March |
 | No place, no people, content known | **Birthday**, 3 March |
-| Nothing but the dates | **March 2019**, 42 photos |
+| Nothing but the dates | **3-5 March 2019**, 42 photos |
 
 A collection is only called a *Trip* when its photos sit more than 50 km from
 where that period's photos usually are — otherwise every weekend at home becomes
@@ -136,7 +147,9 @@ Never invent. If the only honest name is a month and a count, that is the name.
 - Recomputing is idempotent. Adding a folder does not renumber or duplicate
   collections that already exist.
 - A collection with no cover picture is not shown. The cover is the photo in it
-  with a face if there is one, else the middle photo of the span.
+  with the most faces, else the middle photo of the span - left to the middle
+  alone, the first covers produced on a real library were a hotel blanket and a
+  ceiling.
 - Building runs as a phase of the scan, resumable and stoppable like every other
   pass.
 
@@ -146,20 +159,31 @@ Never invent. If the only honest name is a month and a count, that is the name.
 
 ```
 Collection            Id, Name, StartUtc, EndUtc, PlaceId?, CoverAssetId,
-                      Kind (Trip | Day | Event | Period), Origin (Proposed | Made),
-                      IsDismissed, WasRenamed
-CollectionMember      CollectionId, AssetId   -- AssetId is UNIQUE across the table
-RejectedMembership    CollectionId, AssetId   -- never propose this pairing again
+                      Kind (Trip | Day | Event | Period),
+                      Origin (Proposed | Accepted | Made),
+                      ProposalKey?, WasRenamed, BuiltUtc
+CollectionMember      AssetId (PRIMARY KEY), CollectionId, AddedUtc
+CollectionRejection   AssetId, ProposalKey (composite key), RejectedUtc
 BuildCollectionsHandler   (IProgress, ct) -> CollectionsResult
 ```
 
 `Kind` exists so the wording rules above are a property of the row rather than
 of a formatting function that has to guess. `Origin` exists so a pass knows what
-it is allowed to touch: it rebuilds what it proposed and never a collection
-somebody made.
+it is allowed to touch: it rebuilds what it proposed, leaves a collection that
+was kept alone except to let later photographs of the same days join it, and
+never touches one somebody made.
 
-The uniqueness of `AssetId` is the one-collection rule, enforced by the database
-rather than by whichever handler happens to remember it.
+`AssetId` being the whole primary key of `CollectionMember` **is** the
+one-collection rule, enforced by the database rather than by whichever handler
+happens to remember it.
+
+`ProposalKey` is the run of days — `2019-03-03..2019-03-05` — and it is why
+there is no `IsDismissed`. A proposed row is derived: the pass deletes and
+reinserts it, so anything remembered against its id would be forgotten on the
+next scan. Dismissing therefore deletes the row and records one rejection per
+photograph against the span; the next build drops those photographs before the
+group is offered, and what is left no longer earns its place. One store for one
+decision, and it survives the rebuild.
 
 ---
 

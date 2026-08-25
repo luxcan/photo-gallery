@@ -37,11 +37,36 @@ public static class CollectionNamer
             return $"{Span(facts)} with {Join(facts.People)}";
         }
 
-        // The bottom rung, and the one most collections land on. Formatted from
-        // the wall-clock value the camera wrote - never converted, because a
-        // capture time carries no offset and "converting" it shifts the name by
-        // whatever the machine's timezone happens to be.
-        return facts.StartUtc.ToString("MMMM yyyy", CultureInfo.CurrentCulture);
+        // The bottom rung, and the one most collections land on. It says which
+        // days rather than only which month: a fortnight of daily photographs
+        // that the cap breaks apart would otherwise produce eleven collections
+        // all called "September 2019", indistinguishable in a list.
+        //
+        // Formatted from the wall-clock value the camera wrote - never
+        // converted, because a capture time carries no offset and "converting"
+        // it shifts the name by whatever the machine's timezone happens to be.
+        return Dates(facts);
+    }
+
+    /// <summary>
+    /// The days themselves, as a person writes them.
+    /// </summary>
+    private static string Dates(CollectionFacts facts)
+    {
+        DateTime start = facts.StartUtc;
+        DateTime end = facts.EndUtc;
+        CultureInfo culture = CultureInfo.CurrentCulture;
+
+        if (start.Date == end.Date)
+        {
+            return start.ToString("d MMMM yyyy", culture);
+        }
+
+        // Within one month the month and year are said once: "1-6 September
+        // 2019" rather than "1 September 2019 - 6 September 2019".
+        return start.Year == end.Year && start.Month == end.Month
+            ? $"{start.Day}-{end.ToString("d MMMM yyyy", culture)}"
+            : $"{start.ToString("d MMMM", culture)} - {end.ToString("d MMMM yyyy", culture)}";
     }
 
     /// <summary>How long it lasted, in the words a person would use.</summary>
