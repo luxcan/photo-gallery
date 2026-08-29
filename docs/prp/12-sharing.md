@@ -1,6 +1,13 @@
 # 12 — Sharing between machines
 
-**Status: ⬜ Not started**
+**Status: 🟨 In progress — the decisions can be settled, not yet exchanged**
+
+Built so far: the schema every decision needs to be nameable on a second
+machine, and the merge itself, written as a pure function of decision sets so
+that the rules could be argued out against tests rather than against a shared
+folder. Nothing is published or read yet — `IDecisionExchange`,
+`ApplyHeldDecisionsHandler`, the rendition pool and the Sharing screen are all
+still to come.
 
 The app is installed on every laptop in the house. One person spends an evening
 naming faces; everybody else's copy knows nothing about it. This is how that
@@ -874,21 +881,22 @@ family looking at the same photographs is usually nothing at all.
 - [ ] A name given on one machine appears on another after one merge, with no
       scan in between, where both have already indexed the photograph.
 - [ ] Answers about photographs this machine has not indexed are held, reported
-      by count, and applied by the next scan.
-- [ ] Merging twice changes nothing the second time.
-- [ ] A merge stopped halfway leaves what it applied applied, and finishes on
+      by count, and applied by the next scan. *(Held and counted; the scan phase
+      that applies them is not built.)*
+- [x] Merging twice changes nothing the second time.
+- [x] A merge stopped halfway leaves what it applied applied, and finishes on
       the next run.
-- [ ] Two machines naming the same face differently settle on the later answer.
-- [ ] A confirmation beats a proposal even when the proposal is newer.
-- [ ] Two people with the same name and different ids stay apart, and are
+- [x] Two machines naming the same face differently settle on the later answer.
+- [x] A confirmation beats a proposal even when the proposal is newer.
+- [x] Two people with the same name and different ids stay apart, and are
       offered as a join.
-- [ ] A photograph in two albums ends in the later one, and the app says which
+- [x] A photograph in two albums ends in the later one, and the app says which
       one it left.
-- [ ] A deleted person does not come back on the next merge.
-- [ ] A rename of a proposed album survives both a rebuild and a merge.
-- [ ] Two machines whose source lists overlap in part share decisions about the
+- [x] A deleted person does not come back on the next merge.
+- [x] A rename of a proposed album survives both a rebuild and a merge.
+- [x] Two machines whose source lists overlap in part share decisions about the
       common sources and nothing about the private ones.
-- [ ] Two machines with no source in common are told so, rather than shown an
+- [x] Two machines with no source in common are told so, rather than shown an
       exchange that did nothing and reported success.
 - [ ] A file re-saved in place keeps its decisions and does not take the pooled
       rendition of the bytes it no longer has.
@@ -923,12 +931,12 @@ family looking at the same photographs is usually nothing at all.
       can be paired, and every decision matches afterwards.
 - [ ] Adding a photo source that contains the shared folder is refused.
 - [ ] The Sharing screen shows how recently each machine last shared.
-- [ ] Ana's laptop, which has only ever paired with Dad's, holds Mum's answers.
-- [ ] Clearing a name does not stop that person being proposed for that face
+- [x] Ana's laptop, which has only ever paired with Dad's, holds Mum's answers.
+- [x] Clearing a name does not stop that person being proposed for that face
       again, on any machine.
-- [ ] A tombstone is never expired, and a deleted person never walks back in
+- [x] A tombstone is never expired, and a deleted person never walks back in
       from a third machine.
-- [ ] A name confirmed on a face, and the photograph then turned, still lands on
+- [x] A name confirmed on a face, and the photograph then turned, still lands on
       that same face when it reaches a machine that never turned it.
 - [ ] A copy interrupted between the two renditions does not leave a photograph
       reporting itself complete without a preview.
@@ -941,20 +949,20 @@ family looking at the same photographs is usually nothing at all.
       its names on every machine, not only the one that set it aside.
 - [ ] A photograph deleted for good stays gone everywhere, and says nothing
       about it.
-- [ ] A payload from a machine whose clock is far ahead is refused, naming the
+- [x] A payload from a machine whose clock is far ahead is refused, naming the
       machine and the skew.
 - [ ] Held face answers are applied in the same scan that finds the faces, not
       the one after.
-- [ ] Theme, cell size, sort order and nav state do not travel.
+- [x] Theme, cell size, sort order and nav state do not travel.
 - [ ] Taking the decisions while declining the renditions works, and says so.
 - [ ] Vectors from a machine with different model files are refused, the
       decisions and renditions are still taken, and the screen says which model
       differs.
-- [ ] Three machines converge, in any order, with no machine designated first.
+- [x] Three machines converge, in any order, with no machine designated first.
 - [ ] The pooled thumbnail folder is never indexed as photographs.
 - [ ] Discovery blocked by a Public network profile says so, and offers the
       typed address.
-- [ ] A payload from a newer schema is refused with a plain message rather than
+- [x] A payload from a newer schema is refused with a plain message rather than
       partially applied.
 
 ---
