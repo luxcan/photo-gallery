@@ -184,11 +184,14 @@ public partial class App : System.Windows.Application
         }
         catch (Exception ex)
         {
+            // Caution, not Danger: the library did not open, which is the same
+            // kind of news as a folder or a page that would not open. Danger is
+            // reserved for something that has gone, or is about to.
             AppDialog.Tell(
                 owner: null,
                 "Could not open a library in that folder",
                 ex.Message,
-                DialogTone.Danger);
+                DialogTone.Caution);
             Shutdown();
             return;
         }

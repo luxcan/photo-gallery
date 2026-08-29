@@ -294,17 +294,25 @@ public sealed class SqliteCollectionRepository : ICollectionRepository
                 asset.PlaceId != null && rule.PlaceIds.Contains(asset.PlaceId.Value));
         }
 
-        // Every one of them: a photograph can hold several people, and the rule
-        // asks for all of the named ones. Only confirmed faces count - a
-        // proposal is a question the user has not answered, and answering it by
-        // quietly using it would make the question pointless.
-        foreach (int personId in rule.PersonIds)
+        if (rule.PersonIds.Count > 0)
         {
+            // Any of them, as with the places above. Asking for all of them at
+            // once reads well and finds almost nothing: three names wants the
+            // photographs where all three happen to stand together, which in a
+            // family library is a handful out of thousands. An album naming
+            // three people is about those people, not about the occasions they
+            // were photographed as a set.
+            //
+            // Only confirmed faces count - a proposal is a question the user has
+            // not answered, and answering it by quietly using it would make the
+            // question pointless.
+            int[] wanted = [.. rule.PersonIds];
+
             fitting = fitting.Where(asset => _db.Faces.Any(face =>
                 face.AssetId == asset.Id
                 && _db.FaceAssignments.Any(assignment =>
                     assignment.FaceId == face.Id
-                    && assignment.PersonId == personId
+                    && wanted.Contains(assignment.PersonId)
                     && assignment.Source == AssignmentSource.Confirmed)));
         }
 

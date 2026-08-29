@@ -59,10 +59,14 @@ public sealed class CollectionRuleTests : IDisposable
     }
 
     [Fact]
-    public async Task SeveralPeopleMeansEveryOneOfThem()
+    public async Task SeveralPeopleMeansAnyOfThem()
     {
+        // Every one of them was the first reading, and it made a three-name
+        // album that found a single photograph: the times everybody stands
+        // together are rare, and they are not what the album was about.
         int ana = AddPerson("Ana");
         int ben = AddPerson("Ben");
+        int cara = AddPerson("Cara");
 
         int both = Add("both.jpg", March);
         Name(both, ana);
@@ -71,9 +75,53 @@ public sealed class CollectionRuleTests : IDisposable
         int onlyAna = Add("ana.jpg", March);
         Name(onlyAna, ana);
 
+        int onlyBen = Add("ben.jpg", March);
+        Name(onlyBen, ben);
+
+        int neither = Add("cara.jpg", March);
+        Name(neither, cara);
+
         int collection = await Rule(new CollectionRule(null, null, [ana, ben], []));
 
-        Assert.Equal([both], await Repository().SuggestAsync(collection));
+        IReadOnlyList<int> fitting = await Repository().SuggestAsync(collection);
+
+        Assert.Equal([both, onlyAna, onlyBen], fitting.Order());
+        Assert.DoesNotContain(neither, fitting);
+    }
+
+    [Fact]
+    public async Task PeopleAreOredWithoutLooseningTheRestOfTheRule()
+    {
+        // The names widening must not widen the dates or the place with them:
+        // Ana or Ben, but only in Genting, and only that March.
+        int ana = AddPerson("Ana");
+        int ben = AddPerson("Ben");
+        int genting = AddPlace("Genting");
+        int ipoh = AddPlace("Ipoh");
+
+        int anaThere = Add("ana-genting.jpg", March, placeId: genting);
+        Name(anaThere, ana);
+
+        int benThere = Add("ben-genting.jpg", March, placeId: genting);
+        Name(benThere, ben);
+
+        int benElsewhere = Add("ben-ipoh.jpg", March, placeId: ipoh);
+        Name(benElsewhere, ben);
+
+        int anaWrongYear = Add("ana-later.jpg", March.AddYears(1), placeId: genting);
+        Name(anaWrongYear, ana);
+
+        int collection = await Rule(new CollectionRule(
+            DateOnly.FromDateTime(March.AddDays(-1)),
+            DateOnly.FromDateTime(March.AddDays(1)),
+            [ana, ben],
+            [genting]));
+
+        IReadOnlyList<int> fitting = await Repository().SuggestAsync(collection);
+
+        Assert.Equal([anaThere, benThere], fitting.Order());
+        Assert.DoesNotContain(benElsewhere, fitting);
+        Assert.DoesNotContain(anaWrongYear, fitting);
     }
 
     [Fact]

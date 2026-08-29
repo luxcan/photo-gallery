@@ -7,7 +7,7 @@
         SizeToContent="Height"
         Width="440"
         WindowStartupLocation="CenterOwner"
-        Background="Transparent"
+        Background="{DynamicResource Panel.Background}"
         AllowsTransparency="False"
         KeyDown="OnKeyDown"
         TextOptions.TextFormattingMode="Display">
@@ -16,7 +16,12 @@
        the same object floating over the app. Its own border rather than a
        caption: a dialog this small has nothing to put in a title bar, and
        drawing the surface here is what lets it match the theme, which a
-       Windows-drawn message box never could. -->
+       Windows-drawn message box never could.
+
+       The window behind it is painted the same colour rather than left
+       transparent. A window without AllowsTransparency cannot actually be
+       transparent, so the surface's corner radius was being rounded against
+       black; matching the two means the corners have nothing to show. -->
   <Border Style="{DynamicResource ModalSurface}" MouseLeftButtonDown="OnDrag">
     <Grid>
       <Grid.RowDefinitions>
@@ -31,12 +36,11 @@
 
       <!-- The glyph carries the tone, so the wording does not have to shout. -->
       <TextBlock x:Name="Glyph" Grid.Row="0" Grid.Column="0"
-                 Margin="0,1,12,0" FontSize="17" VerticalAlignment="Top"
+                 Margin="0,2,10,0" FontSize="16" VerticalAlignment="Top"
                  FontFamily="Segoe MDL2 Assets" />
 
       <TextBlock x:Name="TitleText" Grid.Row="0" Grid.Column="1"
-                 Style="{DynamicResource Heading}" Margin="0"
-                 TextWrapping="Wrap" />
+                 Style="{DynamicResource ModalTitle}" />
 
       <TextBlock x:Name="MessageText" Grid.Row="1" Grid.Column="1"
                  Style="{DynamicResource BodyText}" Margin="0,8,0,0"

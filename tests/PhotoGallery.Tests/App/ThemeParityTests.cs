@@ -36,7 +36,7 @@ public sealed class ThemeParityTests
 
     private static HashSet<string> KeysOf(string fileName)
     {
-        string path = Path.Combine(FindRepoRoot(), "src", "PhotoGallery.App", "Theme", fileName);
+        string path = AppMarkup.PathTo("Theme", fileName);
         XDocument document = XDocument.Load(path);
 
         return document.Root!
@@ -45,17 +45,5 @@ public sealed class ThemeParityTests
             .Where(k => k is not null)
             .Select(k => k!)
             .ToHashSet();
-    }
-
-    private static string FindRepoRoot()
-    {
-        var directory = new DirectoryInfo(AppContext.BaseDirectory);
-        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "PhotoGallery.sln")))
-        {
-            directory = directory.Parent!;
-        }
-
-        return directory?.FullName
-            ?? throw new InvalidOperationException("Repository root not found above the test binary.");
     }
 }

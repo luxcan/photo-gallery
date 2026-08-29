@@ -26,8 +26,9 @@ public static class OriginalInExplorer
         {
             // A drive not mounted, or a folder that has moved. Saying so beats
             // an Explorer window opened on nothing.
-            Tell(
+            AppDialog.Tell(
                 owner,
+                "File not available",
                 $"That file is not there at the moment.\n\n{fullPath}\n\n"
                 + "The folder it lives in may be disconnected.",
                 DialogTone.Information);
@@ -44,10 +45,11 @@ public static class OriginalInExplorer
         catch (Exception ex) when (ex is System.ComponentModel.Win32Exception
                                       or InvalidOperationException)
         {
-            Tell(owner, $"Explorer could not be opened.\n\n{ex.Message}", DialogTone.Caution);
+            AppDialog.Tell(
+                owner,
+                "Explorer could not be opened",
+                $"{fullPath}\n\n{ex.Message}",
+                DialogTone.Caution);
         }
     }
-
-    private static void Tell(Window? owner, string message, DialogTone tone) =>
-        AppDialog.Tell(owner, "Show in Explorer", message, tone);
 }

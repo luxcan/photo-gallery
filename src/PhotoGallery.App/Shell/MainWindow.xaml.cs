@@ -692,11 +692,15 @@ public partial class MainWindow : Window
                 : $"{person.Summary.ConfirmedFaces:N0} faces are named as them. "
                   + "Those faces stay in your pictures and become unnamed again.";
 
+            // Caution, and the same tone as removing a folder: both leave every
+            // file alone and undo work this app did, which is what that tone is
+            // for. They read as one kind of act because they are one.
             bool answer = AppDialog.Confirm(
                 this,
                 $"Remove {person.DisplayName}?",
                 $"{counted}\n\nNothing is deleted from your photos.",
-                confirm: "Remove");
+                confirm: "Remove",
+                tone: DialogTone.Caution);
 
             if (answer)
             {

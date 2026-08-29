@@ -702,9 +702,9 @@
               </Grid.ColumnDefinitions>
               <StackPanel Grid.Column="0" VerticalAlignment="Center"
                           HorizontalAlignment="Left" Margin="0,0,16,0">
-                <TextBlock Style="{DynamicResource FieldLabel}" Text="Collections" />
+                <TextBlock Style="{DynamicResource FieldLabel}" Text="Albums" />
                 <TextBlock Style="{DynamicResource HintText}" TextWrapping="Wrap"
-                           Text="Nothing here moves or renames a file. A photograph belongs to one collection, so putting it in another takes it out of the first."
+                           Text="Nothing here moves or renames a file. A photograph belongs to one album, so putting it in another takes it out of the first."
                            Visibility="{Binding Collections.HasStatus,
                                         Converter={StaticResource InverseBoolToVisibility}}" />
                 <TextBlock Style="{DynamicResource HintText}" TextWrapping="Wrap"
@@ -716,21 +716,14 @@
               <StackPanel Grid.Column="1" Orientation="Horizontal"
                           HorizontalAlignment="Right" VerticalAlignment="Center">
                 <!-- Making one of your own, beside the tabs rather than above
-                     the wall: it is an action, not a heading. -->
-                <TextBox Style="{DynamicResource InputTextBox}" Width="170"
-                         VerticalAlignment="Center"
-                         AutomationProperties.Name="Name a collection of your own"
-                         ToolTip="Make an empty collection, then add photographs from any picture"
-                         Text="{Binding Collections.NewName, UpdateSourceTrigger=PropertyChanged}">
-                  <TextBox.InputBindings>
-                    <KeyBinding Key="Return"
-                                Command="{Binding Collections.CreateCollectionCommand}" />
-                  </TextBox.InputBindings>
-                </TextBox>
-                <Button Style="{DynamicResource SecondaryButton}" Margin="6,0,16,0"
-                        MinWidth="60" Content="Make"
-                        ToolTip="Make a collection of your own"
-                        Command="{Binding Collections.CreateCollectionCommand}" />
+                     the wall: it is an action, not a heading. A button rather
+                     than a box and a button, because naming an album is only
+                     half of describing one - the panel it opens asks the rest,
+                     and a box on the strip could not have. -->
+                <Button Style="{DynamicResource SecondaryButton}" Margin="0,0,16,0"
+                        MinWidth="110" Content="New album"
+                        ToolTip="Name an album, and say what it is looking for"
+                        Command="{Binding Collections.StartCreatingCommand}" />
 
                 <Border Background="{DynamicResource Input.Background}"
                         BorderBrush="{DynamicResource Separator}" BorderThickness="1"
@@ -821,8 +814,8 @@
                        took up more of the strip than the album's own name. -->
                   <Button Style="{DynamicResource ViewerButton}" Margin="0,0,10,0"
                           VerticalAlignment="Center" Content="&#xE72B;"
-                          ToolTip="Back to all collections"
-                          AutomationProperties.Name="Back to all collections"
+                          ToolTip="Back to all albums"
+                          AutomationProperties.Name="Back to all albums"
                           Command="{Binding Collections.CloseCollectionCommand}" />
                   <StackPanel VerticalAlignment="Center">
                   <TextBlock Text="{Binding Collections.SelectedName}" FontSize="17"
@@ -849,7 +842,7 @@
                        it offers rather than adds. -->
                   <Button Style="{DynamicResource SecondaryButton}" MinWidth="150"
                           Margin="0,0,8,0" Content="Find photos that fit"
-                          ToolTip="Look for photographs that match this collection's rule"
+                          ToolTip="Look for photographs that match this album's rule"
                           Command="{Binding Collections.SuggestCommand}" />
                   <Button Style="{DynamicResource SecondaryButton}" MinWidth="80"
                           Content="Edit"
@@ -904,7 +897,33 @@
                                         ToolTip="{Binding Caption}"
                                         AutomationProperties.Name="{Binding FileName}"
                                         IsChecked="{Binding IsChosen, Mode=TwoWay}">
-                            <Image Source="{Binding Picture}" Stretch="UniformToFill" />
+                            <Grid>
+                              <Image Source="{Binding Picture}" Stretch="UniformToFill" />
+
+                              <!-- A proposed clip looked exactly like a proposed
+                                   photograph, which is the one thing a poster
+                                   cannot say for itself. -->
+                              <Border Style="{DynamicResource VideoBadge}"
+                                      Visibility="{Binding IsVideo,
+                                                   Converter={StaticResource BoolToVisibility}}">
+                                <TextBlock Text="&#xE714;" FontFamily="Segoe MDL2 Assets"
+                                           FontSize="11" VerticalAlignment="Center"
+                                           Foreground="{DynamicResource Badge.Foreground}" />
+                              </Border>
+
+                              <!-- The corner button the face crops already carry,
+                                   here for the same reason: 110 pixels is too
+                                   little to judge a photograph by. A Button
+                                   inside a ToggleButton marks the click handled,
+                                   so looking closer does not also switch the
+                                   answer underneath it. -->
+                              <Button Style="{DynamicResource CropAction}" Content="&#xE8A3;"
+                                      ToolTip="See the whole picture"
+                                      AutomationProperties.Name="See the whole picture"
+                                      Command="{Binding DataContext.OpenSuggestedPhotoCommand,
+                                                RelativeSource={RelativeSource AncestorType=Window}}"
+                                      CommandParameter="{Binding}" />
+                            </Grid>
                           </ToggleButton>
                         </DataTemplate>
                       </ItemsControl.ItemTemplate>
@@ -914,7 +933,7 @@
               </Border>
 
               <TextBlock DockPanel.Dock="Bottom" Style="{DynamicResource HintText}"
-                         Text="Nothing in it yet. Open any picture and choose Add to a collection, or give it a rule under Edit and let it find them."
+                         Text="Nothing in it yet. Open any picture and choose Add to an album, or give it a rule under Edit and let it find them."
                          Visibility="{Binding Collections.HasPhotos,
                                       Converter={StaticResource InverseBoolToVisibility}}" />
 
@@ -973,15 +992,18 @@
                  and dimming what is behind, because it is a question with an
                  answer rather than a panel to live in. -->
             <Grid Grid.Row="0" Grid.RowSpan="2" Margin="-20,-14,-20,-10"
-                  Background="#99000000"
+                  Background="{DynamicResource ModalScrim}"
                   Visibility="{Binding Collections.IsEditing,
                                Converter={StaticResource BoolToVisibility}}">
-              <Border MaxWidth="360" HorizontalAlignment="Center" VerticalAlignment="Center"
-                      Background="{DynamicResource SideBar.Background}"
-                      BorderBrush="{DynamicResource Panel.Border}" BorderThickness="1"
-                      CornerRadius="{StaticResource Radius.Control}" Padding="18,16">
-                <StackPanel>
-                  <TextBlock Style="{DynamicResource FieldLabel}" Text="This collection" />
+              <Border Style="{DynamicResource ModalSurface}" Padding="18,16"
+                      MaxWidth="480" MaxHeight="720"
+                      HorizontalAlignment="Center" VerticalAlignment="Center">
+                <ScrollViewer VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Disabled">
+                  <!-- Clear of the scrollbar, which otherwise sits on the last
+                       word of every line the hints wrap. -->
+                  <StackPanel Margin="0,0,8,0">
+                  <TextBlock Style="{DynamicResource FieldLabel}" Text="This album" />
                   <TextBlock Style="{DynamicResource HintText}" Margin="0,2,0,12"
                              TextWrapping="Wrap"
                              Text="Nothing here touches the photographs themselves. They stay in your library wherever this ends up." />
@@ -993,7 +1015,7 @@
                       <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
                     <TextBox Grid.Column="0" Style="{DynamicResource InputTextBox}"
-                             AutomationProperties.Name="Rename this collection"
+                             AutomationProperties.Name="Rename this album"
                              Text="{Binding Collections.RenameTo,
                                     UpdateSourceTrigger=PropertyChanged}">
                       <TextBox.InputBindings>
@@ -1006,101 +1028,12 @@
                             Command="{Binding Collections.RenameCommand}" />
                   </Grid>
 
-                  <!-- What this collection is looking for. Everything is ANDed:
-                       a photograph has to be inside the dates, hold every person
-                       named, and have been taken in one of the places. -->
-                  <TextBlock Style="{DynamicResource FieldLabel}" Margin="0,16,0,0"
-                             Text="What it is looking for" />
-                  <TextBlock Style="{DynamicResource HintText}" Margin="0,0,0,6"
-                             TextWrapping="Wrap"
-                             Text="All of it has to be true at once. Leave a part empty and it asks nothing about it." />
-
-                  <Grid>
-                    <Grid.ColumnDefinitions>
-                      <ColumnDefinition Width="*" />
-                      <ColumnDefinition Width="Auto" />
-                      <ColumnDefinition Width="*" />
-                    </Grid.ColumnDefinitions>
-                    <TextBox Grid.Column="0" Style="{DynamicResource InputTextBox}"
-                             AutomationProperties.Name="From this day"
-                             ToolTip="The first day, as 2019-03-03. Leave both empty for any day."
-                             Text="{Binding Collections.RuleFrom,
-                                    UpdateSourceTrigger=PropertyChanged}" />
-                    <TextBlock Grid.Column="1" Margin="8,0,8,0" VerticalAlignment="Center"
-                               Style="{DynamicResource HintText}" Text="to" />
-                    <TextBox Grid.Column="2" Style="{DynamicResource InputTextBox}"
-                             AutomationProperties.Name="To this day"
-                             ToolTip="The last day, included whole. The same date in both boxes means that one day."
-                             Text="{Binding Collections.RuleTo,
-                                    UpdateSourceTrigger=PropertyChanged}" />
-                  </Grid>
-                  <TextBlock Style="{DynamicResource HintText}" TextWrapping="Wrap"
-                             Foreground="{DynamicResource Status.Danger}"
-                             Text="{Binding Collections.RuleProblem}"
-                             Visibility="{Binding Collections.HasRuleProblem,
-                                          Converter={StaticResource BoolToVisibility}}" />
-
-                  <TextBlock Style="{DynamicResource FieldLabel}" Margin="0,12,0,0"
-                             Text="Everyone in it" />
-                  <TextBlock Style="{DynamicResource HintText}" Margin="0,0,0,4"
-                             TextWrapping="Wrap"
-                             Text="Every person ticked has to be in the photograph, not just one of them." />
-                  <ScrollViewer MaxHeight="120" VerticalScrollBarVisibility="Auto"
-                                HorizontalScrollBarVisibility="Disabled">
-                    <ItemsControl ItemsSource="{Binding Collections.People}" Focusable="False">
-                      <ItemsControl.ItemTemplate>
-                        <DataTemplate>
-                          <ToggleButton Style="{DynamicResource CheckRow}" Margin="0,1,0,1"
-                                        HorizontalAlignment="Stretch"
-                                        IsChecked="{Binding IsChosen, Mode=TwoWay}">
-                            <StackPanel Orientation="Horizontal">
-                              <TextBlock Text="{Binding Name}" FontSize="12.5" />
-                              <TextBlock Text="{Binding Caption}" FontSize="11" Margin="8,0,0,0"
-                                         VerticalAlignment="Center"
-                                         Foreground="{DynamicResource Editor.Placeholder}" />
-                            </StackPanel>
-                          </ToggleButton>
-                        </DataTemplate>
-                      </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                  </ScrollViewer>
-                  <TextBlock Style="{DynamicResource HintText}"
-                             Text="Nobody has been named yet."
-                             Visibility="{Binding Collections.HasPeopleToPick,
-                                          Converter={StaticResource InverseBoolToVisibility}}" />
-
-                  <TextBlock Style="{DynamicResource FieldLabel}" Margin="0,12,0,0"
-                             Text="Taken in" />
-                  <TextBlock Style="{DynamicResource HintText}" Margin="0,0,0,4"
-                             TextWrapping="Wrap"
-                             Text="Any one of the places ticked - a photograph was only taken in one of them." />
-                  <ScrollViewer MaxHeight="120" VerticalScrollBarVisibility="Auto"
-                                HorizontalScrollBarVisibility="Disabled">
-                    <ItemsControl ItemsSource="{Binding Collections.Places}" Focusable="False">
-                      <ItemsControl.ItemTemplate>
-                        <DataTemplate>
-                          <ToggleButton Style="{DynamicResource CheckRow}" Margin="0,1,0,1"
-                                        HorizontalAlignment="Stretch"
-                                        IsChecked="{Binding IsChosen, Mode=TwoWay}">
-                            <StackPanel Orientation="Horizontal">
-                              <TextBlock Text="{Binding Name}" FontSize="12.5" />
-                              <TextBlock Text="{Binding Caption}" FontSize="11" Margin="8,0,0,0"
-                                         VerticalAlignment="Center"
-                                         Foreground="{DynamicResource Editor.Placeholder}" />
-                            </StackPanel>
-                          </ToggleButton>
-                        </DataTemplate>
-                      </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                  </ScrollViewer>
-                  <TextBlock Style="{DynamicResource HintText}"
-                             Text="No photograph has a place yet - that needs coordinates in the file."
-                             Visibility="{Binding Collections.HasPlacesToPick,
-                                          Converter={StaticResource InverseBoolToVisibility}}" />
+                  <ContentControl Margin="0,16,0,0" Content="{Binding Collections}"
+                                  ContentTemplate="{StaticResource AlbumRuleFields}" />
 
                   <Button Style="{DynamicResource PrimaryButton}" Margin="0,12,0,0"
                           HorizontalAlignment="Stretch" Content="Save the rule"
-                          ToolTip="Keep this as what the collection is looking for"
+                          ToolTip="Keep this as what the album is looking for"
                           Command="{Binding Collections.SaveRuleCommand}" />
 
                   <!-- A suggestion is a question: keep it or do not. -->
@@ -1108,11 +1041,11 @@
                               Visibility="{Binding Collections.SelectedIsProposed,
                                            Converter={StaticResource BoolToVisibility}}">
                     <Button Style="{DynamicResource PrimaryButton}" HorizontalAlignment="Stretch"
-                            Content="Keep this collection"
+                            Content="Keep this album"
                             ToolTip="Keep it, and no scan will change it again"
                             Command="{Binding Collections.AcceptCommand}" />
                     <Button Style="{DynamicResource SecondaryButton}" Margin="0,8,0,0"
-                            HorizontalAlignment="Stretch" Content="Not a collection"
+                            HorizontalAlignment="Stretch" Content="Not an album"
                             ToolTip="Throw it away. It will not be suggested again."
                             Command="{Binding Collections.DismissCommand}" />
                     <TextBlock Style="{DynamicResource HintText}" TextWrapping="Wrap"
@@ -1123,7 +1056,7 @@
                               Visibility="{Binding Collections.SelectedIsMine,
                                            Converter={StaticResource BoolToVisibility}}">
                     <Button Style="{DynamicResource SecondaryButton}"
-                            HorizontalAlignment="Stretch" Content="Remove this collection"
+                            HorizontalAlignment="Stretch" Content="Remove this album"
                             ToolTip="Remove it. Your photographs stay where they are."
                             Command="{Binding Collections.DeleteCommand}" />
                   </StackPanel>
@@ -1131,7 +1064,59 @@
                   <Button Style="{DynamicResource LinkButton}" Margin="0,14,0,0"
                           HorizontalAlignment="Center" Content="Cancel"
                           Command="{Binding Collections.CancelEditCommand}" />
-                </StackPanel>
+                  </StackPanel>
+                </ScrollViewer>
+              </Border>
+            </Grid>
+
+            <!-- Describing a new album. The same panel as editing one, asking
+                 the same three things, because an album the user is about to
+                 make and an album they are correcting are the same object at
+                 two moments - and being asked different questions at each would
+                 be the surprise. Scrolls: the two directories can be long, and
+                 on a short window the Create button is the part that would have
+                 gone off the bottom. -->
+            <Grid Grid.Row="0" Grid.RowSpan="2" Margin="-20,-14,-20,-10"
+                  Background="{DynamicResource ModalScrim}"
+                  Visibility="{Binding Collections.IsCreating,
+                               Converter={StaticResource BoolToVisibility}}">
+              <Border Style="{DynamicResource ModalSurface}" Padding="18,16"
+                      MaxWidth="480" MaxHeight="720"
+                      HorizontalAlignment="Center" VerticalAlignment="Center">
+                <ScrollViewer VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Disabled">
+                  <!-- Clear of the scrollbar, as in the panel above. -->
+                  <StackPanel Margin="0,0,8,0">
+                    <TextBlock Style="{DynamicResource FieldLabel}" Text="New album" />
+                    <TextBlock Style="{DynamicResource HintText}" Margin="0,2,0,12"
+                               TextWrapping="Wrap"
+                               Text="Only the name is needed. Everything under it is optional, and is what Find photos that fit will go looking for afterwards." />
+
+                    <TextBlock Style="{DynamicResource FieldLabel}" Text="Name" />
+                    <TextBox Style="{DynamicResource InputTextBox}" Margin="0,2,0,0"
+                             AutomationProperties.Name="Name this album"
+                             ToolTip="What to call it. A scan never writes over your name."
+                             Text="{Binding Collections.NewName,
+                                    UpdateSourceTrigger=PropertyChanged}">
+                      <TextBox.InputBindings>
+                        <KeyBinding Key="Return"
+                                    Command="{Binding Collections.CreateCollectionCommand}" />
+                      </TextBox.InputBindings>
+                    </TextBox>
+
+                    <ContentControl Margin="0,16,0,0" Content="{Binding Collections}"
+                                    ContentTemplate="{StaticResource AlbumRuleFields}" />
+
+                    <Button Style="{DynamicResource PrimaryButton}" Margin="0,16,0,0"
+                            HorizontalAlignment="Stretch" Content="Create album"
+                            ToolTip="Make it, and open it"
+                            Command="{Binding Collections.CreateCollectionCommand}" />
+
+                    <Button Style="{DynamicResource LinkButton}" Margin="0,14,0,0"
+                            HorizontalAlignment="Center" Content="Cancel"
+                            Command="{Binding Collections.CancelCreateCommand}" />
+                  </StackPanel>
+                </ScrollViewer>
               </Border>
             </Grid>
           </Grid>
@@ -1976,14 +1961,14 @@
 
                   <Button Style="{DynamicResource ViewerButton}" Content="&#xE8FD;"
                           Margin="0,0,6,0"
-                          ToolTip="Put this photograph in a collection"
-                          AutomationProperties.Name="Add to a collection"
+                          ToolTip="Put this photograph in an album"
+                          AutomationProperties.Name="Add to an album"
                           Command="{Binding Gallery.AddToCollectionCommand}" />
 
                   <Button Style="{DynamicResource ViewerButton}" Content="&#xE8FB;"
                           Margin="0,0,10,0"
-                          ToolTip="Take it out of the collection it is in"
-                          AutomationProperties.Name="Take out of the collection"
+                          ToolTip="Take it out of the album it is in"
+                          AutomationProperties.Name="Take out of the album"
                           Visibility="{Binding Gallery.IsInACollection,
                                        Converter={StaticResource BoolToVisibility}}"
                           Command="{Binding Gallery.TakeOutOfCollectionCommand}" />
@@ -2042,6 +2027,29 @@
                           ToolTip="Previous picture (left arrow)"
                           AutomationProperties.Name="Previous picture"
                           Command="{Binding Gallery.PreviousPhotoCommand}" />
+
+                  <!-- Only when the picture is one an album is proposing. Two
+                       acts rather than a switch: at full size the question is
+                       answered outright and the proposal leaves the list, so the
+                       next one is already on screen. Named after what they do,
+                       and the refusing one says out loud that it is final -
+                       "not now" is what closing the viewer already does. -->
+                  <Button Style="{DynamicResource PrimaryButton}" MinWidth="130"
+                          Margin="10,0,0,0" Content="Add this one"
+                          ToolTip="Put this photograph in the album"
+                          AutomationProperties.Name="Add this one"
+                          Command="{Binding KeepSuggestedPhotoCommand}"
+                          Visibility="{Binding Gallery.IsDecidingSuggestion,
+                                       Converter={StaticResource BoolToVisibility}}" />
+
+                  <Button Style="{DynamicResource SecondaryButton}" MinWidth="130"
+                          Margin="8,0,0,0" Content="Not this one"
+                          ToolTip="Leave it out. It will not be offered for this album again."
+                          AutomationProperties.Name="Not this one"
+                          Command="{Binding RefuseSuggestedPhotoCommand}"
+                          Visibility="{Binding Gallery.IsDecidingSuggestion,
+                                       Converter={StaticResource BoolToVisibility}}" />
+
                   <Button Style="{DynamicResource ViewerButton}" Content="&#xE76C;"
                           Margin="10,0,0,0"
                           ToolTip="Next picture (right arrow)"
@@ -2772,8 +2780,7 @@
       <Border Style="{DynamicResource ModalSurface}" MaxWidth="520"
               HorizontalAlignment="Center" VerticalAlignment="Center">
         <StackPanel>
-          <TextBlock Text="{Binding OverlayTitle}" FontSize="16"
-                     Foreground="{DynamicResource Editor.Foreground}" />
+          <TextBlock Text="{Binding OverlayTitle}" Style="{DynamicResource ModalTitle}" />
           <TextBlock Text="{Binding OverlayTarget}" Margin="0,6,0,0" FontSize="12"
                      TextTrimming="CharacterEllipsis"
                      Foreground="{DynamicResource Editor.Placeholder}" />

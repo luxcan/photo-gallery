@@ -47,9 +47,13 @@ public sealed class NearDuplicatesTests
         // id. A pass whose answers moved between runs could not be trusted.
         Asset[] photos = [Photo(1, 0b0000), Photo(2, 0b0001), Photo(3, 0b0011)];
 
+        // Enumerable.Reverse by name, not photos.Reverse(): on an array that
+        // binds to MemoryExtensions.Reverse(Span<T>), which reverses in place
+        // and returns void - so it would both fail to compile here and, where it
+        // did compile, hand both sides the same reordered array.
         Assert.Equal(
             NearDuplicates.Group(photos).Select(set => set.Select(a => a.Id)),
-            NearDuplicates.Group(photos.Reverse()).Select(set => set.Select(a => a.Id)));
+            NearDuplicates.Group(Enumerable.Reverse(photos)).Select(set => set.Select(a => a.Id)));
     }
 
     [Fact]

@@ -23,5 +23,5 @@ public sealed record CollectionsResult(
     /// <summary>What a scan says about this phase, or nothing when it found none.</summary>
     public string Summary => Proposed == 0
         ? string.Empty
-        : $"{Proposed:N0} collections suggested from {Grouped:N0} photos";
+        : $"{Proposed:N0} albums suggested from {Grouped:N0} photos";
 }

@@ -4,16 +4,19 @@ namespace PhotoGallery.Application.Ports;
 /// What a collection is looking for: dates, people, places.
 /// </summary>
 /// <remarks>
-/// Everything here is ANDed. A photograph fits when it was taken inside the
-/// dates <em>and</em> holds every person named <em>and</em> was taken in one of
-/// the places - which is what makes the rule worth having: each part narrows
-/// what the last one left, so "Ana and Ben, in Genting, that March" finds a
-/// handful rather than a thousand.
+/// The three parts are ANDed and each part is an OR within itself. A photograph
+/// fits when it was taken inside the dates <em>and</em> holds one of the people
+/// named <em>and</em> was taken in one of the places - so "Ana or Ben, in
+/// Genting, that March" narrows to the occasion while still gathering everyone
+/// who was there.
 ///
-/// <para>The people are an AND among themselves and the places an OR, and that
-/// asymmetry is not a slip: a photograph can hold two people at once and cannot
-/// have been taken in two places at once, so the other reading of either would
-/// match nothing.</para>
+/// <para>The people were an AND to begin with, reasoning that a photograph can
+/// hold two people at once where it cannot have been taken in two places at
+/// once. True, and still the wrong rule: asking for all of them wants the
+/// photographs where everybody happens to stand together, which past two names
+/// is almost none - a three-name album that found one photograph is what sent
+/// this back. The dates and the place are what narrow an album; the names say
+/// who it is about.</para>
 /// </remarks>
 /// <param name="From">
 /// The first day a photograph may have been taken on, or null for no limit.

@@ -2,6 +2,7 @@
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                     xmlns:collections="clr-namespace:PhotoGallery.App.Collections"
                     xmlns:people="clr-namespace:PhotoGallery.App.People"
+                    xmlns:primitives="clr-namespace:System.Windows.Controls.Primitives;assembly=PresentationFramework"
                     xmlns:shell="clr-namespace:PhotoGallery.App.Shell"
                     xmlns:theme="clr-namespace:PhotoGallery.App.Theme">
 
@@ -35,15 +36,18 @@
     Anything that floats over the app is one of these, so there is one answer to
     what a modal looks like rather than one per place somebody needed one.
 
-    Written as a style on Border rather than a control, because the two users
-    want different insides - a dialog holds a question and two buttons, the pass
-    overlay holds a live progress bar - and what has to agree is the surface they
-    sit on, not their contents.
+    Written as a style on Border rather than a control, because its users want
+    different insides - a dialog holds a question and two buttons, the pass
+    overlay a live progress bar, the pickers a filtering box over a list, the
+    album panels a form - and what has to agree is the surface they sit on, not
+    their contents.
 
-    Size and placement are deliberately absent. One of these is centred inside
-    the window it covers and the other fills a window of its own, so those are
+    Size and placement are deliberately absent. All but one are centred inside
+    the window they cover, and the dialog fills a window of its own, so those are
     the caller's to set; putting them here would only mean every caller
-    overriding them.
+    overriding them. Padding is here because it is right for most of them, and
+    the narrower panels override it - 24 around a question 320 wide reads as a
+    box with something small lost in the middle of it.
   -->
   <Style x:Key="ModalSurface" TargetType="Border">
     <Setter Property="Background" Value="{DynamicResource Panel.Background}" />
@@ -58,10 +62,163 @@
     The shade a modal is read against. Deliberately the same in both themes: a
     modal shade is a dimming of what is behind it, and dimming a light screen
     with a light wash would say nothing. It is the one colour here that does not
-    come from the palette, and it is defined once so that the two places needing
-    it cannot drift.
+    come from the palette, and it is defined once so that the places needing it
+    cannot drift - which, being written as a literal instead, they had: the two
+    album panels were dimming with a plain 60% black while everything else used
+    this, and a modal was a different darkness depending on which one it was.
   -->
   <SolidColorBrush x:Key="ModalScrim" Color="#CC1E1E1E" />
+
+  <!--
+    What a modal calls itself. A style rather than a FontSize written at each
+    one, because written at each one they drifted: the pass overlay said 16 and
+    the dialog borrowed Heading, which is 28 and bold and is what the Settings
+    page titles itself with. A question arrived in the same type as the screen it
+    was covering, wrapped to two lines, and dwarfed its own explanation.
+  -->
+  <Style x:Key="ModalTitle" TargetType="TextBlock">
+    <Setter Property="FontSize" Value="16" />
+    <Setter Property="Foreground" Value="{DynamicResource Editor.Foreground}" />
+    <Setter Property="TextWrapping" Value="Wrap" />
+  </Style>
+
+  <!--
+    Scrollbars. Both palettes have carried ScrollBarTrack, ScrollBarThumb and
+    ScrollBarThumbHover since the theme landed and nothing had ever consumed
+    them, so every ScrollViewer in the app fell through to Windows' own grey
+    chrome - arrow buttons and all, pale on a dark panel. Six dead brushes and
+    one obviously foreign control.
+
+    6 DIP at rest, 12 on hover, from the handoff. The bar reserves 12 either way
+    and paints into half of it at rest rather than growing the layout: a bar that
+    widened on approach would reflow the text beside it out from under the
+    pointer. That is the one departure from the handoff, which asks for a true
+    overlay - that needs a ScrollViewer template, and an implicit one of those
+    would reach the GridView header and the TextBox's PART_ContentHost, neither
+    of which survives being retemplated by accident.
+  -->
+  <Style x:Key="ScrollPageStrip" TargetType="RepeatButton">
+    <Setter Property="OverridesDefaultStyle" Value="True" />
+    <Setter Property="Focusable" Value="False" />
+    <Setter Property="IsTabStop" Value="False" />
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="RepeatButton">
+          <!-- Transparent rather than empty: this is the strip that pages when
+               clicked, and a null background is not hit-testable. -->
+          <Border Background="Transparent" />
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
+  <Style x:Key="ScrollThumb" TargetType="Thumb">
+    <Setter Property="OverridesDefaultStyle" Value="True" />
+    <Setter Property="IsTabStop" Value="False" />
+    <Setter Property="Background" Value="{DynamicResource ScrollBarThumb}" />
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="Thumb">
+          <Border Background="{TemplateBinding Background}"
+                  CornerRadius="6" SnapsToDevicePixels="True" />
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
+  <Style TargetType="{x:Type ScrollBar}">
+    <Setter Property="OverridesDefaultStyle" Value="True" />
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="Width" Value="12" />
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="{x:Type ScrollBar}">
+          <!-- The Grid is transparent so all 12 DIP answer the pointer while
+               only 6 of them are painted. -->
+          <Grid Background="Transparent">
+            <Border x:Name="Groove" Width="6" Margin="0,2"
+                    HorizontalAlignment="Right"
+                    Background="{DynamicResource ScrollBarTrack}"
+                    CornerRadius="6" SnapsToDevicePixels="True" />
+            <Track x:Name="PART_Track" Width="6" Margin="0,2"
+                   HorizontalAlignment="Right" IsDirectionReversed="True">
+              <Track.DecreaseRepeatButton>
+                <RepeatButton Style="{StaticResource ScrollPageStrip}"
+                              Command="ScrollBar.PageUpCommand" />
+              </Track.DecreaseRepeatButton>
+              <Track.Thumb>
+                <Thumb x:Name="Thumb" Width="4" HorizontalAlignment="Center"
+                       Style="{StaticResource ScrollThumb}" />
+              </Track.Thumb>
+              <Track.IncreaseRepeatButton>
+                <RepeatButton Style="{StaticResource ScrollPageStrip}"
+                              Command="ScrollBar.PageDownCommand" />
+              </Track.IncreaseRepeatButton>
+            </Track>
+          </Grid>
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+              <Setter TargetName="Groove" Property="Width" Value="12" />
+              <Setter TargetName="PART_Track" Property="Width" Value="12" />
+              <Setter TargetName="Thumb" Property="Width" Value="8" />
+              <Setter TargetName="Thumb" Property="Background"
+                      Value="{DynamicResource ScrollBarThumbHover}" />
+            </Trigger>
+            <Trigger SourceName="Thumb" Property="IsDragging" Value="True">
+              <Setter TargetName="Thumb" Property="Background"
+                      Value="{DynamicResource AccentBackground}" />
+            </Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+    <Style.Triggers>
+      <Trigger Property="Orientation" Value="Horizontal">
+        <Setter Property="Width" Value="Auto" />
+        <Setter Property="Height" Value="12" />
+        <Setter Property="Template">
+          <Setter.Value>
+            <ControlTemplate TargetType="{x:Type ScrollBar}">
+              <Grid Background="Transparent">
+                <Border x:Name="Groove" Height="6" Margin="2,0"
+                        VerticalAlignment="Bottom"
+                        Background="{DynamicResource ScrollBarTrack}"
+                        CornerRadius="6" SnapsToDevicePixels="True" />
+                <Track x:Name="PART_Track" Height="6" Margin="2,0"
+                       VerticalAlignment="Bottom">
+                  <Track.DecreaseRepeatButton>
+                    <RepeatButton Style="{StaticResource ScrollPageStrip}"
+                                  Command="ScrollBar.PageLeftCommand" />
+                  </Track.DecreaseRepeatButton>
+                  <Track.Thumb>
+                    <Thumb x:Name="Thumb" Height="4" VerticalAlignment="Center"
+                           Style="{StaticResource ScrollThumb}" />
+                  </Track.Thumb>
+                  <Track.IncreaseRepeatButton>
+                    <RepeatButton Style="{StaticResource ScrollPageStrip}"
+                                  Command="ScrollBar.PageRightCommand" />
+                  </Track.IncreaseRepeatButton>
+                </Track>
+              </Grid>
+              <ControlTemplate.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                  <Setter TargetName="Groove" Property="Height" Value="12" />
+                  <Setter TargetName="PART_Track" Property="Height" Value="12" />
+                  <Setter TargetName="Thumb" Property="Height" Value="8" />
+                  <Setter TargetName="Thumb" Property="Background"
+                          Value="{DynamicResource ScrollBarThumbHover}" />
+                </Trigger>
+                <Trigger SourceName="Thumb" Property="IsDragging" Value="True">
+                  <Setter TargetName="Thumb" Property="Background"
+                          Value="{DynamicResource AccentBackground}" />
+                </Trigger>
+              </ControlTemplate.Triggers>
+            </ControlTemplate>
+          </Setter.Value>
+        </Setter>
+      </Trigger>
+    </Style.Triggers>
+  </Style>
 
   <!-- Converters live here, beside the template that uses them, so a
        StaticResource lookup resolves within this dictionary. -->
@@ -1460,14 +1617,48 @@
     that narrows the list and, when nothing is left, becomes the new name.
   -->
   <DataTemplate DataType="{x:Type collections:CollectionPicker}">
-    <Border MaxWidth="340" HorizontalAlignment="Center" VerticalAlignment="Center"
-            Background="{DynamicResource SideBar.Background}"
-            BorderBrush="{DynamicResource Panel.Border}" BorderThickness="1"
-            CornerRadius="{StaticResource Radius.Control}" Padding="16,14">
+    <!-- ModalSurface, like every other thing that floats over the app. Only the
+         padding is its own: a dialog's 24 around a panel this narrow reads as a
+         box with a small question lost in the middle of it. -->
+    <Border Style="{DynamicResource ModalSurface}" Padding="16,14"
+            MaxWidth="340" HorizontalAlignment="Center" VerticalAlignment="Center">
       <StackPanel>
         <TextBlock Style="{DynamicResource FieldLabel}" Text="{Binding Prompt}" />
-        <TextBlock Style="{DynamicResource HintText}" Margin="0,2,0,10"
+        <TextBlock Style="{DynamicResource HintText}" Margin="0,2,0,8"
                    TextWrapping="Wrap" Text="{Binding Hint}" />
+
+        <!-- Above the list rather than under it. Under a list capped at 300 DIP
+             this box is below the fold the moment there are more albums than fit,
+             and sitting beside "Make" it read as the way to create one rather
+             than the way to find one - which is how a picker that has always
+             filtered came to be reported as having no search. -->
+        <Grid>
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="Auto" />
+          </Grid.ColumnDefinitions>
+          <TextBox Grid.Column="0" Style="{DynamicResource InputTextBox}"
+                   AutomationProperties.Name="Search albums, or type a new name"
+                   ToolTip="Type to find an album, or type a name that is not there yet"
+                   Text="{Binding Typed, UpdateSourceTrigger=PropertyChanged}">
+            <TextBox.InputBindings>
+              <KeyBinding Key="Return" Command="{Binding AddCommand}" />
+            </TextBox.InputBindings>
+          </TextBox>
+          <!-- Beside the box whether or not anything matches: an album can want a
+               name that is a prefix of one already there, and hiding this until
+               nothing matched would make that name impossible to give. -->
+          <Button Grid.Column="1" Style="{DynamicResource SecondaryButton}"
+                  Margin="6,0,0,0" MinWidth="52" Content="Make"
+                  ToolTip="Make an album with this name and put the photograph in it"
+                  Command="{Binding AddCommand}" />
+        </Grid>
+
+        <!-- A filtered list and a short list look the same. -->
+        <TextBlock Style="{DynamicResource HintText}" Margin="0,6,0,2"
+                   Text="{Binding Narrowed}"
+                   Visibility="{Binding IsNarrowed,
+                                Converter={StaticResource BoolToVisibility}}" />
 
         <ScrollViewer MaxHeight="300" VerticalScrollBarVisibility="Auto"
                       HorizontalScrollBarVisibility="Disabled">
@@ -1498,26 +1689,6 @@
           </ItemsControl>
         </ScrollViewer>
 
-        <TextBlock Style="{DynamicResource HintText}" Margin="0,8,0,4"
-                   Text="Type to narrow the list, or to make a new collection" />
-        <Grid>
-          <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="*" />
-            <ColumnDefinition Width="Auto" />
-          </Grid.ColumnDefinitions>
-          <TextBox Grid.Column="0" Style="{DynamicResource InputTextBox}"
-                   AutomationProperties.Name="Find or name a collection"
-                   Text="{Binding Typed, UpdateSourceTrigger=PropertyChanged}">
-            <TextBox.InputBindings>
-              <KeyBinding Key="Return" Command="{Binding AddCommand}" />
-            </TextBox.InputBindings>
-          </TextBox>
-          <Button Grid.Column="1" Style="{DynamicResource SecondaryButton}"
-                  Margin="6,0,0,0" MinWidth="52" Content="Make"
-                  ToolTip="Make a collection with this name and put the photograph in it"
-                  Command="{Binding AddCommand}" />
-        </Grid>
-
         <Button Style="{DynamicResource LinkButton}" Margin="0,10,0,0"
                 HorizontalAlignment="Center" Content="Cancel"
                 Command="{Binding CancelCommand}" />
@@ -1532,10 +1703,10 @@
     itself, so the two screens cannot drift apart.
   -->
   <DataTemplate DataType="{x:Type people:PersonPicker}">
-    <Border MaxWidth="320" HorizontalAlignment="Center" VerticalAlignment="Center"
-            Background="{DynamicResource SideBar.Background}"
-            BorderBrush="{DynamicResource Panel.Border}" BorderThickness="1"
-            CornerRadius="{StaticResource Radius.Control}" Padding="16,14">
+    <!-- The same surface and the same narrower padding as the collection
+         picker above, for the same reasons. -->
+    <Border Style="{DynamicResource ModalSurface}" Padding="16,14"
+            MaxWidth="320" HorizontalAlignment="Center" VerticalAlignment="Center">
       <StackPanel>
         <TextBlock Style="{DynamicResource FieldLabel}" Text="{Binding Prompt}" />
         <TextBlock Style="{DynamicResource HintText}" Margin="0,2,0,10"
@@ -1609,6 +1780,525 @@
                 Command="{Binding CancelCommand}" />
       </StackPanel>
     </Border>
+  </DataTemplate>
+
+  <!--
+    A date picker, and the calendar it drops down.
+
+    Written out rather than left stock because WPF draws both from the Aero
+    theme, which is a white box with blue Windows-7 gradients: on this app's dark
+    surface it is the one control that announces it was not designed here. The
+    templates below are the stock part structure - the PART_ names are what the
+    controls find their pieces by - repainted from the same brushes as
+    everything else.
+
+    The typed box is kept as well as the calendar. A date somebody already knows
+    is faster typed than clicked back through, and the text box is the half of
+    the control that a keyboard can reach.
+  -->
+  <Style x:Key="CalendarNavButton" TargetType="Button">
+    <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+    <Setter Property="FontFamily" Value="Segoe MDL2 Assets" />
+    <Setter Property="FontSize" Value="11" />
+    <Setter Property="Width" Value="28" />
+    <Setter Property="Height" Value="28" />
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="Button">
+          <Border x:Name="Root" Background="Transparent" CornerRadius="4">
+            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+          </Border>
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+              <Setter TargetName="Root" Property="Background"
+                      Value="{DynamicResource List.HoverBackground}" />
+            </Trigger>
+            <Trigger Property="IsEnabled" Value="False">
+              <Setter Property="Foreground" Value="{DynamicResource TextDisabled}" />
+            </Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
+  <!-- The month and year cells behind the header button. -->
+  <Style x:Key="CalendarMonthButton" TargetType="CalendarButton">
+    <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+    <Setter Property="FontSize" Value="12" />
+    <Setter Property="MinWidth" Value="48" />
+    <Setter Property="MinHeight" Value="40" />
+    <Setter Property="HorizontalContentAlignment" Value="Center" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="CalendarButton">
+          <Border x:Name="Root" Background="Transparent" Margin="1" CornerRadius="4">
+            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+          </Border>
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+              <Setter TargetName="Root" Property="Background"
+                      Value="{DynamicResource List.HoverBackground}" />
+            </Trigger>
+            <Trigger Property="HasSelectedDays" Value="True">
+              <Setter TargetName="Root" Property="Background"
+                      Value="{DynamicResource AccentBackground}" />
+              <Setter Property="Foreground" Value="{DynamicResource AccentForeground}" />
+            </Trigger>
+            <Trigger Property="IsInactive" Value="True">
+              <Setter Property="Foreground" Value="{DynamicResource TextDisabled}" />
+            </Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
+  <Style x:Key="CalendarDay" TargetType="CalendarDayButton">
+    <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+    <Setter Property="FontSize" Value="12" />
+    <Setter Property="MinWidth" Value="32" />
+    <Setter Property="MinHeight" Value="30" />
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="CalendarDayButton">
+          <Border x:Name="Root" Background="Transparent" Margin="1" CornerRadius="4"
+                  BorderThickness="1" BorderBrush="Transparent">
+            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+          </Border>
+          <ControlTemplate.Triggers>
+            <!-- Ordered least to most specific: selection has to win over both
+                 today's ring and the hover wash, and blacked-out over all of
+                 them. -->
+            <Trigger Property="IsInactive" Value="True">
+              <Setter Property="Foreground" Value="{DynamicResource TextDisabled}" />
+            </Trigger>
+            <Trigger Property="IsToday" Value="True">
+              <Setter TargetName="Root" Property="BorderBrush"
+                      Value="{DynamicResource AccentBackground}" />
+              <Setter Property="FontWeight" Value="SemiBold" />
+            </Trigger>
+            <Trigger Property="IsMouseOver" Value="True">
+              <Setter TargetName="Root" Property="Background"
+                      Value="{DynamicResource List.HoverBackground}" />
+            </Trigger>
+            <Trigger Property="IsSelected" Value="True">
+              <Setter TargetName="Root" Property="Background"
+                      Value="{DynamicResource AccentBackground}" />
+              <Setter Property="Foreground" Value="{DynamicResource AccentForeground}" />
+            </Trigger>
+            <Trigger Property="IsBlackedOut" Value="True">
+              <Setter Property="Foreground" Value="{DynamicResource TextDisabled}" />
+              <Setter Property="IsEnabled" Value="False" />
+            </Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
+  <Style x:Key="CalendarBody" TargetType="CalendarItem">
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="CalendarItem">
+          <ControlTemplate.Resources>
+            <!--
+              Mo Tu We across the top. CalendarItem looks this up by a
+              ComponentResourceKey of its own rather than by a name, so the key
+              has to be spelled out exactly; get it wrong and the lookup is
+              guarded, so the headers quietly fall back to unstyled text rather
+              than failing loudly.
+            -->
+            <DataTemplate
+              x:Key="{ComponentResourceKey TypeInTargetAssembly={x:Type primitives:CalendarItem},
+                      ResourceId=DayTitleTemplate}">
+              <TextBlock Text="{Binding}" HorizontalAlignment="Center"
+                         VerticalAlignment="Center" FontSize="11" FontWeight="SemiBold"
+                         Foreground="{DynamicResource TextSecondary}" />
+            </DataTemplate>
+          </ControlTemplate.Resources>
+          <Grid x:Name="PART_Root">
+            <Grid.RowDefinitions>
+              <RowDefinition Height="Auto" />
+              <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <Grid Grid.Row="0" Margin="0,0,0,4">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+              </Grid.ColumnDefinitions>
+              <Button x:Name="PART_PreviousButton" Grid.Column="0"
+                      Style="{StaticResource CalendarNavButton}" Content="&#xE76B;" />
+              <Button x:Name="PART_HeaderButton" Grid.Column="1"
+                      Foreground="{DynamicResource TextPrimary}" FontSize="13"
+                      FontWeight="SemiBold" Background="Transparent" BorderThickness="0"
+                      Padding="6,4" HorizontalAlignment="Center">
+                <Button.Template>
+                  <ControlTemplate TargetType="Button">
+                    <Border x:Name="HeaderRoot" Background="Transparent" CornerRadius="4"
+                            Padding="{TemplateBinding Padding}">
+                      <ContentPresenter HorizontalAlignment="Center"
+                                        VerticalAlignment="Center" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                      <Trigger Property="IsMouseOver" Value="True">
+                        <Setter TargetName="HeaderRoot" Property="Background"
+                                Value="{DynamicResource List.HoverBackground}" />
+                      </Trigger>
+                    </ControlTemplate.Triggers>
+                  </ControlTemplate>
+                </Button.Template>
+              </Button>
+              <Button x:Name="PART_NextButton" Grid.Column="2"
+                      Style="{StaticResource CalendarNavButton}" Content="&#xE76C;" />
+            </Grid>
+
+            <Grid x:Name="PART_MonthView" Grid.Row="1" Visibility="Visible">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+              </Grid.ColumnDefinitions>
+              <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="*" />
+              </Grid.RowDefinitions>
+            </Grid>
+
+            <Grid x:Name="PART_YearView" Grid.Row="1" Visibility="Hidden">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+              </Grid.ColumnDefinitions>
+              <Grid.RowDefinitions>
+                <RowDefinition Height="*" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="*" />
+              </Grid.RowDefinitions>
+            </Grid>
+          </Grid>
+
+          <ControlTemplate.Triggers>
+            <DataTrigger
+              Binding="{Binding DisplayMode,
+                        RelativeSource={RelativeSource AncestorType=Calendar}}"
+              Value="Year">
+              <Setter TargetName="PART_MonthView" Property="Visibility" Value="Hidden" />
+              <Setter TargetName="PART_YearView" Property="Visibility" Value="Visible" />
+            </DataTrigger>
+            <DataTrigger
+              Binding="{Binding DisplayMode,
+                        RelativeSource={RelativeSource AncestorType=Calendar}}"
+              Value="Decade">
+              <Setter TargetName="PART_MonthView" Property="Visibility" Value="Hidden" />
+              <Setter TargetName="PART_YearView" Property="Visibility" Value="Visible" />
+            </DataTrigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
+  <Style x:Key="ThemedCalendar" TargetType="Calendar">
+    <Setter Property="Background" Value="{DynamicResource SideBar.Background}" />
+    <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+    <Setter Property="CalendarDayButtonStyle" Value="{StaticResource CalendarDay}" />
+    <Setter Property="CalendarButtonStyle" Value="{StaticResource CalendarMonthButton}" />
+    <Setter Property="CalendarItemStyle" Value="{StaticResource CalendarBody}" />
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="Calendar">
+          <Border Background="{TemplateBinding Background}"
+                  BorderBrush="{DynamicResource Panel.Border}" BorderThickness="1"
+                  CornerRadius="{StaticResource Radius.Control}" Padding="8">
+            <StackPanel x:Name="PART_Root" HorizontalAlignment="Center">
+              <CalendarItem x:Name="PART_CalendarItem"
+                            Style="{TemplateBinding CalendarItemStyle}" />
+            </StackPanel>
+          </Border>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
+  <!-- The typed half. Stock DatePickerTextBox brings its own watermark and
+       chrome, so it is templated down to the same box as InputTextBox. -->
+  <Style x:Key="DateEntryBox" TargetType="DatePickerTextBox">
+    <Setter Property="Foreground" Value="{DynamicResource Input.Foreground}" />
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="FontSize" Value="13" />
+    <Setter Property="Padding" Value="10,7" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="DatePickerTextBox">
+          <Grid>
+            <ScrollViewer x:Name="PART_ContentHost" Margin="{TemplateBinding Padding}"
+                          VerticalAlignment="Center" />
+            <TextBlock x:Name="Watermark" Margin="{TemplateBinding Padding}"
+                       VerticalAlignment="Center" IsHitTestVisible="False"
+                       FontSize="13" Text="Pick a day"
+                       Foreground="{DynamicResource Editor.Placeholder}"
+                       Visibility="Collapsed" />
+          </Grid>
+          <ControlTemplate.Triggers>
+            <MultiTrigger>
+              <MultiTrigger.Conditions>
+                <Condition Property="Text" Value="" />
+                <Condition Property="IsKeyboardFocusWithin" Value="False" />
+              </MultiTrigger.Conditions>
+              <Setter TargetName="Watermark" Property="Visibility" Value="Visible" />
+            </MultiTrigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
+  <Style x:Key="DateBox" TargetType="DatePicker">
+    <Setter Property="Background" Value="{DynamicResource Input.Background}" />
+    <Setter Property="Foreground" Value="{DynamicResource Input.Foreground}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource Input.Border}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CalendarStyle" Value="{StaticResource ThemedCalendar}" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="DatePicker">
+          <Border x:Name="Root" Background="{TemplateBinding Background}"
+                  BorderBrush="{TemplateBinding BorderBrush}"
+                  BorderThickness="{TemplateBinding BorderThickness}"
+                  CornerRadius="{StaticResource Radius.Control}"
+                  SnapsToDevicePixels="True">
+            <Grid>
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+              </Grid.ColumnDefinitions>
+
+              <DatePickerTextBox x:Name="PART_TextBox" Grid.Column="0"
+                                 Style="{StaticResource DateEntryBox}"
+                                 Focusable="{TemplateBinding Focusable}" />
+
+              <Button x:Name="PART_Button" Grid.Column="1" Width="32"
+                      Focusable="False" Background="Transparent" BorderThickness="0"
+                      Foreground="{DynamicResource TextSecondary}"
+                      FontFamily="Segoe MDL2 Assets" FontSize="13" Content="&#xE787;"
+                      ToolTip="Pick from a calendar">
+                <Button.Template>
+                  <ControlTemplate TargetType="Button">
+                    <Border x:Name="ButtonRoot" Background="Transparent" CornerRadius="4"
+                            Margin="0,2,2,2">
+                      <ContentPresenter HorizontalAlignment="Center"
+                                        VerticalAlignment="Center" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                      <Trigger Property="IsMouseOver" Value="True">
+                        <Setter TargetName="ButtonRoot" Property="Background"
+                                Value="{DynamicResource List.HoverBackground}" />
+                      </Trigger>
+                    </ControlTemplate.Triggers>
+                  </ControlTemplate>
+                </Button.Template>
+              </Button>
+
+              <Popup x:Name="PART_Popup" Grid.Column="0" StaysOpen="False"
+                     Placement="Bottom" AllowsTransparency="True"
+                     PlacementTarget="{Binding ElementName=Root}" />
+            </Grid>
+          </Border>
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsKeyboardFocusWithin" Value="True">
+              <Setter TargetName="Root" Property="BorderBrush"
+                      Value="{DynamicResource Focus.Border}" />
+              <Setter TargetName="Root" Property="BorderThickness" Value="2" />
+            </Trigger>
+            <Trigger Property="IsEnabled" Value="False">
+              <Setter TargetName="Root" Property="Background"
+                      Value="{DynamicResource ControlBackgroundDisabled}" />
+            </Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
+  <!--
+    What an album is looking for: the dates, the people, the places. Keyed rather
+    than typed, because the panel that edits an existing album's rule and the one
+    that describes a new album are two hosts for the same three questions, and
+    both bind to the same view model.
+
+    Written once for a reason beyond length: a rule gaining a fourth part has to
+    appear in both panels or they quietly disagree about what an album can be -
+    and the one that forgot would silently drop whatever the other had set.
+  -->
+  <DataTemplate x:Key="AlbumRuleFields">
+    <StackPanel>
+      <!-- Everything here is ANDed: a photograph has to be inside the dates,
+           hold every person named, and have been taken in one of the places. -->
+      <TextBlock Style="{DynamicResource FieldLabel}" Text="What it is looking for" />
+      <TextBlock Style="{DynamicResource HintText}" Margin="0,0,0,6" TextWrapping="Wrap"
+                 Text="All of it has to be true at once. Leave a part empty and it asks nothing about it." />
+
+      <!-- Which date question, asked outright. One filled box used to mean
+           "that day onwards" to the rule and "that day" to the reader. -->
+      <Border Background="{DynamicResource Input.Background}"
+              BorderBrush="{DynamicResource Separator}" BorderThickness="1"
+              CornerRadius="{DynamicResource Radius.Control}" Padding="2"
+              HorizontalAlignment="Stretch" SnapsToDevicePixels="True">
+        <UniformGrid Rows="1">
+          <RadioButton Style="{DynamicResource SegmentedToggle}" Content="Any day"
+                       ToolTip="Ask nothing about when it was taken"
+                       IsChecked="{Binding IsAnyDay, Mode=TwoWay}" />
+          <RadioButton Style="{DynamicResource SegmentedToggle}" Content="One day"
+                       ToolTip="One day exactly"
+                       IsChecked="{Binding IsOneDay, Mode=TwoWay}" />
+          <RadioButton Style="{DynamicResource SegmentedToggle}" Content="A range"
+                       ToolTip="Between two days, both included"
+                       IsChecked="{Binding IsDateRange, Mode=TwoWay}" />
+        </UniformGrid>
+      </Border>
+
+      <DatePicker Style="{DynamicResource DateBox}" Margin="0,6,0,0"
+                  AutomationProperties.Name="The day"
+                  SelectedDate="{Binding RuleDay, Mode=TwoWay}"
+                  Visibility="{Binding IsOneDay,
+                               Converter={StaticResource BoolToVisibility}}" />
+
+      <Grid Margin="0,6,0,0"
+            Visibility="{Binding IsDateRange,
+                         Converter={StaticResource BoolToVisibility}}">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="*" />
+          <ColumnDefinition Width="Auto" />
+          <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+        <DatePicker Grid.Column="0" Style="{DynamicResource DateBox}"
+                    AutomationProperties.Name="From this day"
+                    SelectedDate="{Binding RuleFromDate, Mode=TwoWay}" />
+        <TextBlock Grid.Column="1" Margin="8,0,8,0" VerticalAlignment="Center"
+                   Style="{DynamicResource HintText}" Text="to" />
+        <DatePicker Grid.Column="2" Style="{DynamicResource DateBox}"
+                    AutomationProperties.Name="To this day"
+                    SelectedDate="{Binding RuleToDate, Mode=TwoWay}" />
+      </Grid>
+      <TextBlock Style="{DynamicResource HintText}" TextWrapping="Wrap"
+                 Foreground="{DynamicResource Status.Danger}"
+                 Text="{Binding RuleProblem}"
+                 Visibility="{Binding HasRuleProblem,
+                              Converter={StaticResource BoolToVisibility}}" />
+
+      <TextBlock Style="{DynamicResource FieldLabel}" Margin="0,14,0,0" Text="Anyone in it" />
+      <TextBlock Style="{DynamicResource HintText}" Margin="0,0,0,4" TextWrapping="Wrap"
+                 Text="Any one of the people ticked - a photograph does not have to hold all of them." />
+      <StackPanel Visibility="{Binding HasPeopleToPick,
+                               Converter={StaticResource BoolToVisibility}}">
+        <TextBox Style="{DynamicResource InputTextBox}" Margin="0,0,4,0"
+                 AutomationProperties.Name="Type a person's name"
+                 ToolTip="Type a name and press Enter to add them, or tick from the list"
+                 Text="{Binding PeopleFilter, UpdateSourceTrigger=PropertyChanged}">
+          <TextBox.InputBindings>
+            <KeyBinding Key="Return" Command="{Binding ChoosePersonCommand}" />
+          </TextBox.InputBindings>
+        </TextBox>
+        <TextBlock Style="{DynamicResource HintText}" Margin="0,2,0,4" TextWrapping="Wrap"
+                   Foreground="{DynamicResource Status.Caution}"
+                   Text="Nobody in this library goes by that name. A rule can only ask for somebody whose face you have already named."
+                   Visibility="{Binding NobodyByThatName,
+                                Converter={StaticResource BoolToVisibility}}" />
+        <ScrollViewer MaxHeight="120" VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Disabled">
+          <ItemsControl ItemsSource="{Binding ShownPeople}" Focusable="False">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate>
+                <ToggleButton Style="{DynamicResource CheckRow}" Margin="0,1,0,1"
+                              HorizontalAlignment="Stretch"
+                              IsChecked="{Binding IsChosen, Mode=TwoWay}">
+                  <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="{Binding Name}" FontSize="12.5" />
+                    <TextBlock Text="{Binding Caption}" FontSize="11" Margin="8,0,0,0"
+                               VerticalAlignment="Center"
+                               Foreground="{DynamicResource Editor.Placeholder}" />
+                  </StackPanel>
+                </ToggleButton>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </ScrollViewer>
+        <TextBlock Style="{DynamicResource HintText}" Margin="0,2,0,0"
+                   Foreground="{DynamicResource Status.Info}"
+                   Text="{Binding PeopleChosen}" />
+      </StackPanel>
+      <!-- Why there is no box here: with nobody named there is nothing a typed
+           name could resolve to, and a rule asking for a name the library
+           cannot match is one that quietly finds nothing. -->
+      <TextBlock Style="{DynamicResource HintText}" TextWrapping="Wrap"
+                 Text="Nobody has been named yet, so there is no one to ask for. Name a few faces under People first - a rule finds someone by their face, not by their name."
+                 Visibility="{Binding HasPeopleToPick,
+                              Converter={StaticResource InverseBoolToVisibility}}" />
+
+      <TextBlock Style="{DynamicResource FieldLabel}" Margin="0,14,0,0" Text="Taken in" />
+      <TextBlock Style="{DynamicResource HintText}" Margin="0,0,0,4" TextWrapping="Wrap"
+                 Text="Any one of the places ticked - a photograph was only taken in one of them." />
+      <StackPanel Visibility="{Binding HasPlacesToPick,
+                               Converter={StaticResource BoolToVisibility}}">
+        <TextBox Style="{DynamicResource InputTextBox}" Margin="0,0,4,0"
+                 AutomationProperties.Name="Type a place name"
+                 ToolTip="Type a place and press Enter to add it, or tick from the list"
+                 Text="{Binding PlacesFilter, UpdateSourceTrigger=PropertyChanged}">
+          <TextBox.InputBindings>
+            <KeyBinding Key="Return" Command="{Binding ChoosePlaceCommand}" />
+          </TextBox.InputBindings>
+        </TextBox>
+        <TextBlock Style="{DynamicResource HintText}" Margin="0,2,0,4" TextWrapping="Wrap"
+                   Foreground="{DynamicResource Status.Caution}"
+                   Text="No photograph in this library was taken anywhere by that name. Places come from the coordinates in the file, not from typing."
+                   Visibility="{Binding NowhereByThatName,
+                                Converter={StaticResource BoolToVisibility}}" />
+        <ScrollViewer MaxHeight="120" VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Disabled">
+          <ItemsControl ItemsSource="{Binding ShownPlaces}" Focusable="False">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate>
+                <ToggleButton Style="{DynamicResource CheckRow}" Margin="0,1,0,1"
+                              HorizontalAlignment="Stretch"
+                              IsChecked="{Binding IsChosen, Mode=TwoWay}">
+                  <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="{Binding Name}" FontSize="12.5" />
+                    <TextBlock Text="{Binding Caption}" FontSize="11" Margin="8,0,0,0"
+                               VerticalAlignment="Center"
+                               Foreground="{DynamicResource Editor.Placeholder}" />
+                  </StackPanel>
+                </ToggleButton>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </ScrollViewer>
+        <TextBlock Style="{DynamicResource HintText}" Margin="0,2,0,0"
+                   Foreground="{DynamicResource Status.Info}"
+                   Text="{Binding PlacesChosen}" />
+      </StackPanel>
+      <TextBlock Style="{DynamicResource HintText}" TextWrapping="Wrap"
+                 Text="No photograph has a place yet, so there is nowhere to ask for. Places come from the coordinates in the file, and a scan is what works them out."
+                 Visibility="{Binding HasPlacesToPick,
+                              Converter={StaticResource InverseBoolToVisibility}}" />
+    </StackPanel>
   </DataTemplate>
 
 </ResourceDictionary>

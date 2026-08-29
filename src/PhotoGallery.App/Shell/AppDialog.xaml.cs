@@ -54,7 +54,7 @@ public partial class AppDialog : Window
     {
         AppDialog dialog = Build(owner, title, message, tone);
         dialog.AddButton("Close", isConfirm: false, isDefault: true);
-        dialog.ShowDialog();
+        dialog.ShowOverOwner();
     }
 
     /// <summary>
@@ -94,8 +94,23 @@ public partial class AppDialog : Window
         dialog.AddButton(confirm, isConfirm: true, isDefault: false);
         dialog.AddButton(Decline, isConfirm: false, isDefault: true);
 
-        dialog.ShowDialog();
+        dialog.ShowOverOwner();
         return dialog._confirmed;
+    }
+
+    /// <summary>
+    /// Shows the dialog with the window behind it dimmed.
+    /// </summary>
+    /// <remarks>
+    /// The shade is what makes this read as a modal rather than as a panel that
+    /// has come loose - and it is raised here, around the one call that blocks,
+    /// so that it cannot be left up by a path that returns early and no caller
+    /// has to remember it.
+    /// </remarks>
+    private void ShowOverOwner()
+    {
+        using IDisposable? scrim = ScrimAdorner.Cover(Owner);
+        ShowDialog();
     }
 
     private static AppDialog Build(Window? owner, string title, string message, DialogTone tone)

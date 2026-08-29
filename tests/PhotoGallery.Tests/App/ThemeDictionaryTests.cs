@@ -94,16 +94,5 @@ public sealed class ThemeDictionaryTests
     /// The dictionaries are compiled into the app assembly rather than copied
     /// beside the tests, so they are read from source.
     /// </remarks>
-    private static string PathTo(string file)
-    {
-        DirectoryInfo? directory = new(AppContext.BaseDirectory);
-        while (directory is not null
-               && !Directory.Exists(Path.Combine(directory.FullName, "src", "PhotoGallery.App")))
-        {
-            directory = directory.Parent;
-        }
-
-        Assert.NotNull(directory);
-        return Path.Combine(directory!.FullName, "src", "PhotoGallery.App", "Theme", file);
-    }
+    private static string PathTo(string file) => AppMarkup.PathTo("Theme", file);
 }

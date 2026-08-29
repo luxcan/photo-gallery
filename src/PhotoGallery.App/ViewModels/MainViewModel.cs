@@ -95,6 +95,13 @@ public sealed partial class MainViewModel : ObservableObject
         nameof(RecheckPeopleCommand))]
     private bool _isRefreshing;
 
+    /// <summary>
+    /// Whether any proposal was answered one at a time while the viewer was open,
+    /// so the album's own screen is rebuilt once on the way out rather than after
+    /// every answer.
+    /// </summary>
+    private bool _decidedSuggestions;
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsIdle), nameof(IsOverlayVisible), nameof(CanStopPass))]
     [NotifyCanExecuteChangedFor(nameof(ScanAllCommand), nameof(ScanSourceCommand),
@@ -268,13 +275,16 @@ public sealed partial class MainViewModel : ObservableObject
 
         // Glyphs are Segoe MDL2 Assets code points. Everything except Photo
         // sources needs photos before it can show anything, so it stays disabled.
+        // Collections sits directly under Library because it is the same photos
+        // grouped, and People follows it: the bar descends from everything,
+        // through a grouping of everything, to a slice of it.
         TopSections =
         [
             new ActivitySection(ActivitySection.LibraryKey, "Library", "\uE91B", true),
             new ActivitySection(
-                ActivitySection.PeopleKey, "People", "\uE716", true, RequiresFaces: true),
+                ActivitySection.CollectionsKey, "Albums", "\uE8FD", true),
             new ActivitySection(
-                ActivitySection.CollectionsKey, "Collections", "\uE8FD", true),
+                ActivitySection.PeopleKey, "People", "\uE716", true, RequiresFaces: true),
             new ActivitySection(ActivitySection.DuplicatesKey, "Duplicates", "\uE8C8", true),
             new ActivitySection(ActivitySection.SourcesKey, "Photo sources", "\uED25", false),
         ];
@@ -305,6 +315,18 @@ public sealed partial class MainViewModel : ObservableObject
             if (e.PropertyName == nameof(GalleryViewModel.OldestFirst))
             {
                 _ = RememberSortOrderAsync();
+            }
+
+            // Proposals answered one at a time are already saved; what is not
+            // done is the album's own screen, which is deliberately left until
+            // the viewer is out of the way rather than rebuilt behind it after
+            // every answer.
+            if (e.PropertyName == nameof(GalleryViewModel.IsViewerOpen)
+                && !Gallery.IsViewerOpen
+                && _decidedSuggestions)
+            {
+                _decidedSuggestions = false;
+                _ = Collections.SettleAfterDecidingAsync();
             }
         };
 
@@ -1290,7 +1312,7 @@ public sealed partial class MainViewModel : ObservableObject
                     // "Preparing pictures" and set off a gallery reload on every
                     // report - thousands of tiles rebuilt by a phase that
                     // changed none of them.
-                    OverlayTitle = "Grouping your photos into collections";
+                    OverlayTitle = "Grouping your photos into albums";
                     OverlayTarget = "so a weekend away opens as one thing";
                     OverlayStatus = p.Total == 0
                         ? "reading the dates..."
@@ -1699,6 +1721,66 @@ public sealed partial class MainViewModel : ObservableObject
     [RelayCommand]
     private void OpenCollectionPhoto(GalleryTile? tile) =>
         Gallery.OpenFrom(Collections.Photos, tile);
+
+    /// <summary>
+    /// Opens one of an album's proposals, stepping through the proposals.
+    /// </summary>
+    /// <remarks>
+    /// Its own command rather than the one above, because the two grids are
+    /// different lists: the arrows over a proposal must walk the other
+    /// proposals, not the photographs already in the album.
+    /// </remarks>
+    [RelayCommand]
+    private void OpenSuggestedPhoto(GalleryTile? tile) =>
+        Gallery.OpenSuggestion(Collections.SuggestionGrid, tile);
+
+    /// <summary>Puts the proposal on screen into the album.</summary>
+    [RelayCommand]
+    private Task KeepSuggestedPhoto() => DecideOpenSuggestionAsync(keep: true);
+
+    /// <summary>Refuses the proposal on screen, for good.</summary>
+    [RelayCommand]
+    private Task RefuseSuggestedPhoto() => DecideOpenSuggestionAsync(keep: false);
+
+    /// <summary>
+    /// Answers the open proposal and moves on to the next one.
+    /// </summary>
+    /// <remarks>
+    /// Here rather than in either view model, because it is the one place that
+    /// holds both: the album commits the answer and drops the proposal, and the
+    /// viewer has to be told what took its place. Stepping to the same index -
+    /// not the next one - is what makes a run of these feel like a queue: the
+    /// list shortened underneath, so the picture that moved up is the next
+    /// question.
+    /// </remarks>
+    private async Task DecideOpenSuggestionAsync(bool keep)
+    {
+        if (!Gallery.IsDecidingSuggestion || Gallery.OpenTile is not GalleryTile tile)
+        {
+            return;
+        }
+
+        int at = Collections.SuggestionGrid.IndexOf(tile);
+
+        if (!await Collections.DecideSuggestionAsync(tile, keep).ConfigureAwait(true))
+        {
+            return;
+        }
+
+        _decidedSuggestions = true;
+
+        if (Collections.SuggestionGrid.Count == 0)
+        {
+            // Closing raises IsViewerOpen, which settles the album's screen.
+            Gallery.ClosePhoto();
+            return;
+        }
+
+        Gallery.OpenSuggestion(
+            Collections.SuggestionGrid,
+            Collections.SuggestionGrid[
+                Math.Clamp(at, 0, Collections.SuggestionGrid.Count - 1)]);
+    }
 
     /// <summary>
     /// Tells everything that gates on an optional model to look again.

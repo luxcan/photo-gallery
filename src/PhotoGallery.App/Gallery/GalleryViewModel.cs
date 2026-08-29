@@ -158,6 +158,14 @@ public sealed partial class GalleryViewModel : ObservableObject
     public bool IsViewerOpen => OpenTile is not null;
 
     /// <summary>
+    /// True when the picture on screen is one an album is proposing, which is
+    /// what puts the keep-or-not control in the viewer's chrome.
+    /// </summary>
+    [ObservableProperty]
+    private bool _isDecidingSuggestion;
+
+
+    /// <summary>
     /// The collection the open photograph is in, or null while it is in none.
     /// </summary>
     /// <remarks>
@@ -662,6 +670,7 @@ public sealed partial class GalleryViewModel : ObservableObject
             _ = LoadOpenDetailsAsync(value.Item.Id);
         }
 
+
         if (!ShowFaceNames)
         {
             return;
@@ -727,8 +736,8 @@ public sealed partial class GalleryViewModel : ObservableObject
         Collections.Open(
             all,
             OpenPhotoCollection?.Id ?? 0,
-            "Put this photograph in a collection",
-            "A photograph belongs to one collection, so choosing another moves it. "
+            "Put this photograph in an album",
+            "A photograph belongs to one album, so choosing another moves it. "
                 + "Type a name that is not there to make one.");
     }
 
@@ -1744,6 +1753,7 @@ public sealed partial class GalleryViewModel : ObservableObject
     private void OpenPhoto(GalleryTile? tile)
     {
         _viewerSource = null;
+        IsDecidingSuggestion = false;
         Open(tile);
     }
 
@@ -1756,6 +1766,27 @@ public sealed partial class GalleryViewModel : ObservableObject
         ArgumentNullException.ThrowIfNull(source);
 
         _viewerSource = source;
+        IsDecidingSuggestion = false;
+        Open(tile);
+    }
+
+    /// <summary>
+    /// Opens one of an album's proposals, so the viewer steps through the
+    /// proposals and can answer them without being closed.
+    /// </summary>
+    /// <remarks>
+    /// A proposal is 110 pixels in the strip, which is too little to judge a
+    /// photograph by and far too little to judge a video frame by. Opening one
+    /// used to mean there was nothing to do but look: the answer lived on the
+    /// tile, so deciding meant closing the viewer and finding that tile again
+    /// among two hundred others.
+    /// </remarks>
+    public void OpenSuggestion(TileWindow source, GalleryTile? tile)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+
+        _viewerSource = source;
+        IsDecidingSuggestion = true;
         Open(tile);
     }
 

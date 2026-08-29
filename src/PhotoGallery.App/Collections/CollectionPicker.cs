@@ -60,6 +60,21 @@ public sealed partial class CollectionPicker : ObservableObject
     /// </summary>
     public bool HasNoMatch => Choices.Count == 0 && Typed.Trim().Length > 0;
 
+    /// <summary>
+    /// How much of the list the typing is hiding.
+    /// </summary>
+    /// <remarks>
+    /// Empty until something is typed. A filtered list and a short list look
+    /// identical, and the moment there are more albums than fit the panel, "3"
+    /// with no denominator reads as "you have three albums".
+    /// </remarks>
+    public string Narrowed => Typed.Trim().Length == 0
+        ? string.Empty
+        : $"{Choices.Count:N0} of {_all.Count:N0}";
+
+    /// <summary>Whether there is a count to show.</summary>
+    public bool IsNarrowed => Narrowed.Length > 0;
+
     /// <param name="current">
     /// The collection this photograph is already in, so the list can mark it -
     /// putting it somewhere else moves it, and the user should be able to see
@@ -105,6 +120,8 @@ public sealed partial class CollectionPicker : ObservableObject
         }
 
         OnPropertyChanged(nameof(HasNoMatch));
+        OnPropertyChanged(nameof(Narrowed));
+        OnPropertyChanged(nameof(IsNarrowed));
     }
 
     [RelayCommand]
