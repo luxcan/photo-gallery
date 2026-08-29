@@ -36,7 +36,7 @@ public sealed class SqliteDecisionReader : IDecisionReader
         Dictionary<int, AssetKey> photographs =
             await PhotographsAsync(cancellationToken).ConfigureAwait(false);
 
-        IReadOnlyList<FaceRow> faces = await FacesAsync(cancellationToken).ConfigureAwait(false);
+        IReadOnlyList<FaceRow> faces = await FaceRowsAsync(cancellationToken).ConfigureAwait(false);
         Dictionary<int, FaceKey> faceKeys = [];
         foreach (FaceRow face in faces)
         {
@@ -73,7 +73,7 @@ public sealed class SqliteDecisionReader : IDecisionReader
 
         Dictionary<AssetKey, IReadOnlyList<FaceBounds>> faces = [];
 
-        foreach (FaceRow face in await FacesAsync(cancellationToken).ConfigureAwait(false))
+        foreach (FaceRow face in await FaceRowsAsync(cancellationToken).ConfigureAwait(false))
         {
             if (!photographs.TryGetValue(face.AssetId, out AssetKey photo))
             {
@@ -223,7 +223,7 @@ public sealed class SqliteDecisionReader : IDecisionReader
     /// Deliberately projected rather than loaded as entities: 19,763 faces at two
     /// kilobytes of embedding apiece is 40 MB nothing here looks at.
     /// </remarks>
-    private async Task<IReadOnlyList<FaceRow>> FacesAsync(CancellationToken cancellationToken)
+    private async Task<IReadOnlyList<FaceRow>> FaceRowsAsync(CancellationToken cancellationToken)
     {
         var rows = await _db.Faces
             .Select(face => new
@@ -647,6 +647,36 @@ public sealed class SqliteDecisionReader : IDecisionReader
         }
 
         return renditions;
+    }
+
+    /// <inheritdoc/>
+    public async Task<IReadOnlyList<SharedFace>> FacesAsync(
+        CancellationToken cancellationToken = default)
+    {
+        Dictionary<int, AssetKey> photographs =
+            await PhotographsAsync(cancellationToken).ConfigureAwait(false);
+
+        var rows = await _db.Faces
+            .AsNoTracking()
+            .Select(face => new
+            {
+                face.AssetId, face.Bounds, face.DetectScore, face.Embedding,
+            })
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        List<SharedFace> faces = new(rows.Count);
+
+        foreach (var row in rows)
+        {
+            if (photographs.TryGetValue(row.AssetId, out AssetKey photo))
+            {
+                faces.Add(new SharedFace(
+                    new FaceKey(photo, row.Bounds), row.DetectScore, row.Embedding));
+            }
+        }
+
+        return faces;
     }
 
     /// <inheritdoc/>

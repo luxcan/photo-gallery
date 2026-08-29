@@ -185,7 +185,18 @@ internal sealed class Library : IDisposable
     /// <summary>Taking everybody's pictures, and leaving this library's.</summary>
     public ShareRenditionsHandler Pooling =>
         field ??= new ShareRenditionsHandler(
-            Index, Decisions, Writing, Pool, Thumbnails, Waiting);
+            Index, Decisions, Writing, Pool, Thumbnails, Waiting, Models);
+
+    /// <summary>
+    /// Which models this library is running, as far as the fingerprint check is
+    /// concerned.
+    /// </summary>
+    /// <remarks>
+    /// A stub, because the real store digests up to 1.9 GB from disk and the
+    /// only thing under test here is whether two machines agree. Tests that want
+    /// a disagreement give one of them a different digest.
+    /// </remarks>
+    public StubModelStore Models { get; } = new();
 
     /// <summary>
     /// A photograph this library has prepared: a row that is Ready, and two real

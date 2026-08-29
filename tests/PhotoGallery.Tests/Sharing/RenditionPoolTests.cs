@@ -89,10 +89,12 @@ public sealed class RenditionPoolTests : IDisposable
         string[] everything = Directory.GetFiles(
             _house.SharedFolder, "*", SearchOption.AllDirectories);
 
+        // Renditions this app made, and its own gzipped payloads. Anything else
+        // in here would be a file that came out of somebody's camera.
         Assert.All(everything, path => Assert.True(
             path.EndsWith(".jpg", StringComparison.OrdinalIgnoreCase)
-            || path.EndsWith(SharedFolderPool.Extension, StringComparison.OrdinalIgnoreCase),
-            $"something other than a rendition or a manifest reached the pool: {path}"));
+            || path.EndsWith(".json.gz", StringComparison.OrdinalIgnoreCase),
+            $"something other than a rendition or a payload reached the pool: {path}"));
 
         Assert.Equal(2, everything.Count(p => p.EndsWith(".jpg", StringComparison.Ordinal)));
     }

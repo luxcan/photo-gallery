@@ -96,6 +96,14 @@ public interface IDecisionReader
     Task<IReadOnlyList<PooledRendition>> RenditionsAsync(
         CancellationToken cancellationToken = default);
 
+    /// <summary>Every face this library has found, with its vector.</summary>
+    /// <remarks>
+    /// 40.5 MB on this library, and the only read in this feature where that is
+    /// the point rather than a cost: the two hours of detection it saves are
+    /// what the transfer buys.
+    /// </remarks>
+    Task<IReadOnlyList<SharedFace>> FacesAsync(CancellationToken cancellationToken = default);
+
     /// <summary>How many answers are waiting, without reading any of them.</summary>
     /// <remarks>
     /// Separate from <see cref="WaitingAsync"/> because the Sharing screen asks

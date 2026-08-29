@@ -1,3 +1,5 @@
+using PhotoGallery.Domain.Sharing;
+
 namespace PhotoGallery.Application.UseCases.Sharing;
 
 /// <summary>What taking and giving the cached pictures did.</summary>
@@ -23,12 +25,17 @@ public sealed record PoolResult(
     int Fetched,
     int Offered,
     int Mismatched,
-    bool WasCancelled)
+    bool WasCancelled,
+    int Faces = 0,
+    IReadOnlyList<ModelMismatch>? Refused = null)
 {
     public static PoolResult Nothing { get; } = new(true, string.Empty, 0, 0, 0, 0, false);
 
     public static PoolResult CouldNot(string problem) =>
         new(false, problem, 0, 0, 0, 0, false);
+
+    /// <summary>Machines whose vectors could not be used, and which model differs.</summary>
+    public IReadOnlyList<ModelMismatch> Mismatches => Refused ?? [];
 
     public bool ChangedNothing => Filled == 0 && Offered == 0;
 
@@ -55,6 +62,11 @@ public sealed record PoolResult(
                 parts.Add($"{Offered:N0} shared for the other computers");
             }
 
+            if (Faces > 0)
+            {
+                parts.Add($"{Faces:N0} faces taken instead of found again");
+            }
+
             string done = parts.Count == 0
                 ? "No pictures to copy"
                 : string.Join(", ", parts);
@@ -67,10 +79,17 @@ public sealed record PoolResult(
                 + "from the copy on the other computer, so they are prepared here instead"
                 : string.Empty;
 
+            // Named rather than counted. "Some vectors were refused" is a
+            // message nobody can act on; naming the machine and the model is one
+            // somebody can go and fix in ten minutes.
+            string models = Mismatches.Count == 0
+                ? string.Empty
+                : " " + string.Join(" ", Mismatches.Select(m => m.Explain()));
+
             return WasCancelled
                 ? $"Stopped - {done}{differing}. What was copied is copied; running this again "
-                + "carries on from here."
-                : done + differing + ".";
+                + $"carries on from here.{models}"
+                : done + differing + "." + models;
         }
     }
 }

@@ -29,6 +29,12 @@ public sealed class SharedFolderPool : IRenditionPool
     /// <summary>What a manifest is called, after the machine that wrote it.</summary>
     public const string Extension = ".facts.json.gz";
 
+    /// <summary>The face vectors, one file per machine.</summary>
+    public const string VectorsFolder = "vectors";
+
+    /// <summary>What a machine's vectors are called.</summary>
+    public const string VectorsExtension = ".faces.json.gz";
+
     private const string TempExtension = ".tmp";
     private const string PreviewSuffix = "-p";
     private const int ShardLength = 2;
@@ -132,6 +138,83 @@ public sealed class SharedFolderPool : IRenditionPool
                 // One unreadable manifest must not cost the exchange every good
                 // one. A machine writing at the moment this one read is the
                 // ordinary case, and it comes good on the next run.
+            }
+        }
+
+        return sets;
+    }
+
+    public async Task PublishFacesAsync(
+        FaceSet mine, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(mine);
+
+        string vectors = Path.Combine(
+            await RootAsync(cancellationToken).ConfigureAwait(false), VectorsFolder);
+
+        Directory.CreateDirectory(vectors);
+
+        string final = Path.Combine(vectors, $"{mine.Machine.Id:D}{VectorsExtension}");
+        string temporary = final + TempExtension;
+
+        await using (var file = new FileStream(
+            temporary, FileMode.Create, FileAccess.Write, FileShare.None))
+        {
+            await using var gzip = new GZipStream(file, CompressionLevel.Optimal, leaveOpen: true);
+            await JsonSerializer
+                .SerializeAsync(gzip, mine, s_json, cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        File.Move(temporary, final, overwrite: true);
+    }
+
+    public async Task<IReadOnlyList<FaceSet>> FetchFacesAsync(
+        CancellationToken cancellationToken = default)
+    {
+        string vectors = Path.Combine(
+            await RootAsync(cancellationToken).ConfigureAwait(false), VectorsFolder);
+
+        if (!Directory.Exists(vectors))
+        {
+            return [];
+        }
+
+        LibrarySettings settings =
+            await _index.GetSettingsAsync(cancellationToken).ConfigureAwait(false);
+
+        string ours = $"{settings.MachineId:D}{VectorsExtension}";
+        List<FaceSet> sets = [];
+
+        foreach (string path in Directory.EnumerateFiles(vectors, "*" + VectorsExtension))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (string.Equals(
+                Path.GetFileName(path), ours, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            try
+            {
+                await using var file = new FileStream(
+                    path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+                await using var gzip = new GZipStream(file, CompressionMode.Decompress);
+
+                if (await JsonSerializer
+                        .DeserializeAsync<FaceSet>(gzip, s_json, cancellationToken)
+                        .ConfigureAwait(false) is FaceSet set)
+                {
+                    sets.Add(set);
+                }
+            }
+            catch (Exception ex) when (ex is IOException
+                                          or UnauthorizedAccessException
+                                          or JsonException
+                                          or InvalidDataException)
+            {
+                // One unreadable file must not cost the exchange every good one.
             }
         }
 

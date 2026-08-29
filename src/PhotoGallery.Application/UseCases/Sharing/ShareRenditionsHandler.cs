@@ -31,6 +31,7 @@ public sealed class ShareRenditionsHandler
     private readonly IRenditionPool _pool;
     private readonly IThumbnailStore _thumbnails;
     private readonly ApplyHeldDecisionsHandler _waiting;
+    private readonly IModelStore _models;
 
     public ShareRenditionsHandler(
         ILibraryIndex index,
@@ -38,7 +39,8 @@ public sealed class ShareRenditionsHandler
         IDecisionRepository repository,
         IRenditionPool pool,
         IThumbnailStore thumbnails,
-        ApplyHeldDecisionsHandler waiting)
+        ApplyHeldDecisionsHandler waiting,
+        IModelStore models)
     {
         _index = index;
         _decisions = decisions;
@@ -46,6 +48,7 @@ public sealed class ShareRenditionsHandler
         _pool = pool;
         _thumbnails = thumbnails;
         _waiting = waiting;
+        _models = models;
     }
 
     public async Task<PoolResult> HandleAsync(
@@ -93,6 +96,9 @@ public sealed class ShareRenditionsHandler
             (int filled, int fetched, int mismatched, bool stopped) =
                 await TakeAsync(pooled, progress, cancellationToken).ConfigureAwait(false);
 
+            (int faces, IReadOnlyList<ModelMismatch> refused) =
+                await VectorsAsync(machine, progress, cancellationToken).ConfigureAwait(false);
+
             // A turn merged before its picture arrived was held rather than
             // dropped, and this is the moment the picture arrives. Waiting for
             // the next scan would leave a photograph the user straightened
@@ -106,7 +112,8 @@ public sealed class ShareRenditionsHandler
             }
 
             return new PoolResult(
-                true, string.Empty, filled, fetched, offered, mismatched, stopped);
+                true, string.Empty, filled, fetched, offered, mismatched, stopped,
+                faces, refused);
         }
         catch (OperationCanceledException)
         {
@@ -256,6 +263,95 @@ public sealed class ShareRenditionsHandler
             .ConfigureAwait(false);
 
         return (filled, landed.Count, plan.Mismatched, cancellationToken.IsCancellationRequested);
+    }
+
+    /// <summary>
+    /// Takes the faces the other machines have already found, where their models
+    /// match.
+    /// </summary>
+    /// <remarks>
+    /// Two hours of detection on this library, against seconds of copying - and
+    /// the whole of it rests on the fingerprint check. An embedding is
+    /// meaningless outside the model that produced it, and a mismatched one does
+    /// not fail: it returns a confident answer about the wrong person, which
+    /// looks exactly like a right one and would spread through a family's
+    /// library as fast as the sharing that carried it.
+    /// </remarks>
+    private async Task<(int Faces, IReadOnlyList<ModelMismatch> Refused)> VectorsAsync(
+        MachineIdentity machine,
+        IProgress<MergeProgress>? progress,
+        CancellationToken cancellationToken)
+    {
+        IReadOnlyDictionary<string, string> mine = Fingerprints();
+
+        // Published even by a machine that has found no faces yet, because the
+        // file is what says which models it is running.
+        await _pool
+            .PublishFacesAsync(
+                new FaceSet(
+                    machine,
+                    DateTime.UtcNow,
+                    mine,
+                    await _decisions.FacesAsync(cancellationToken).ConfigureAwait(false)),
+                cancellationToken)
+            .ConfigureAwait(false);
+
+        IReadOnlyList<FaceSet> theirs =
+            await _pool.FetchFacesAsync(cancellationToken).ConfigureAwait(false);
+
+        if (theirs.Count == 0)
+        {
+            return (0, []);
+        }
+
+        (IReadOnlyList<FaceSet> accepted, IReadOnlyList<ModelMismatch> refused) =
+            VectorAcceptance.Sift(mine, theirs);
+
+        if (accepted.Count == 0)
+        {
+            return (0, refused);
+        }
+
+        LibraryContents here =
+            await _decisions.ContentsAsync(cancellationToken).ConfigureAwait(false);
+
+        IReadOnlyList<SharedFace> landing = VectorAcceptance.Landing(accepted, here);
+
+        if (landing.Count == 0)
+        {
+            return (0, refused);
+        }
+
+        progress?.Report(new MergeProgress("Taking faces", 0, landing.Count));
+
+        int added = await _repository
+            .AddFacesAsync(landing, cancellationToken)
+            .ConfigureAwait(false);
+
+        return (added, refused);
+    }
+
+    /// <summary>
+    /// This library's models, by name and by the digest of the file on disk.
+    /// </summary>
+    /// <remarks>
+    /// Only the ones actually installed. A model this machine does not have is
+    /// not a disagreement - it has no vectors of its own to contradict, and
+    /// taking somebody else's is the entire point.
+    /// </remarks>
+    private Dictionary<string, string> Fingerprints()
+    {
+        Dictionary<string, string> models = [];
+
+        foreach (ModelId id in new[] { ModelId.FaceDetection, ModelId.FaceRecognition })
+        {
+            if (_models.StateOf(id) == ModelState.Ready)
+            {
+                models[id.ToString()] = _models.Describe(id).Sha256;
+            }
+        }
+
+        return models;
     }
 
     /// <summary>

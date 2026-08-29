@@ -931,7 +931,7 @@ family looking at the same photographs is usually nothing at all.
       lands, not dropped.
 - [x] Merging a turn writes no original: the file's modified time on the share
       is unchanged by any number of machines merging it.
-- [ ] A machine that receives face vectors for photographs it has indexed gains
+- [x] A machine that receives face vectors for photographs it has indexed gains
       those faces and does not detect them again on the next scan.
 - [x] Two machines reaching one share by a UNC path and a mapped drive letter
       can be paired, and every decision matches afterwards.
@@ -961,7 +961,7 @@ family looking at the same photographs is usually nothing at all.
       the one after.
 - [x] Theme, cell size, sort order and nav state do not travel.
 - [x] Taking the decisions while declining the renditions works, and says so.
-- [ ] Vectors from a machine with different model files are refused, the
+- [x] Vectors from a machine with different model files are refused, the
       decisions and renditions are still taken, and the screen says which model
       differs.
 - [x] Three machines converge, in any order, with no machine designated first.

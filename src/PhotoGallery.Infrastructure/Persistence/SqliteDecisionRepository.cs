@@ -852,6 +852,62 @@ public sealed class SqliteDecisionRepository : IDecisionRepository
     }
 
     /// <inheritdoc/>
+    public async Task<int> AddFacesAsync(
+        IReadOnlyList<SharedFace> faces, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(faces);
+
+        if (faces.Count == 0)
+        {
+            return 0;
+        }
+
+        Dictionary<AssetKey, int> rows =
+            await AssetRowsAsync(cancellationToken).ConfigureAwait(false);
+
+        HashSet<int> looked = [];
+        int added = 0;
+
+        foreach (SharedFace face in faces)
+        {
+            if (!rows.TryGetValue(face.Face.Photo, out int asset))
+            {
+                continue;
+            }
+
+            _db.Faces.Add(new Face
+            {
+                AssetId = asset,
+                Bounds = face.Face.Bounds,
+                DetectScore = face.DetectScore,
+                Embedding = face.Embedding,
+            });
+
+            looked.Add(asset);
+            added++;
+        }
+
+        await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+
+        // Stamped with them, and this is not decoration: the detection pass
+        // selects on it, so a row left null would be read and detected again on
+        // the next scan - the whole two hours coming back, having just been
+        // avoided.
+        foreach (int[] chunk in looked.Chunk(400))
+        {
+            await _db.Assets
+                .Where(asset => chunk.Contains(asset.Id))
+                .ExecuteUpdateAsync(
+                    setters => setters.SetProperty(asset => asset.FacesDetectedUtc, DateTime.UtcNow),
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        _db.ChangeTracker.Clear();
+        return added;
+    }
+
+    /// <inheritdoc/>
     public async Task ReleaseAsync(
         HeldAnswers landed, CancellationToken cancellationToken = default)
     {

@@ -33,6 +33,21 @@ public interface IRenditionPool
     Task<IReadOnlyList<PreparedSet>> FetchAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Writes the faces this machine has found, with the models it found them
+    /// with.
+    /// </summary>
+    /// <remarks>
+    /// Its own file, not part of the manifest. The facts are a megabyte and are
+    /// read on every exchange; the vectors are 40.5 MB and are worth reading
+    /// once. A machine that wants the pictures and not the two hours of face
+    /// detection simply does not ask for them.
+    /// </remarks>
+    Task PublishFacesAsync(FaceSet mine, CancellationToken cancellationToken = default);
+
+    /// <summary>Reads the faces every other machine has found.</summary>
+    Task<IReadOnlyList<FaceSet>> FetchFacesAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Every rendition name the pool holds.
     /// </summary>
     /// <remarks>

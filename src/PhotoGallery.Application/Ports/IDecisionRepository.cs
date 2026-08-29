@@ -60,6 +60,24 @@ public interface IDecisionRepository
     Task<int> FillInAsync(
         IReadOnlyList<PreparedFact> facts, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Inserts faces another machine found, and stamps the photographs as
+    /// looked at.
+    /// </summary>
+    /// <remarks>
+    /// <strong>The stamp is not decoration.</strong> The detection pass selects
+    /// on it, so rows left null would be read and re-detected on the next scan -
+    /// which is the whole two hours coming back, having just been avoided.
+    ///
+    /// <para>Faces are created rather than filled in, which is the one place the
+    /// pool's own rule does not transfer. A machine that has never run detection
+    /// has no face rows for a vector to attach to, so refusing to make them
+    /// would leave it running the full pass anyway and the transfer would have
+    /// been decoration.</para>
+    /// </remarks>
+    Task<int> AddFacesAsync(
+        IReadOnlyList<SharedFace> faces, CancellationToken cancellationToken = default);
+
     /// <summary>Forgets held answers that have landed.</summary>
     /// <remarks>
     /// Given what landed rather than what still waits, so that a sweep running
