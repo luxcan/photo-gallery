@@ -58,6 +58,24 @@ public enum RefreshPhase
     /// somebody's library that now means a different phase.
     /// </remarks>
     Collecting = 6,
+
+    /// <summary>
+    /// Applying answers that arrived from another machine about photographs this
+    /// library had not indexed at the time.
+    /// </summary>
+    /// <remarks>
+    /// <strong>Runs between finding faces and collecting, whatever its number
+    /// says.</strong> Appended for the reason given above - a number that moves
+    /// is a number stored in somebody's library that now means a different phase
+    /// - so this is the one member whose value is not its place in the run.
+    ///
+    /// <para>That place is the only one that works. A held answer names a face,
+    /// and a photograph indexed a moment ago has none until the phase above has
+    /// run, so earlier means every name waits another whole scan. Later means
+    /// the occasions are named from people the library was one step from knowing
+    /// about.</para>
+    /// </remarks>
+    ApplyingAnswers = 7,
 }
 
 /// <summary>Progress of a refresh, reported as it goes.</summary>

@@ -19,6 +19,7 @@ using PhotoGallery.Application.UseCases.Preferences;
 using PhotoGallery.Application.UseCases.Refresh;
 using PhotoGallery.Application.UseCases.Scanning;
 using PhotoGallery.Application.UseCases.Search;
+using PhotoGallery.Application.UseCases.Sharing;
 using PhotoGallery.Application.UseCases.Sources;
 using PhotoGallery.Application.UseCases.Thumbnails;
 using PhotoGallery.Application.UseCases.Videos;
@@ -151,6 +152,11 @@ public partial class App : System.Windows.Application
             .AddScoped<ProposeFacesHandler>()
             .AddScoped<AssignFacesHandler>()
             .AddScoped<RecheckPeopleHandler>()
+            .AddScoped<MergedTurns>()
+            .AddScoped<ApplyHeldDecisionsHandler>()
+            .AddScoped<PublishDecisionsHandler>()
+            .AddScoped<MergeDecisionsHandler>()
+            .AddScoped<SetSharedFolderHandler>()
             .AddScoped<RefreshLibraryHandler>()
             .AddScoped<QueryGalleryHandler>()
             .AddScoped<GetFolderTreeHandler>()

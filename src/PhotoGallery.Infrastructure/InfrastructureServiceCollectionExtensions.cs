@@ -5,6 +5,7 @@ using PhotoGallery.Infrastructure.Faces;
 using PhotoGallery.Infrastructure.Imaging;
 using PhotoGallery.Infrastructure.Models;
 using PhotoGallery.Infrastructure.Persistence;
+using PhotoGallery.Infrastructure.Sharing;
 using PhotoGallery.Infrastructure.Places;
 using PhotoGallery.Infrastructure.Search;
 using PhotoGallery.Infrastructure.Storage;
@@ -63,6 +64,14 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddScoped<IPeopleReader, SqlitePeopleReader>();
         services.AddScoped<IPeopleRepository, SqlitePeopleRepository>();
         services.AddScoped<IContentRepository, SqliteContentRepository>();
+
+        // Sharing. The exchange is a folder nominated in the library's own
+        // settings, so it is built per scope like everything else that reads
+        // them - and it answers that it cannot exchange, rather than throwing,
+        // for the ordinary case of a library that has nominated nothing.
+        services.AddScoped<IDecisionReader, SqliteDecisionReader>();
+        services.AddScoped<IDecisionRepository, SqliteDecisionRepository>();
+        services.AddScoped<IDecisionExchange, SharedFolderExchange>();
 
         services.AddSingleton(ModelManifest.Default);
         services.AddSingleton<IModelFolder, ModelFolder>();

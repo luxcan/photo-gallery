@@ -1,8 +1,10 @@
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using PhotoGallery.Application.Ports;
 using PhotoGallery.Domain.Collections;
 using PhotoGallery.Domain.Faces;
 using PhotoGallery.Domain.Sharing;
+using PhotoGallery.Infrastructure.Sharing;
 
 namespace PhotoGallery.Infrastructure.Persistence;
 
@@ -372,6 +374,69 @@ public sealed class SqliteDecisionReader : IDecisionReader
                     era.Centroid,
                     era.SampleCount)),
         ];
+    }
+
+    /// <inheritdoc/>
+    public async Task<HeldAnswers> WaitingAsync(CancellationToken cancellationToken = default)
+    {
+        List<HeldDecision> rows = await _db.HeldDecisions
+            .AsNoTracking()
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        List<FaceAnswer> answers = [];
+        List<StrangerFace> strangers = [];
+        List<PhotoTurn> turns = [];
+        List<AlbumMembership> memberships = [];
+        List<AlbumRejection> rejections = [];
+
+        foreach (HeldDecision row in rows)
+        {
+            // A row that cannot be read is left where it is rather than thrown
+            // away or allowed to stop the sweep. It was written by a version of
+            // this app, so the likely reasons are a newer one that wrote a shape
+            // this one does not know and a file somebody edited; in both cases
+            // the answer is worth more parked than deleted, and the other nine
+            // thousand should still land.
+            switch (row.Kind)
+            {
+                case HeldDecisionKind.FaceAnswer:
+                    Add(answers, row.Payload);
+                    break;
+
+                case HeldDecisionKind.Stranger:
+                    Add(strangers, row.Payload);
+                    break;
+
+                case HeldDecisionKind.Turn:
+                    Add(turns, row.Payload);
+                    break;
+
+                case HeldDecisionKind.AlbumMembership:
+                    Add(memberships, row.Payload);
+                    break;
+
+                case HeldDecisionKind.AlbumRejection:
+                    Add(rejections, row.Payload);
+                    break;
+            }
+        }
+
+        return new HeldAnswers(answers, strangers, turns, memberships, rejections);
+
+        static void Add<T>(List<T> into, string payload)
+        {
+            try
+            {
+                if (JsonSerializer.Deserialize<T>(payload, DecisionSetFile.Shape) is T answer)
+                {
+                    into.Add(answer);
+                }
+            }
+            catch (JsonException)
+            {
+            }
+        }
     }
 
     /// <summary>

@@ -41,6 +41,20 @@ public interface IDecisionRepository
         IReadOnlyDictionary<Domain.Sharing.AssetKey, int> rows,
         CancellationToken cancellationToken = default);
 
+    /// <summary>Forgets held answers that have landed.</summary>
+    /// <remarks>
+    /// Given what landed rather than what still waits, so that a sweep running
+    /// beside anything that holds fresh answers cannot take them with it. Held
+    /// rows are the one part of a merge with nothing behind them: an answer that
+    /// is thrown away by mistake is an evening somebody has to spend again.
+    ///
+    /// <para>Safe to skip. Applying a held answer twice changes nothing, so a
+    /// sweep stopped before this point costs the next one a little work and
+    /// nothing else.</para>
+    /// </remarks>
+    Task ReleaseAsync(
+        HeldAnswers landed, CancellationToken cancellationToken = default);
+
     /// <summary>Records that a machine was heard from, and when.</summary>
     Task RememberAsync(
         MachineIdentity machine,

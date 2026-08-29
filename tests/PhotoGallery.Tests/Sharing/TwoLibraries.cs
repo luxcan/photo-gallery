@@ -154,8 +154,15 @@ internal sealed class Library : IDisposable
     public PublishDecisionsHandler Publishing =>
         field ??= new PublishDecisionsHandler(Index, Decisions, Exchange);
 
-    public MergeDecisionsHandler Merging => field ??= new MergeDecisionsHandler(
-        Index, Decisions, Writing, Exchange, Renditions, new SqliteFaceRepository(Db));
+    public MergedTurns Turning => field ??= new MergedTurns(
+        Decisions, Writing, Renditions, new SqliteFaceRepository(Db));
+
+    public MergeDecisionsHandler Merging =>
+        field ??= new MergeDecisionsHandler(Index, Decisions, Writing, Exchange, Turning);
+
+    /// <summary>The scan phase that applies answers which were waiting.</summary>
+    public ApplyHeldDecisionsHandler Waiting =>
+        field ??= new ApplyHeldDecisionsHandler(Index, Decisions, Writing, Turning);
 
     /// <summary>Stands in for the cached pictures, which these tests have none of.</summary>
     public StubRenditionTurner Renditions { get; } = new();

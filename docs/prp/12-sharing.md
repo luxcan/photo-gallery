@@ -1,20 +1,19 @@
 # 12 — Sharing between machines
 
-**Status: 🟨 In progress — answers cross between machines; no screen yet**
+**Status: 🟨 In progress — the order of operations cannot be got wrong; no screen yet**
 
 Built so far: the schema every decision needs to be nameable on a second
 machine; the merge itself, written as a pure function of decision sets so that
 the rules could be argued out against tests rather than against a shared folder;
-and the exchange — a gzipped file per machine in a nominated folder, published
-and merged, with the both-directions rule about where that folder may sit.
+the exchange — a gzipped file per machine in a nominated folder, published and
+merged, with the both-directions rule about where that folder may sit; and the
+scan phase that applies answers which arrived before their photographs did.
 
-A name given on one machine reaches another, with no scan in between. What is
-missing is everything after that: `ApplyHeldDecisionsHandler` as a scan phase,
-so answers waiting for photographs are applied rather than only counted; source
-pairing, so two machines reaching one share by a UNC path and a mapped drive
-letter can be matched; the Sharing screen, so any of it can be reached without a
-test; the rendition pool; and the direct connection, which the design defers
-until last.
+A name given on one machine reaches another, and it no longer matters which way
+round you scan and share. What is missing is source pairing, so two machines
+reaching one share by a UNC path and a mapped drive letter can be matched; the
+Sharing screen, so any of it can be reached without a test; the rendition pool;
+and the direct connection, which the design defers until last.
 
 The app is installed on every laptop in the house. One person spends an evening
 naming faces; everybody else's copy knows nothing about it. This is how that
@@ -887,9 +886,8 @@ family looking at the same photographs is usually nothing at all.
 
 - [x] A name given on one machine appears on another after one merge, with no
       scan in between, where both have already indexed the photograph.
-- [ ] Answers about photographs this machine has not indexed are held, reported
-      by count, and applied by the next scan. *(Held as rows and reported; the
-      scan phase that applies them is not built.)*
+- [x] Answers about photographs this machine has not indexed are held, reported
+      by count, and applied by the next scan.
 - [x] Merging twice changes nothing the second time.
 - [x] A merge stopped halfway leaves what it applied applied, and finishes on
       the next run.
@@ -958,7 +956,7 @@ family looking at the same photographs is usually nothing at all.
       about it.
 - [x] A payload from a machine whose clock is far ahead is refused, naming the
       machine and the skew.
-- [ ] Held face answers are applied in the same scan that finds the faces, not
+- [x] Held face answers are applied in the same scan that finds the faces, not
       the one after.
 - [x] Theme, cell size, sort order and nav state do not travel.
 - [ ] Taking the decisions while declining the renditions works, and says so.

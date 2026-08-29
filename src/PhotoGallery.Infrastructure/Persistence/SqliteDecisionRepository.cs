@@ -6,6 +6,7 @@ using PhotoGallery.Domain.Collections;
 using PhotoGallery.Domain.Faces;
 using PhotoGallery.Domain.People;
 using PhotoGallery.Domain.Sharing;
+using PhotoGallery.Infrastructure.Sharing;
 
 namespace PhotoGallery.Infrastructure.Persistence;
 
@@ -645,26 +646,68 @@ public sealed class SqliteDecisionRepository : IDecisionRepository
         return held.Count;
     }
 
+    /// <inheritdoc/>
+    public async Task ReleaseAsync(
+        HeldAnswers landed, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(landed);
+
+        if (landed.Count == 0)
+        {
+            return;
+        }
+
+        // Matched on the same key the rows were written under, so an answer that
+        // landed is forgotten and one that merely looks like it - the same face
+        // in the same photograph, a different person - is not.
+        HashSet<(Guid, string, HeldDecisionKind, string)> done =
+            [.. Flatten(landed).Select(a => (a.Photo.SharedSourceId, a.Photo.RelativePath, a.Kind, a.Part))];
+
+        List<HeldDecision> rows = await _db.HeldDecisions
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        foreach (HeldDecision row in rows)
+        {
+            if (done.Contains((row.SharedSourceId, row.RelativePath, row.Kind, row.Part)))
+            {
+                _db.HeldDecisions.Remove(row);
+            }
+        }
+
+        await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        _db.ChangeTracker.Clear();
+    }
+
     private static IEnumerable<Waiting> Flatten(HeldAnswers held)
     {
+        // Keyed by the box and the person, not the box alone. One face carries
+        // one name but several answers - refused as the elder child, confirmed
+        // as the younger - and a key without the person would keep the last of
+        // them and lose the rest while they waited.
         foreach (FaceAnswer answer in held.Answers)
         {
             yield return new Waiting(
                 answer.Face.Photo,
                 HeldDecisionKind.FaceAnswer,
-                answer.Face.Part,
-                JsonSerializer.Serialize(answer),
+                $"{answer.Face.Part}|{answer.Person:D}",
+                Written(answer),
                 answer.DecidedBy,
                 answer.DecidedUtc);
         }
 
+        // Its own kind rather than a nameless face answer, so that reading the
+        // row back does not mean guessing from the shape of the JSON. A mark and
+        // a name about one face are settled against each other when they land,
+        // which is where that belongs - not here, where they are both only
+        // waiting.
         foreach (StrangerFace stranger in held.Strangers)
         {
             yield return new Waiting(
                 stranger.Face.Photo,
-                HeldDecisionKind.FaceAnswer,
+                HeldDecisionKind.Stranger,
                 stranger.Face.Part,
-                JsonSerializer.Serialize(stranger),
+                Written(stranger),
                 stranger.DecidedBy,
                 stranger.DecidedUtc);
         }
@@ -675,7 +718,7 @@ public sealed class SqliteDecisionRepository : IDecisionRepository
                 turn.Photo,
                 HeldDecisionKind.Turn,
                 string.Empty,
-                JsonSerializer.Serialize(turn),
+                Written(turn),
                 turn.DecidedBy,
                 turn.DecidedUtc);
         }
@@ -686,7 +729,7 @@ public sealed class SqliteDecisionRepository : IDecisionRepository
                 membership.Photo,
                 HeldDecisionKind.AlbumMembership,
                 membership.Album.ToString("D"),
-                JsonSerializer.Serialize(membership),
+                Written(membership),
                 membership.DecidedBy,
                 membership.AddedUtc);
         }
@@ -697,7 +740,7 @@ public sealed class SqliteDecisionRepository : IDecisionRepository
                 rejection.Photo,
                 HeldDecisionKind.AlbumRejection,
                 rejection.ProposalKey,
-                JsonSerializer.Serialize(rejection),
+                Written(rejection),
                 rejection.DecidedBy,
                 rejection.RejectedUtc);
         }
@@ -762,6 +805,16 @@ public sealed class SqliteDecisionRepository : IDecisionRepository
 
         return faces;
     }
+
+    /// <summary>An answer as a held row stores it.</summary>
+    /// <remarks>
+    /// In the same shape a published file uses. A key is a struct with a compact
+    /// text form and no parameterless constructor, so the plain serialiser
+    /// writes something nothing can read back - which would make every held
+    /// answer a silent loss rather than one that waits.
+    /// </remarks>
+    private static string Written<T>(T answer) =>
+        JsonSerializer.Serialize(answer, DecisionSetFile.Shape);
 
     private sealed record Waiting(
         AssetKey Photo,

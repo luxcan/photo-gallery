@@ -3,6 +3,7 @@ using PhotoGallery.Application.UseCases.Faces;
 using PhotoGallery.Application.UseCases.Places;
 using PhotoGallery.Application.UseCases.Scanning;
 using PhotoGallery.Application.UseCases.Search;
+using PhotoGallery.Application.UseCases.Sharing;
 using PhotoGallery.Application.UseCases.Thumbnails;
 using PhotoGallery.Application.UseCases.Videos;
 
@@ -37,6 +38,12 @@ namespace PhotoGallery.Application.UseCases.Refresh;
 /// this case, for the same reason missing search models are not this case for
 /// <paramref name="Described"/>.
 /// </param>
+/// <param name="Answers">
+/// Null when the run stopped before applying what another machine had decided
+/// about photographs this library had not indexed. A library nobody shares with
+/// has nothing waiting and gets a result saying so, which is a phase that ran
+/// and found no work rather than one that never started.
+/// </param>
 public sealed record RefreshResult(
     IReadOnlyList<ScanResult> Scans,
     ThumbnailBuildResult? Generated,
@@ -44,6 +51,7 @@ public sealed record RefreshResult(
     LocatePhotosResult? Located,
     VideoBuildResult? Videos,
     FaceDetectionResult? Faces,
+    HeldResult? Answers,
     CollectionsResult? Collected,
     TimeSpan Elapsed,
     bool WasCancelled)
@@ -61,6 +69,23 @@ public sealed record RefreshResult(
 
     /// <summary>How many faces were found this run.</summary>
     public int FacesFound => Faces?.FacesFound ?? 0;
+
+    /// <summary>How many answers from another machine landed this run.</summary>
+    public int AnswersApplied => Answers?.Applied ?? 0;
+
+    /// <summary>
+    /// How many answers are still waiting for photographs this library has not
+    /// indexed.
+    /// </summary>
+    /// <remarks>
+    /// The one number here that is not about what just happened. Most of these
+    /// are about pictures that are only on somebody else's laptop and they come
+    /// good the day those reach the shared folder - but a count that is never
+    /// said is a count that grows quietly, and this is the difference between
+    /// "nothing to do" and "an evening's work is waiting for a folder nobody has
+    /// added".
+    /// </remarks>
+    public int AnswersWaiting => Answers?.Waiting ?? 0;
 
     /// <summary>How many occasions are on offer after this run.</summary>
     public int CollectionsProposed => Collected?.Proposed ?? 0;
@@ -136,9 +161,15 @@ public sealed record RefreshResult(
 
             string faces = FacesFound > 0 ? $", {FacesFound:N0} faces found" : string.Empty;
 
+            // Both sides of the sharing phase, and only where there is one. A
+            // library nobody shares with reads nothing about answers at all.
+            string applied = AnswersApplied > 0
+                ? $", {AnswersApplied:N0} answers applied"
+                : string.Empty;
+
             string counted = $"{Added:N0} new, {Updated:N0} changed, {Removed:N0} gone, "
-                           + $"{Built:N0} pictures prepared{searchable}{placed}{videos}{faces} "
-                           + $"({Elapsed.TotalSeconds:N1}s)";
+                           + $"{Built:N0} pictures prepared{searchable}{placed}{videos}{faces}"
+                           + $"{applied} ({Elapsed.TotalSeconds:N1}s)";
 
             if (WasCancelled)
             {
@@ -158,15 +189,24 @@ public sealed record RefreshResult(
                             + "parts were skipped",
             };
 
+            // Last, and on its own, because it is the only part of this that
+            // asks for something: the photographs these answers are about are
+            // not in the library and no scan of it will bring them in.
+            string waiting = AnswersWaiting > 0
+                ? $". {AnswersWaiting:N0} answers are still waiting for photographs "
+                + "this library has not indexed"
+                : string.Empty;
+
             if (Unavailable == 0)
             {
-                return counted + skipped;
+                return counted + skipped + waiting;
             }
 
             return Unavailable == 1
-                ? $"{counted}{skipped}. One folder could not be reached and was left untouched"
+                ? $"{counted}{skipped}. One folder could not be reached and was left "
+                + $"untouched{waiting}"
                 : $"{counted}{skipped}. {Unavailable:N0} folders could not be reached and were "
-                + "left untouched";
+                + $"left untouched{waiting}";
         }
     }
 }

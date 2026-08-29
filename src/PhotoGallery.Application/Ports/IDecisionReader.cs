@@ -30,6 +30,19 @@ public interface IDecisionReader
     Task<LibraryContents> ContentsAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// The answers parked against photographs this library had not indexed when
+    /// they arrived.
+    /// </summary>
+    /// <remarks>
+    /// Read whole, because settling them needs them whole: two of them can be
+    /// about the same face, and which one stands is decided by comparing them
+    /// against each other. There is no cheaper question to ask - a sweep that
+    /// only read the answers about photographs the last scan added would miss
+    /// the ones waiting on the face pass, which is most of them.
+    /// </remarks>
+    Task<HeldAnswers> WaitingAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// The rows a set of merged turns would land on, with the rendition each one
     /// would have to move.
     /// </summary>

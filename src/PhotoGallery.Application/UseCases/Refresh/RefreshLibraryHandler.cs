@@ -1,9 +1,11 @@
 using System.Diagnostics;
+using PhotoGallery.Application.Ports;
 using PhotoGallery.Application.UseCases.Collections;
 using PhotoGallery.Application.UseCases.Faces;
 using PhotoGallery.Application.UseCases.Places;
 using PhotoGallery.Application.UseCases.Scanning;
 using PhotoGallery.Application.UseCases.Search;
+using PhotoGallery.Application.UseCases.Sharing;
 using PhotoGallery.Application.UseCases.Thumbnails;
 using PhotoGallery.Application.UseCases.Videos;
 
@@ -78,6 +80,7 @@ public sealed class RefreshLibraryHandler
     private readonly LocatePhotosHandler _locate;
     private readonly BuildVideoKeyframesHandler _videos;
     private readonly DetectFacesHandler _faces;
+    private readonly ApplyHeldDecisionsHandler _waiting;
     private readonly BuildCollectionsHandler _collect;
 
     public RefreshLibraryHandler(
@@ -87,6 +90,7 @@ public sealed class RefreshLibraryHandler
         LocatePhotosHandler locate,
         BuildVideoKeyframesHandler videos,
         DetectFacesHandler faces,
+        ApplyHeldDecisionsHandler waiting,
         BuildCollectionsHandler collect)
     {
         _scan = scan;
@@ -95,6 +99,7 @@ public sealed class RefreshLibraryHandler
         _locate = locate;
         _videos = videos;
         _faces = faces;
+        _waiting = waiting;
         _collect = collect;
     }
 
@@ -150,6 +155,7 @@ public sealed class RefreshLibraryHandler
                 Located: null,
                 Videos: null,
                 Faces: null,
+                Answers: null,
                 Collected: null,
                 stopwatch.Elapsed,
                 WasCancelled: true);
@@ -175,6 +181,7 @@ public sealed class RefreshLibraryHandler
                 Located: null,
                 Videos: null,
                 Faces: null,
+                Answers: null,
                 Collected: null,
                 stopwatch.Elapsed,
                 WasCancelled: true);
@@ -224,6 +231,7 @@ public sealed class RefreshLibraryHandler
                 located,
                 Videos: null,
                 Faces: null,
+                Answers: null,
                 Collected: null,
                 stopwatch.Elapsed,
                 WasCancelled: true);
@@ -259,6 +267,7 @@ public sealed class RefreshLibraryHandler
                 located,
                 Videos: null,
                 Faces: null,
+                Answers: null,
                 Collected: null,
                 stopwatch.Elapsed,
                 WasCancelled: true);
@@ -304,6 +313,7 @@ public sealed class RefreshLibraryHandler
                 located,
                 videos,
                 Faces: null,
+                Answers: null,
                 Collected: null,
                 stopwatch.Elapsed,
                 WasCancelled: true);
@@ -339,6 +349,41 @@ public sealed class RefreshLibraryHandler
                 located,
                 videos,
                 faces,
+                Answers: null,
+                Collected: null,
+                stopwatch.Elapsed,
+                WasCancelled: true);
+        }
+
+        // Answers that came from another machine about photographs this library
+        // had not indexed when they arrived. Here because a held answer names a
+        // face and the phase above is what found them: run it before, and every
+        // name waits another whole scan. Run it after the occasions, and they
+        // are named from people the library was one step away from knowing
+        // about.
+        //
+        // Silent on a library nobody shares with, which is why it can sit in the
+        // core action: with nothing waiting it is a single count.
+        var applying = new PhaseProgress<MergeProgress>(
+            p => new RefreshProgress(
+                RefreshPhase.ApplyingAnswers, p.What, p.Done, p.Total, 0),
+            progress);
+
+        HeldResult answers = await _waiting
+            .HandleAsync(applying, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (answers.WasCancelled || cancellationToken.IsCancellationRequested)
+        {
+            stopwatch.Stop();
+            return new RefreshResult(
+                scans,
+                generated,
+                described,
+                located,
+                videos,
+                faces,
+                answers,
                 Collected: null,
                 stopwatch.Elapsed,
                 WasCancelled: true);
@@ -368,6 +413,7 @@ public sealed class RefreshLibraryHandler
             located,
             videos,
             faces,
+            answers,
             collected,
             stopwatch.Elapsed,
             collected.WasCancelled || cancellationToken.IsCancellationRequested);

@@ -125,6 +125,88 @@ public static class DecisionMerge
     }
 
     /// <summary>
+    /// Settles answers that have been waiting for their photographs against a
+    /// library that has just indexed some more of them.
+    /// </summary>
+    /// <remarks>
+    /// The other half of <see cref="Merge"/>, and what makes the order of
+    /// operations impossible to get wrong. An answer about a photograph this
+    /// library had not indexed is parked rather than dropped; this is what
+    /// brings it back the moment a scan finds the picture it was about.
+    ///
+    /// <para><strong>Nothing is sifted here.</strong> These answers were sifted
+    /// when they arrived - the machine that sent them was judged then, on its
+    /// schema version, its clock and the sources it had in common. Asking those
+    /// questions a second time would refuse an answer against a machine that is
+    /// no longer in the room, and a held answer refused is one that nothing
+    /// would ever explain to anybody.</para>
+    ///
+    /// <para>Everything after that is the ordinary settling, on purpose. Two
+    /// machines can have named the same face while it waited, and a photograph
+    /// can have been set aside on one and named on another. Those are the
+    /// disagreements <see cref="Merge"/> exists to settle, arriving late. What
+    /// still cannot land stays held, which is why a photograph indexed but not
+    /// yet looked at for faces keeps its names for the pass that finds
+    /// them.</para>
+    /// </remarks>
+    /// <param name="mine">What this library holds, proposals included.</param>
+    /// <param name="waiting">The answers that have been parked.</param>
+    /// <param name="here">What this machine's scan has indexed by now.</param>
+    public static MergePlan Rejoin(DecisionSet mine, HeldAnswers waiting, LibraryContents here)
+    {
+        ArgumentNullException.ThrowIfNull(mine);
+        ArgumentNullException.ThrowIfNull(waiting);
+        ArgumentNullException.ThrowIfNull(here);
+
+        if (waiting.Count == 0)
+        {
+            return MergePlan.Nothing;
+        }
+
+        // The identity on this set is never read. Sifting is the only thing that
+        // looks at whose set it is, and these have been through it already;
+        // every answer inside carries its own author and its own moment, which
+        // is what settles it against a competing one.
+        List<DecisionSet> parked =
+        [
+            DecisionSet.Empty(mine.Machine, mine.WrittenUtc) with
+            {
+                Answers = waiting.Answers,
+                Strangers = waiting.Strangers,
+                Turns = waiting.Turns,
+                Memberships = waiting.Memberships,
+                Rejections = waiting.Rejections,
+            },
+        ];
+
+        Faces faces = SettleFaces(mine, parked, here);
+        (List<PhotoTurn> turns, List<PhotoTurn> heldTurns) = SettleTurns(mine, parked, here);
+        (List<AlbumMove> moves, List<AlbumMembership> heldMoves) =
+            SettleMemberships(mine, parked, here);
+        (List<AlbumRejection> rejections, List<AlbumRejection> heldRejections) =
+            SettleRejections(mine, parked, here);
+
+        // No people, albums or eras. Those are not about a photograph, so they
+        // were never held: they landed on the merge that carried them.
+        return MergePlan.Nothing with
+        {
+            Answers = faces.Answers,
+            Withdrawn = faces.Withdrawn,
+            Strangers = faces.Strangers,
+            Recognised = faces.Recognised,
+            Turns = turns,
+            Moves = moves,
+            Rejections = rejections,
+            Held = new HeldAnswers(
+                faces.HeldAnswers,
+                faces.HeldStrangers,
+                heldTurns,
+                heldMoves,
+                heldRejections),
+        };
+    }
+
+    /// <summary>
     /// Separates the machines worth listening to from the ones that have to be
     /// reported instead.
     /// </summary>

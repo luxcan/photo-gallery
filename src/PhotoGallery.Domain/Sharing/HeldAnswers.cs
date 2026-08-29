@@ -38,4 +38,24 @@ public sealed record HeldAnswers(
             .. Memberships.Select(m => m.Photo),
             .. Rejections.Select(r => r.Photo),
         ]);
+
+    /// <summary>The same answers with everything in <paramref name="other"/> taken out.</summary>
+    /// <remarks>
+    /// What a sweep of the held answers actually landed, which is the set that
+    /// can be forgotten: everything that was waiting, less everything still
+    /// waiting. Subtracted here rather than reported by the merge because the
+    /// merge answers with what it could <em>not</em> apply, and asking it for
+    /// both would be two lists that have to agree with each other.
+    /// </remarks>
+    public HeldAnswers Except(HeldAnswers other)
+    {
+        ArgumentNullException.ThrowIfNull(other);
+
+        return new HeldAnswers(
+            [.. Answers.Except(other.Answers)],
+            [.. Strangers.Except(other.Strangers)],
+            [.. Turns.Except(other.Turns)],
+            [.. Memberships.Except(other.Memberships)],
+            [.. Rejections.Except(other.Rejections)]);
+    }
 }

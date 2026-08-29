@@ -6,12 +6,15 @@ using PhotoGallery.Application.UseCases.Places;
 using PhotoGallery.Application.UseCases.Refresh;
 using PhotoGallery.Application.UseCases.Scanning;
 using PhotoGallery.Application.UseCases.Search;
+using PhotoGallery.Application.UseCases.Sharing;
 using PhotoGallery.Application.UseCases.Sources;
 using PhotoGallery.Application.UseCases.Thumbnails;
 using PhotoGallery.Application.UseCases.Videos;
 using PhotoGallery.Domain.Assets;
+using PhotoGallery.Domain.Collections;
 using PhotoGallery.Domain.Library;
 using PhotoGallery.Domain.Search;
+using PhotoGallery.Domain.Sharing;
 using PhotoGallery.Infrastructure.Models;
 using PhotoGallery.Infrastructure.Persistence;
 using PhotoGallery.Infrastructure.Storage;
@@ -459,6 +462,76 @@ public sealed class RefreshLibraryHandlerTests : IDisposable
         }
     }
 
+    [Fact]
+    public async Task Refresh_AppliesAnswersThatWereWaitingForTheirPhotographs()
+    {
+        // That the sweep is a phase of the scan rather than a button, which is
+        // the whole of its value: nobody would think to press one, because the
+        // thing it repairs happened days ago on somebody else's laptop.
+        //
+        // A rejection rather than a name, because it needs only the photograph -
+        // these tests have no face models, so no face would ever be found for a
+        // name to land on.
+        WriteMedia("a.jpg");
+        PhotoSource source = await AddSourceAsync();
+
+        var waiting = new AlbumRejection(
+            new AssetKey(source.SharedId, "a.jpg"),
+            "2020-01",
+            new DateTime(2026, 3, 2, 9, 0, 0, DateTimeKind.Utc),
+            Guid.NewGuid());
+
+        // Parked through the code that parks them, so the row under test is the
+        // row the merge would actually have written.
+        await new SqliteDecisionRepository(_db).ApplyAsync(
+            MergePlan.Nothing with
+            {
+                Held = new HeldAnswers([], [], [], [], [waiting]),
+            });
+
+        Assert.Single(_db.HeldDecisions);
+
+        RefreshResult result = await NewHandler().HandleAsync([source.Id]);
+
+        Assert.Equal(1, result.AnswersApplied);
+        Assert.Equal(0, result.AnswersWaiting);
+        Assert.Contains("1 answers applied", result.Summary);
+
+        _db.ChangeTracker.Clear();
+        CollectionRejection landed = _db.CollectionRejections.Single();
+        Assert.Equal("2020-01", landed.ProposalKey);
+        Assert.Empty(_db.HeldDecisions);
+    }
+
+    [Fact]
+    public async Task Refresh_SaysWhenAnswersAreStillWaitingForPhotographsItDoesNotHave()
+    {
+        // The one number the summary must never hide: it is the difference
+        // between "nothing to do" and "an evening's work is waiting for a folder
+        // nobody has added".
+        WriteMedia("a.jpg");
+        PhotoSource source = await AddSourceAsync();
+
+        var waiting = new AlbumRejection(
+            new AssetKey(source.SharedId, @"only on her laptop.jpg"),
+            "2020-01",
+            new DateTime(2026, 3, 2, 9, 0, 0, DateTimeKind.Utc),
+            Guid.NewGuid());
+
+        await new SqliteDecisionRepository(_db).ApplyAsync(
+            MergePlan.Nothing with
+            {
+                Held = new HeldAnswers([], [], [], [], [waiting]),
+            });
+
+        RefreshResult result = await NewHandler().HandleAsync([source.Id]);
+
+        Assert.Equal(0, result.AnswersApplied);
+        Assert.Equal(1, result.AnswersWaiting);
+        Assert.Contains("1 answers are still waiting", result.Summary);
+        Assert.Single(_db.HeldDecisions);
+    }
+
     /// <summary>Any unit vector; what it points at is beside the point here.</summary>
     private static ContentEmbedding SomeVector()
     {
@@ -487,8 +560,36 @@ public sealed class RefreshLibraryHandlerTests : IDisposable
             new DetectFacesHandler(
                 _reader, _store, new NeverScanned(), new SqliteFaceRepository(_db),
                 models ?? new NoModels()),
+            Waiting(),
             new BuildCollectionsHandler(
                 new SqliteCollectionRepository(_db), new SqliteCollectionFactsReader(_db)));
+
+    /// <summary>
+    /// The real sweep over held answers, not a stub.
+    /// </summary>
+    /// <remarks>
+    /// A library nobody shares with holds none, so every test here exercises the
+    /// case that matters most for this phase: that it costs a scan nothing and
+    /// changes nothing when there is nothing waiting.
+    /// </remarks>
+    private ApplyHeldDecisionsHandler Waiting()
+    {
+        var decisions = new SqliteDecisionReader(_db);
+        var writing = new SqliteDecisionRepository(_db);
+
+        return new ApplyHeldDecisionsHandler(
+            _index,
+            decisions,
+            writing,
+            new MergedTurns(
+                decisions, writing, new NoRenditions(), new SqliteFaceRepository(_db)));
+    }
+
+    /// <summary>Renditions these tests never make, so none can be turned.</summary>
+    private sealed class NoRenditions : IRenditionTurner
+    {
+        public TurnedRendition? Turn(string thumbnailName, int degrees) => null;
+    }
 
     /// <summary>
     /// A camera that recorded no position, which is five photographs in six.

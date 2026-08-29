@@ -30,7 +30,18 @@ public static class DecisionSetFile
     /// <summary>What a published file is called, after the machine that wrote it.</summary>
     public const string Extension = ".json.gz";
 
-    private static readonly JsonSerializerOptions s_json = new()
+    /// <summary>
+    /// How a decision is written down, wherever it is written down.
+    /// </summary>
+    /// <remarks>
+    /// Shared with the held-answer rows rather than left to the file. A key is
+    /// a struct with no parameterless constructor and a compact text form, so
+    /// serialising one without these converters produces something that cannot
+    /// be read back at all - and an answer parked in a shape nothing can parse
+    /// is an answer quietly lost, which is the one thing holding it exists to
+    /// prevent.
+    /// </remarks>
+    internal static JsonSerializerOptions Shape { get; } = new()
     {
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
         Converters =
@@ -52,7 +63,7 @@ public static class DecisionSetFile
         // it to disk and rename it into place.
         await using var gzip = new GZipStream(destination, CompressionLevel.Optimal, leaveOpen: true);
         await JsonSerializer
-            .SerializeAsync(gzip, decisions, s_json, cancellationToken)
+            .SerializeAsync(gzip, decisions, Shape, cancellationToken)
             .ConfigureAwait(false);
     }
 
@@ -64,7 +75,7 @@ public static class DecisionSetFile
         await using var gzip = new GZipStream(source, CompressionMode.Decompress, leaveOpen: true);
 
         return await JsonSerializer
-            .DeserializeAsync<DecisionSet>(gzip, s_json, cancellationToken)
+            .DeserializeAsync<DecisionSet>(gzip, Shape, cancellationToken)
             .ConfigureAwait(false)
             ?? throw new JsonException("The file held no answers.");
     }
