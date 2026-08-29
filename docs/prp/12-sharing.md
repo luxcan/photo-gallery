@@ -904,32 +904,32 @@ family looking at the same photographs is usually nothing at all.
       common sources and nothing about the private ones.
 - [x] Two machines with no source in common are told so, rather than shown an
       exchange that did nothing and reported success.
-- [ ] A file re-saved in place keeps its decisions and does not take the pooled
+- [x] A file re-saved in place keeps its decisions and does not take the pooled
       rendition of the bytes it no longer has.
 - [x] Nothing is written inside a photo source, and a shared folder inside one
       is refused with a reason.
-- [ ] No original is ever sent, requested or received.
-- [ ] A machine that takes the pool prepares no photographs of its own: after
+- [x] No original is ever sent, requested or received.
+- [x] A machine that takes the pool prepares no photographs of its own: after
       the exchange, the generating phase finds nothing outstanding.
-- [ ] A photograph filled in from the pool carries its capture date, dimensions,
+- [x] A photograph filled in from the pool carries its capture date, dimensions,
       coordinates and perceptual hash — not just its picture.
 - [ ] A video's frame *names* are worked out by the receiving machine rather
       than looked up — while its duration, dimensions and keyframe rows still
       come from the manifest, and a clip ends up with a poster either way.
-- [ ] A rendition whose row this machine has not indexed is not applied, and no
+- [x] A rendition whose row this machine has not indexed is not applied, and no
       asset is created for it.
-- [ ] An exchange stopped halfway leaves every file it copied usable, and
+- [x] An exchange stopped halfway leaves every file it copied usable, and
       resumes rather than starting over.
-- [ ] Running the exchange twice copies nothing the second time.
-- [ ] A photograph whose bytes changed gets new rendition names rather than
+- [x] Running the exchange twice copies nothing the second time.
+- [x] A photograph whose bytes changed gets new rendition names rather than
       overwriting the old ones.
-- [ ] A photograph turned on one machine and not the other is never pooled, and
+- [x] A photograph turned on one machine and not the other is never pooled, and
       both machines end up showing it the same way up.
-- [ ] A machine that has merged a turn still fetches that photograph's rendition
+- [x] A machine that has merged a turn still fetches that photograph's rendition
       from the pool, and turns it itself.
 - [ ] A turn merged before its rendition arrives is applied when the picture
       lands, not dropped.
-- [ ] Merging a turn writes no original: the file's modified time on the share
+- [x] Merging a turn writes no original: the file's modified time on the share
       is unchanged by any number of machines merging it.
 - [ ] A machine that receives face vectors for photographs it has indexed gains
       those faces and does not detect them again on the next scan.
@@ -944,9 +944,9 @@ family looking at the same photographs is usually nothing at all.
       from a third machine.
 - [x] A name confirmed on a face, and the photograph then turned, still lands on
       that same face when it reaches a machine that never turned it.
-- [ ] A copy interrupted between the two renditions does not leave a photograph
+- [x] A copy interrupted between the two renditions does not leave a photograph
       reporting itself complete without a preview.
-- [ ] Two machines fetching the same missing rendition at once cannot leave a
+- [x] Two machines fetching the same missing rendition at once cannot leave a
       third reading a partial file.
 - [x] Two machines whose sources are rooted at different depths of the same
       share are told they are filed differently, rather than shown an exchange
@@ -960,12 +960,12 @@ family looking at the same photographs is usually nothing at all.
 - [x] Held face answers are applied in the same scan that finds the faces, not
       the one after.
 - [x] Theme, cell size, sort order and nav state do not travel.
-- [ ] Taking the decisions while declining the renditions works, and says so.
+- [x] Taking the decisions while declining the renditions works, and says so.
 - [ ] Vectors from a machine with different model files are refused, the
       decisions and renditions are still taken, and the screen says which model
       differs.
 - [x] Three machines converge, in any order, with no machine designated first.
-- [ ] The pooled thumbnail folder is never indexed as photographs.
+- [x] The pooled thumbnail folder is never indexed as photographs.
 - [ ] Discovery blocked by a Public network profile says so, and offers the
       typed address.
 - [x] A payload from a newer schema is refused with a plain message rather than

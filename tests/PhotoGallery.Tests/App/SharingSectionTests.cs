@@ -42,6 +42,9 @@ public sealed class SharingSectionTests
     [InlineData("Sharing.ShareCommand")]
     [InlineData("Sharing.Offers")]
     [InlineData("Sharing.HasOffers")]
+    [InlineData("Sharing.HasUnprepared")]
+    [InlineData("Sharing.PicturesLabel")]
+    [InlineData("Sharing.TakePicturesCommand")]
     public void EverythingBoundOnTheScreenExists(string path)
     {
         // Bound in the window, and a member of the view model behind it. The
@@ -56,6 +59,7 @@ public sealed class SharingSectionTests
         string expected = member switch
         {
             "ShareCommand" => "ShareAsync",
+            "TakePicturesCommand" => "TakePicturesAsync",
             _ => member,
         };
         Assert.Contains(expected, s_viewModel);
@@ -122,6 +126,25 @@ public sealed class SharingSectionTests
         // template whose own DataContext is the offer.
         Assert.Contains("RelativeSource={RelativeSource AncestorType=Window}", section);
         Assert.Contains("PairAsync", s_viewModel);
+    }
+
+    [Fact]
+    public void ThePicturesAreOfferedWithTheirPriceAndOnTheirOwnButton()
+    {
+        // The first copy is gigabytes and minutes. That is exactly the kind of
+        // thing this app says before the click rather than after - and it is a
+        // separate press, so a machine can take the answers and decline the
+        // gigabytes by simply not making it.
+        string section = Section();
+
+        Assert.Contains("Take the small copies", section);
+        Assert.Contains("Sharing.PicturesLabel", section);
+
+        int share = section.IndexOf("Sharing.ShareCommand", StringComparison.Ordinal);
+        int pictures = section.IndexOf("Sharing.TakePicturesCommand", StringComparison.Ordinal);
+
+        Assert.True(share > 0 && pictures > 0, "one of the two actions is missing");
+        Assert.True(share < pictures, "the pictures are offered before the answers are shared");
     }
 
     [Fact]

@@ -21,13 +21,19 @@ namespace PhotoGallery.Application.UseCases.Sharing;
 /// is the difference between "nothing to do" and "an evening's work is waiting
 /// for a folder nobody has added".
 /// </param>
+/// <param name="Unprepared">
+/// Photographs this library has indexed and not yet prepared - what the pictures
+/// half is worth, in the only unit that means anything to somebody deciding
+/// whether to spend five minutes.
+/// </param>
 public sealed record SharingStatus(
     string Folder,
     string Problem,
     IReadOnlyList<MachineStanding> Machines,
-    int Waiting)
+    int Waiting,
+    int Unprepared)
 {
-    public static SharingStatus Nothing { get; } = new(string.Empty, string.Empty, [], 0);
+    public static SharingStatus Nothing { get; } = new(string.Empty, string.Empty, [], 0, 0);
 
     /// <summary>Whether a folder is chosen and reachable.</summary>
     public bool CanShare => Folder.Length > 0 && Problem.Length == 0;

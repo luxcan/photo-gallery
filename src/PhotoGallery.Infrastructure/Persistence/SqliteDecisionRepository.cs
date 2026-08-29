@@ -716,6 +716,96 @@ public sealed class SqliteDecisionRepository : IDecisionRepository
     }
 
     /// <inheritdoc/>
+    public async Task<int> FillInAsync(
+        IReadOnlyList<PreparedFact> facts, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(facts);
+
+        if (facts.Count == 0)
+        {
+            return 0;
+        }
+
+        Dictionary<AssetKey, int> rows =
+            await AssetRowsAsync(cancellationToken).ConfigureAwait(false);
+
+        Dictionary<AssetKey, PreparedFact> byPhoto = [];
+        foreach (PreparedFact fact in facts)
+        {
+            byPhoto[fact.Photo] = fact;
+        }
+
+        int[] wanted = [.. byPhoto.Keys.Where(rows.ContainsKey).Select(photo => rows[photo])];
+
+        if (wanted.Length == 0)
+        {
+            return 0;
+        }
+
+        List<Asset> assets = await _db.Assets
+            .Where(asset => wanted.Contains(asset.Id))
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        Dictionary<int, AssetKey> keys = [];
+        foreach ((AssetKey photo, int row) in rows)
+        {
+            keys[row] = photo;
+        }
+
+        int filled = 0;
+
+        foreach (Asset asset in assets)
+        {
+            if (!keys.TryGetValue(asset.Id, out AssetKey photo)
+                || !byPhoto.TryGetValue(photo, out PreparedFact? fact))
+            {
+                continue;
+            }
+
+            // Checked again here, against the row rather than against the plan.
+            // The plan was made from a read that has since been through a file
+            // copy taking minutes, and the one thing that must never happen is a
+            // rendition of one set of bytes recorded against another.
+            if (!fact.Describes(asset.Length, asset.ModifiedUtc))
+            {
+                continue;
+            }
+
+            // Already exactly this. Skipped rather than rewritten, because a
+            // fact that lands twice would be reported as work done twice -
+            // and the pool's whole claim is that running it again copies
+            // nothing.
+            if (asset.ThumbnailName == fact.ThumbnailName && asset.Status == fact.Status)
+            {
+                continue;
+            }
+
+            asset.ContentHash = fact.ContentHash;
+            asset.ThumbnailName = fact.ThumbnailName;
+            asset.Width = fact.Width == 0 ? asset.Width : fact.Width;
+            asset.Height = fact.Height == 0 ? asset.Height : fact.Height;
+            asset.TakenUtc = fact.TakenUtc;
+            asset.Latitude = fact.Latitude;
+            asset.Longitude = fact.Longitude;
+            asset.Duration = fact.Duration;
+            asset.Status = fact.Status;
+
+            if (PerceptualHash.TryParse(fact.PerceptualHash, out PerceptualHash hash))
+            {
+                asset.PerceptualHash = hash;
+            }
+
+            filled++;
+        }
+
+        await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        _db.ChangeTracker.Clear();
+
+        return filled;
+    }
+
+    /// <inheritdoc/>
     public async Task ReleaseAsync(
         HeldAnswers landed, CancellationToken cancellationToken = default)
     {

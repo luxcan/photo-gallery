@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using PhotoGallery.Application.Ports;
+using PhotoGallery.Domain.Assets;
 using PhotoGallery.Domain.Collections;
 using PhotoGallery.Domain.Faces;
 using PhotoGallery.Domain.Library;
@@ -469,6 +470,134 @@ public sealed class SqliteDecisionReader : IDecisionReader
             [.. said.Turns.Where(t => leaving.Contains(t.Photo))],
             [.. said.Memberships.Where(m => leaving.Contains(m.Photo))],
             [.. said.Rejections.Where(r => leaving.Contains(r.Photo))]);
+    }
+
+    /// <inheritdoc/>
+    public async Task<PreparedSet> PreparedAsync(
+        MachineIdentity machine, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(machine);
+
+        Dictionary<int, Guid> sources =
+            await SourceIdsAsync(cancellationToken).ConfigureAwait(false);
+
+        var rows = await _db.Assets
+            .AsNoTracking()
+            // What another machine can actually use: a picture to fetch, or the
+            // news that this one will never decode. A row still waiting to be
+            // prepared has neither and is nobody else's business.
+            .Where(asset => asset.ThumbnailName != null
+                         || asset.Status == AssetStatus.Failed
+                         || asset.Status == AssetStatus.Skipped)
+            .Select(asset => new
+            {
+                asset.PhotoSourceId,
+                asset.RelativePath,
+                asset.Length,
+                asset.ModifiedUtc,
+                asset.ContentHash,
+                asset.ThumbnailName,
+                asset.Width,
+                asset.Height,
+                asset.TakenUtc,
+                asset.Latitude,
+                asset.Longitude,
+                asset.PerceptualHash,
+                asset.Duration,
+                asset.Status,
+                asset.Rotation,
+            })
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        List<PreparedFact> facts = new(rows.Count);
+
+        foreach (var row in rows)
+        {
+            if (!sources.TryGetValue(row.PhotoSourceId, out Guid source))
+            {
+                continue;
+            }
+
+            // A turned photograph is left out entirely. Its renditions were
+            // rewritten in place under a name derived from the original's
+            // bytes, which the turn did not change - so the name means one
+            // thing here and another everywhere else, and cannot be offered.
+            // Nor can its facts be offered without it: a fact with no picture
+            // tells the other machine the row is settled, and would stop it
+            // preparing the very photograph the pool has nothing for.
+            if (row.Rotation != 0 && row.ThumbnailName is not null)
+            {
+                continue;
+            }
+
+            facts.Add(new PreparedFact(
+                new AssetKey(source, row.RelativePath),
+                row.Length,
+                row.ModifiedUtc,
+                row.ContentHash,
+                row.ThumbnailName,
+                row.Width ?? 0,
+                row.Height ?? 0,
+                row.TakenUtc,
+                row.Latitude,
+                row.Longitude,
+                row.PerceptualHash?.ToString(),
+                row.Duration,
+                row.Status));
+        }
+
+        return new PreparedSet(machine, DateTime.UtcNow, facts, new Dictionary<string, string>());
+    }
+
+    /// <inheritdoc/>
+    public async Task<IReadOnlyList<Unprepared>> UnpreparedAsync(
+        CancellationToken cancellationToken = default)
+    {
+        Dictionary<int, Guid> sources =
+            await SourceIdsAsync(cancellationToken).ConfigureAwait(false);
+
+        var rows = await _db.Assets
+            .AsNoTracking()
+            // No rendition yet, whatever the row's status says. Status tracks how
+            // the preparing pass got on; the pool cares about one thing, which
+            // is whether there is a picture. A row that failed to decode here is
+            // very much unprepared - and is exactly the row another machine may
+            // have succeeded on.
+            .Where(asset => asset.ThumbnailName == null && asset.QuarantinedUtc == null)
+            .Select(asset => new
+            {
+                asset.PhotoSourceId, asset.RelativePath, asset.Length, asset.ModifiedUtc,
+            })
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        List<Unprepared> waiting = new(rows.Count);
+
+        foreach (var row in rows)
+        {
+            if (sources.TryGetValue(row.PhotoSourceId, out Guid source))
+            {
+                waiting.Add(new Unprepared(
+                    new AssetKey(source, row.RelativePath), row.Length, row.ModifiedUtc));
+            }
+        }
+
+        return waiting;
+    }
+
+    /// <inheritdoc/>
+    public async Task<IReadOnlyList<PooledRendition>> RenditionsAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var rows = await _db.Assets
+            .AsNoTracking()
+            .Where(asset => asset.ThumbnailName != null)
+            .Select(asset => new { asset.ThumbnailName, asset.Rotation })
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        return [.. rows.Select(row => new PooledRendition(row.ThumbnailName!, row.Rotation))];
     }
 
     /// <inheritdoc/>

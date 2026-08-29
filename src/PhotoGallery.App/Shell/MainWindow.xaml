@@ -2450,6 +2450,28 @@
                              Text="{Binding Sharing.WaitingLabel}" />
                 </Border>
 
+                <!-- Its own action, and deliberately not part of Share now. The
+                     answers are a small file and seconds; the pictures are
+                     gigabytes and minutes, and the first is worth doing every
+                     day while the second is worth doing once. A machine that
+                     wants the answers and not the gigabytes gets exactly that by
+                     not pressing this. -->
+                <StackPanel Margin="0,24,0,0"
+                            Visibility="{Binding Sharing.HasUnprepared,
+                                         Converter={StaticResource BoolToVisibility}}">
+                  <TextBlock Style="{DynamicResource FieldLabel}"
+                             Text="Small copies of your photos" />
+                  <TextBlock Style="{DynamicResource HintText}" Margin="0,0,0,8"
+                             TextWrapping="Wrap"
+                             Text="{Binding Sharing.PicturesLabel}" />
+
+                  <Button Style="{DynamicResource SecondaryButton}" MinWidth="200"
+                          HorizontalAlignment="Left"
+                          Content="Take the small copies"
+                          ToolTip="Copy the small versions another computer has already made, instead of making them again here"
+                          Command="{Binding Sharing.TakePicturesCommand}" />
+                </StackPanel>
+
                 <TextBlock Style="{DynamicResource FieldLabel}" Margin="0,24,0,0"
                            Text="The other computers"
                            Visibility="{Binding Sharing.HasMachines,

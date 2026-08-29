@@ -176,6 +176,63 @@ internal sealed class Library : IDisposable
     public ConfirmPairingHandler Pairing =>
         field ??= new ConfirmPairingHandler(Index, Decisions, Writing);
 
+    /// <summary>This library's own cached pictures, on a real disk.</summary>
+    public FileSystemThumbnailStore Thumbnails => field ??= Store();
+
+    /// <summary>The pooled pictures, in the folder both machines share.</summary>
+    public SharedFolderPool Pool => field ??= new SharedFolderPool(Index);
+
+    /// <summary>Taking everybody's pictures, and leaving this library's.</summary>
+    public ShareRenditionsHandler Pooling =>
+        field ??= new ShareRenditionsHandler(Index, Decisions, Writing, Pool, Thumbnails);
+
+    /// <summary>
+    /// A photograph this library has prepared: a row that is Ready, and two real
+    /// files on disk under a name derived from its bytes.
+    /// </summary>
+    public Asset Prepared(string relativePath, string thumbnailName, int rotation = 0)
+    {
+        Asset asset = Photo(relativePath);
+
+        asset.Status = AssetStatus.Ready;
+        asset.ThumbnailName = thumbnailName;
+        asset.ContentHash = Path.GetFileNameWithoutExtension(thumbnailName);
+        asset.Rotation = rotation;
+        asset.Width = 1000;
+        asset.Height = 800;
+        asset.TakenUtc = new DateTime(2019, 7, 4, 10, 0, 0, DateTimeKind.Utc);
+        asset.Latitude = 1.29;
+        asset.Longitude = 103.85;
+        Db.SaveChanges();
+        Db.ChangeTracker.Clear();
+
+        WritePicture(thumbnailName);
+        return asset;
+    }
+
+    /// <summary>The two files a rendition is, with bytes that say which is which.</summary>
+    public void WritePicture(string thumbnailName)
+    {
+        string tile = Thumbnails.ResolveTilePath(thumbnailName);
+        string preview = Thumbnails.ResolvePreviewPath(thumbnailName);
+
+        Directory.CreateDirectory(Path.GetDirectoryName(tile)!);
+        File.WriteAllText(tile, $"tile of {thumbnailName}");
+        File.WriteAllText(preview, $"preview of {thumbnailName}");
+    }
+
+    /// <summary>Whether this library holds both files of a rendition.</summary>
+    public bool Holds(string thumbnailName) =>
+        File.Exists(Thumbnails.ResolveTilePath(thumbnailName))
+        && File.Exists(Thumbnails.ResolvePreviewPath(thumbnailName));
+
+    private FileSystemThumbnailStore Store()
+    {
+        var working = new WorkingFolder(Path.Combine(Root, "working"));
+        working.EnsureCreated();
+        return new FileSystemThumbnailStore(working);
+    }
+
     /// <summary>Stands in for the cached pictures, which these tests have none of.</summary>
     public StubRenditionTurner Renditions { get; } = new();
 

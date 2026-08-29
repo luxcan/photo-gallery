@@ -41,6 +41,25 @@ public interface IDecisionRepository
         IReadOnlyDictionary<Domain.Sharing.AssetKey, int> rows,
         CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Writes what another machine's decode learned onto rows this library
+    /// already has, and answers how many it filled in.
+    /// </summary>
+    /// <remarks>
+    /// <strong>It never creates an asset.</strong> Without that rule the app
+    /// would grow a new state - a photograph it can show but whose original it
+    /// cannot reach - and every screen, the duplicates pass, quarantine, turning
+    /// and "show in Explorer" would each have to learn about it. With it, the
+    /// pool only fills in rows a scan from this machine's own sources already
+    /// made, and nothing else in the app changes.
+    ///
+    /// <para>Called after the pictures have landed, never before: the row is
+    /// marked ready, and a row that claims a rendition it has not got is a tile
+    /// the gallery cannot draw.</para>
+    /// </remarks>
+    Task<int> FillInAsync(
+        IReadOnlyList<PreparedFact> facts, CancellationToken cancellationToken = default);
+
     /// <summary>Forgets held answers that have landed.</summary>
     /// <remarks>
     /// Given what landed rather than what still waits, so that a sweep running

@@ -72,6 +72,7 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddScoped<IDecisionReader, SqliteDecisionReader>();
         services.AddScoped<IDecisionRepository, SqliteDecisionRepository>();
         services.AddScoped<IDecisionExchange, SharedFolderExchange>();
+        services.AddScoped<IRenditionPool, SharedFolderPool>();
 
         services.AddSingleton(ModelManifest.Default);
         services.AddSingleton<IModelFolder, ModelFolder>();

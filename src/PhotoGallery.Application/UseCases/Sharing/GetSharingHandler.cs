@@ -55,7 +55,15 @@ public sealed class GetSharingHandler
 
         int waiting = await _decisions.WaitingCountAsync(cancellationToken).ConfigureAwait(false);
 
-        return new SharingStatus(folder, problem, Standing(known, published, settings), waiting);
+        IReadOnlyList<Unprepared> outstanding =
+            await _decisions.UnpreparedAsync(cancellationToken).ConfigureAwait(false);
+
+        return new SharingStatus(
+            folder,
+            problem,
+            Standing(known, published, settings),
+            waiting,
+            outstanding.Count);
     }
 
     /// <summary>
