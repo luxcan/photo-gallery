@@ -170,6 +170,10 @@ internal sealed class Library : IDisposable
     /// <summary>Its one button: take everybody's answers, then give yours back.</summary>
     public ShareNowHandler Sharing => field ??= new ShareNowHandler(Merging, Publishing);
 
+    /// <summary>Confirming that two folders, reached two ways, are one.</summary>
+    public ConfirmPairingHandler Pairing =>
+        field ??= new ConfirmPairingHandler(Index, Decisions, Writing);
+
     /// <summary>Stands in for the cached pictures, which these tests have none of.</summary>
     public StubRenditionTurner Renditions { get; } = new();
 
@@ -202,6 +206,24 @@ internal sealed class Library : IDisposable
         Db.SaveChanges();
         Db.ChangeTracker.Clear();
     }
+
+    /// <summary>
+    /// Reaches the same photographs by a different route, and under an identity
+    /// nobody has matched yet - which is exactly the state two machines are in
+    /// before anybody pairs them.
+    /// </summary>
+    public void Reaches(string root)
+    {
+        Unpair();
+
+        PhotoSource source = Db.PhotoSources.Single();
+        source.Path = root;
+        Db.SaveChanges();
+        Db.ChangeTracker.Clear();
+    }
+
+    /// <summary>What this library's source is called after a rename.</summary>
+    public Guid CurrentSharedId => Db.PhotoSources.AsNoTracking().Single().SharedId;
 
     /// <summary>Indexes a photograph, as a crawl would.</summary>
     public Asset Photo(string relativePath, DateTime? takenUtc = null)

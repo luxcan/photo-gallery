@@ -1,4 +1,5 @@
 using PhotoGallery.Application.Ports;
+using PhotoGallery.Domain.Sharing;
 
 namespace PhotoGallery.Application.UseCases.Sharing;
 
@@ -9,15 +10,21 @@ namespace PhotoGallery.Application.UseCases.Sharing;
 /// smaller exchange reported as a complete one is the kind of quiet wrong this
 /// feature cannot afford.
 /// </param>
+/// <param name="Pairings">
+/// Folders on another machine that look like folders here, put to the user
+/// rather than assumed - and the ones filed at different depths of the same
+/// share, which are a mistake to report rather than a pair to offer.
+/// </param>
 public sealed record MergeResult(
     bool Merged,
     string Problem,
     MergeOutcome Outcome,
     int Machines,
-    IReadOnlyList<UnreadableAnswers> Unreadable)
+    IReadOnlyList<UnreadableAnswers> Unreadable,
+    IReadOnlyList<PairingProposal> Pairings)
 {
     public static MergeResult CouldNot(string problem) =>
-        new(false, problem, MergeOutcome.Nothing, 0, []);
+        new(false, problem, MergeOutcome.Nothing, 0, [], []);
 
     /// <summary>
     /// What to put on screen: what changed, by kind, or plainly that nothing did.
@@ -38,6 +45,18 @@ public sealed record MergeResult(
             if (Machines == 0)
             {
                 return "No other computer has shared anything yet.";
+            }
+
+            // Said before the counts, because an exchange that matched nothing
+            // is not a small result - it is the wrong question having been
+            // asked, and the counts below it would read as a complete answer.
+            if (Pairings.FirstOrDefault(pairing =>
+                    pairing.Likeness == PairingLikeness.FiledDifferently) is { } filed)
+            {
+                return $"Nothing matched. This library keeps its photos under "
+                     + $"{filed.Mine.Root}, and {filed.MachineName} keeps the same pictures "
+                     + $"under {filed.Theirs.Root} - so the two file them differently and no "
+                     + "photo lines up. Point both at the same folder and share again.";
             }
 
             List<string> parts = [];

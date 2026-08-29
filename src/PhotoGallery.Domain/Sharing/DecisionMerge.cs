@@ -87,11 +87,37 @@ public static class DecisionMerge
         ArgumentNullException.ThrowIfNull(theirs);
         ArgumentNullException.ThrowIfNull(here);
 
-        (List<DecisionSet> accepted, List<RefusedSet> refused) = Sift(mine, theirs, here, nowUtc);
+        // Folders first, and before anything else looks at a key, because a link
+        // changes what every key below it means.
+        List<SourceLink> links = SettleLinks(mine, theirs);
+        IReadOnlyDictionary<Guid, Guid> renames =
+            SourcePairing.Adopt([.. mine.Sources.Select(source => source.SharedId)], links);
+
+        // Proposed from the sets as they were written, so a folder still shows
+        // the name its own machine gives it.
+        List<PairingProposal> pairings = Pairings(mine, theirs, links);
+
+        // Everything read in one identity from here down. A pairing confirmed on
+        // this laptop has to work on this laptop, now - waiting for the other
+        // machine to merge, rename and republish would make a confirmation take
+        // three shares to come true, with nothing on screen to say why the first
+        // two did nothing.
+        mine = Translate(mine, links);
+        here = Translate(here, links);
+        List<DecisionSet> spoken = [.. theirs.Select(them => Translate(them, links))];
+
+        (List<DecisionSet> accepted, List<RefusedSet> refused) =
+            Sift(mine, spoken, here, nowUtc);
 
         if (accepted.Count == 0)
         {
-            return MergePlan.Nothing with { Refused = refused };
+            return MergePlan.Nothing with
+            {
+                Refused = refused,
+                Links = links,
+                Renames = renames,
+                Pairings = pairings,
+            };
         }
 
         List<SharedPerson> people = SettlePeople(mine, accepted);
@@ -121,7 +147,10 @@ public static class DecisionMerge
                 heldMoves,
                 heldRejections),
             OfferJoins(mine, accepted, people),
-            refused);
+            refused,
+            links,
+            renames,
+            pairings);
     }
 
     /// <summary>
@@ -207,6 +236,157 @@ public static class DecisionMerge
     }
 
     /// <summary>
+    /// The same decisions, with every paired folder written as the one identity
+    /// the links settle on.
+    /// </summary>
+    /// <remarks>
+    /// The whole of what a pairing does. Two machines reaching one share by a
+    /// UNC path and a mapped drive letter each key their answers on an id the
+    /// other has never seen; a link says the two are one, and this is where that
+    /// stops being a fact and starts being true of the keys.
+    /// </remarks>
+    private static DecisionSet Translate(DecisionSet set, List<SourceLink> links)
+    {
+        if (links.Count == 0)
+        {
+            return set;
+        }
+
+        IReadOnlyDictionary<Guid, Guid> map = SourcePairing.Adopt(
+            [.. Everywhere(set)], links);
+
+        return map.Count == 0
+            ? set
+            : set with
+            {
+                Sources =
+                [
+                    .. set.Sources.Select(source => source with
+                    {
+                        SharedId = As(map, source.SharedId),
+                    }),
+                ],
+                Answers = [.. set.Answers.Select(a => a with { Face = As(map, a.Face) })],
+                Strangers = [.. set.Strangers.Select(s => s with { Face = As(map, s.Face) })],
+                Turns = [.. set.Turns.Select(t => t with { Photo = As(map, t.Photo) })],
+                Memberships = [.. set.Memberships.Select(m => m with { Photo = As(map, m.Photo) })],
+                Rejections = [.. set.Rejections.Select(r => r with { Photo = As(map, r.Photo) })],
+            };
+    }
+
+    /// <summary>
+    /// What this library holds, in the same identity its answers are read in.
+    /// </summary>
+    /// <remarks>
+    /// Translated as well as the decisions, and it has to be: whether an answer
+    /// lands or waits is decided by looking the photograph up in here, so a
+    /// contents left in the old identity would hold every incoming answer for a
+    /// picture sitting right there.
+    /// </remarks>
+    private static LibraryContents Translate(LibraryContents here, List<SourceLink> links)
+    {
+        if (links.Count == 0)
+        {
+            return here;
+        }
+
+        IReadOnlyDictionary<Guid, Guid> map = SourcePairing.Adopt([.. here.Sources], links);
+
+        if (map.Count == 0)
+        {
+            return here;
+        }
+
+        Dictionary<AssetKey, IReadOnlyList<FaceBounds>> faces = [];
+        foreach ((AssetKey photo, IReadOnlyList<FaceBounds> boxes) in here.Faces)
+        {
+            faces[As(map, photo)] = boxes;
+        }
+
+        return here with
+        {
+            Sources = new HashSet<Guid>(here.Sources.Select(source => As(map, source))),
+            Photographs = new HashSet<AssetKey>(here.Photographs.Select(photo => As(map, photo))),
+            Faces = faces,
+        };
+    }
+
+    /// <summary>Every shared id a set mentions, in its keys as well as its roots.</summary>
+    private static HashSet<Guid> Everywhere(DecisionSet set) =>
+        [
+            .. set.Sources.Select(source => source.SharedId),
+            .. set.Answers.Select(a => a.Face.Photo.SharedSourceId),
+            .. set.Strangers.Select(s => s.Face.Photo.SharedSourceId),
+            .. set.Turns.Select(t => t.Photo.SharedSourceId),
+            .. set.Memberships.Select(m => m.Photo.SharedSourceId),
+            .. set.Rejections.Select(r => r.Photo.SharedSourceId),
+        ];
+
+    private static Guid As(IReadOnlyDictionary<Guid, Guid> map, Guid source) =>
+        map.TryGetValue(source, out Guid canonical) ? canonical : source;
+
+    private static AssetKey As(IReadOnlyDictionary<Guid, Guid> map, AssetKey photo) =>
+        map.TryGetValue(photo.SharedSourceId, out Guid canonical)
+            ? new AssetKey(canonical, photo.RelativePath)
+            : photo;
+
+    private static FaceKey As(IReadOnlyDictionary<Guid, Guid> map, FaceKey face) =>
+        map.ContainsKey(face.Photo.SharedSourceId)
+            ? new FaceKey(As(map, face.Photo), face.Bounds)
+            : face;
+
+    /// <summary>
+    /// Every pairing anybody has confirmed, this library's own included.
+    /// </summary>
+    /// <remarks>
+    /// A union rather than a contest. Two machines never disagree about a link:
+    /// saying two folders are one is not a claim that competes with anything,
+    /// and there is deliberately no way to say they are not - unpairing would be
+    /// a decision that had to travel further than the pairing it undid, and
+    /// nothing in this house needs it.
+    /// </remarks>
+    private static List<SourceLink> SettleLinks(DecisionSet mine, IReadOnlyList<DecisionSet> theirs)
+    {
+        Dictionary<(Guid, Guid), SourceLink> links = [];
+
+        foreach (SourceLink link in mine.Links.Concat(theirs.SelectMany(them => them.Links)))
+        {
+            SourceLink ordered = link.Ordered();
+            (Guid, Guid) key = (ordered.Left, ordered.Right);
+
+            // The earliest, so that a link forwarded round the house keeps the
+            // moment it was actually made rather than the moment it arrived.
+            if (!links.TryGetValue(key, out SourceLink? standing)
+                || ordered.PairedUtc < standing.PairedUtc)
+            {
+                links[key] = ordered;
+            }
+        }
+
+        return [.. links.Values];
+    }
+
+    /// <summary>Folders worth asking a person about, across every machine.</summary>
+    private static List<PairingProposal> Pairings(
+        DecisionSet mine, IReadOnlyList<DecisionSet> theirs, List<SourceLink> links)
+    {
+        List<PairingProposal> proposals = [];
+
+        foreach (DecisionSet them in theirs)
+        {
+            if (them.Machine.Id == mine.Machine.Id)
+            {
+                continue;
+            }
+
+            proposals.AddRange(SourcePairing.Propose(
+                mine.Sources, them.Sources, them.Machine.Name, links));
+        }
+
+        return proposals;
+    }
+
+    /// <summary>
     /// Separates the machines worth listening to from the ones that have to be
     /// reported instead.
     /// </summary>
@@ -248,7 +428,7 @@ public static class DecisionMerge
                 continue;
             }
 
-            if (!them.Sources.Any(here.Sources.Contains))
+            if (!them.Sources.Any(source => here.Sources.Contains(source.SharedId)))
             {
                 refused.Add(new RefusedSet(
                     them.Machine,

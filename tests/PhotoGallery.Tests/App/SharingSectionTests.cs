@@ -40,6 +40,8 @@ public sealed class SharingSectionTests
     [InlineData("Sharing.HasMachines")]
     [InlineData("Sharing.IsIdle")]
     [InlineData("Sharing.ShareCommand")]
+    [InlineData("Sharing.Offers")]
+    [InlineData("Sharing.HasOffers")]
     public void EverythingBoundOnTheScreenExists(string path)
     {
         // Bound in the window, and a member of the view model behind it. The
@@ -51,7 +53,11 @@ public sealed class SharingSectionTests
 
         // ShareCommand is generated from ShareAsync by the toolkit, so the name
         // in the markup is one no source file contains.
-        string expected = member == "ShareCommand" ? "ShareAsync" : member;
+        string expected = member switch
+        {
+            "ShareCommand" => "ShareAsync",
+            _ => member,
+        };
         Assert.Contains(expected, s_viewModel);
     }
 
@@ -99,6 +105,23 @@ public sealed class SharingSectionTests
                 Assert.DoesNotContain(banned, copy, StringComparison.OrdinalIgnoreCase);
             }
         }
+    }
+
+    [Fact]
+    public void PairingIsOfferedAsAQuestionWithAButtonThatAnswersIt()
+    {
+        // The one step nobody can work out for the user, so it has to be asked
+        // on screen rather than assumed anywhere.
+        string section = Section();
+
+        Assert.Contains("Is this the same folder?", section);
+        Assert.Contains("PairCommand", section);
+        Assert.Contains("CommandParameter=\"{Binding}\"", section);
+
+        // Bound through the window, because the button lives inside an item
+        // template whose own DataContext is the offer.
+        Assert.Contains("RelativeSource={RelativeSource AncestorType=Window}", section);
+        Assert.Contains("PairAsync", s_viewModel);
     }
 
     [Fact]

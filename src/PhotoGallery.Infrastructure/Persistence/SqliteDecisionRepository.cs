@@ -34,6 +34,12 @@ public sealed class SqliteDecisionRepository : IDecisionRepository
     {
         ArgumentNullException.ThrowIfNull(plan);
 
+        // First, and before anything is keyed on a source. A rename changes what
+        // every key in this library means, so applying one answer under the old
+        // identity and the next under the new one would file the same photograph
+        // in two places.
+        await ApplyLinksAsync(plan, cancellationToken).ConfigureAwait(false);
+
         progress?.Report(new MergeProgress("People", 0, plan.People.Count));
 
         (int gained, int renamed, int deleted) =
@@ -74,6 +80,69 @@ public sealed class SqliteDecisionRepository : IDecisionRepository
             plan.Turns.Count, albums, moved, held,
             plan.Moves, plan.Joins, plan.Refused,
             cancellationToken.IsCancellationRequested);
+    }
+
+    /// <summary>
+    /// Takes the pairings other machines have confirmed, and adopts the identity
+    /// they settle on.
+    /// </summary>
+    /// <remarks>
+    /// The rename reaches everything keyed on a source, which is the photo
+    /// source itself and the answers still waiting for their photographs. It
+    /// reaches nothing else: every other key in this library is a row id, and
+    /// rows do not move.
+    /// </remarks>
+    private async Task ApplyLinksAsync(MergePlan plan, CancellationToken cancellationToken)
+    {
+        if (plan.Links.Count > 0)
+        {
+            HashSet<(Guid, Guid)> here =
+            [
+                .. await _db.PairedSources
+                    .Select(pair => ValueTuple.Create(pair.Left, pair.Right))
+                    .ToListAsync(cancellationToken)
+                    .ConfigureAwait(false),
+            ];
+
+            foreach (SourceLink link in plan.Links)
+            {
+                SourceLink ordered = link.Ordered();
+
+                if (here.Add((ordered.Left, ordered.Right)))
+                {
+                    _db.PairedSources.Add(new PairedSource
+                    {
+                        Left = ordered.Left,
+                        Right = ordered.Right,
+                        PairedUtc = ordered.PairedUtc,
+                        DecidedBy = ordered.DecidedBy,
+                    });
+                }
+            }
+        }
+
+        foreach ((Guid from, Guid to) in plan.Renames)
+        {
+            await _db.PhotoSources
+                .Where(source => source.SharedId == from)
+                .ExecuteUpdateAsync(
+                    setters => setters.SetProperty(source => source.SharedId, to),
+                    cancellationToken)
+                .ConfigureAwait(false);
+
+            // Answers parked under the old identity are about the same
+            // photographs; left behind, they would wait for a folder that no
+            // longer exists under that name.
+            await _db.HeldDecisions
+                .Where(held => held.SharedSourceId == from)
+                .ExecuteUpdateAsync(
+                    setters => setters.SetProperty(held => held.SharedSourceId, to),
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        _db.ChangeTracker.Clear();
     }
 
     public async Task RecordTurnsAsync(

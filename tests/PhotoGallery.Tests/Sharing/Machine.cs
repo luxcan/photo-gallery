@@ -22,16 +22,39 @@ internal sealed class Machine
     private readonly List<AlbumMembership> _memberships = [];
     private readonly List<AlbumRejection> _rejections = [];
     private readonly List<SharedEra> _eras = [];
-    private readonly List<Guid> _sources;
+    private readonly List<SharedSource> _sources;
+    private readonly List<SourceLink> _links = [];
 
     public Machine(string name, Guid? id = null, int schemaVersion = 1, params Guid[] sources)
     {
         Identity = new MachineIdentity(id ?? Guid.NewGuid(), name, "1.0.0", schemaVersion);
-        _sources = sources.Length == 0 ? [Share] : [.. sources];
+        _sources =
+        [
+            .. (sources.Length == 0 ? [Share] : sources)
+                .Select(source => new SharedSource(source, RootOf(source), 100)),
+        ];
     }
 
     /// <summary>The one source every machine in these tests has in common.</summary>
     public static Guid Share { get; } = new("5ba4ed00-0000-4000-8000-000000000001");
+
+    /// <summary>Names this machine's own folder, so pairing has something to compare.</summary>
+    public Machine Keeps(Guid source, string root)
+    {
+        _sources.RemoveAll(held => held.SharedId == source);
+        _sources.Add(new SharedSource(source, root, 100));
+        return this;
+    }
+
+    /// <summary>Somebody confirmed that two folders are one.</summary>
+    public Machine Pairs(Guid left, Guid right, DateTime when)
+    {
+        _links.Add(new SourceLink(left, right, when, Id));
+        return this;
+    }
+
+    /// <summary>A default root, so two unrelated machines do not look like a pair.</summary>
+    private static string RootOf(Guid source) => $@"\\house\{source:N}";
 
     public MachineIdentity Identity { get; }
 
@@ -105,5 +128,6 @@ internal sealed class Machine
             _albums,
             _memberships,
             _rejections,
-            _eras);
+            _eras,
+            _links);
 }

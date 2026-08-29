@@ -49,6 +49,19 @@ public sealed partial class SharingViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(HasMachines))]
     private IReadOnlyList<MachineRow> _machines = [];
 
+    /// <summary>
+    /// Folders that might be the same folder, waiting on somebody to say.
+    /// </summary>
+    /// <remarks>
+    /// Only ever filled by a share, because that is the only moment this
+    /// library learns what another machine calls its folders. Cleared by the
+    /// next one, so an offer somebody has answered does not sit there being
+    /// answered again.
+    /// </remarks>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasOffers))]
+    private IReadOnlyList<PairingOffer> _offers = [];
+
     /// <summary>What the last share did, or why it could not.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasStatus))]
@@ -79,6 +92,8 @@ public sealed partial class SharingViewModel : ObservableObject
     public bool HasProblem => Problem.Length > 0;
 
     public bool HasMachines => Machines.Count > 0;
+
+    public bool HasOffers => Offers.Count > 0;
 
     public bool HasStatus => Status.Length > 0;
 
@@ -195,6 +210,15 @@ public sealed partial class SharingViewModel : ObservableObject
 
             Status = result.Summary;
 
+            Offers =
+            [
+                .. result.Offers.Select(offer => new PairingOffer(
+                    offer.Mine.SharedId,
+                    offer.Theirs.SharedId,
+                    $"{offer.MachineName} keeps photos in {offer.Theirs.Root}. "
+                  + $"Is that the same folder as {offer.Mine.Root}?")),
+            ];
+
             // Named rather than swallowed. A smaller exchange reported as a
             // complete one is the kind of quiet wrong this feature cannot
             // afford, and a file being written as this one read is the ordinary
@@ -214,6 +238,60 @@ public sealed partial class SharingViewModel : ObservableObject
                                       or InvalidOperationException)
         {
             Status = $"Sharing could not finish: {ex.Message}";
+        }
+        finally
+        {
+            IsBusy = false;
+            _gate.Release();
+        }
+    }
+
+    /// <summary>
+    /// Records that two folders, reached two ways, are the same folder.
+    /// </summary>
+    /// <remarks>
+    /// The one step in this feature nobody can work out for the user. A UNC path
+    /// and a mapped drive letter are the same place and nothing in the text says
+    /// so, and absorbing two unrelated folders into one identity would file
+    /// every photograph in each under a key meaning a different photograph in
+    /// the other. So it is asked, once, and answered by a person.
+    /// </remarks>
+    [RelayCommand]
+    private async Task PairAsync(PairingOffer? offer)
+    {
+        if (offer is null)
+        {
+            return;
+        }
+
+        await _gate.WaitAsync().ConfigureAwait(true);
+        IsBusy = true;
+
+        try
+        {
+            await Task.Run(async () =>
+            {
+                using IServiceScope scope = _scopeFactory.CreateScope();
+                await scope.ServiceProvider
+                    .GetRequiredService<ConfirmPairingHandler>()
+                    .HandleAsync(offer.Mine, offer.Theirs)
+                    .ConfigureAwait(false);
+            }).ConfigureAwait(true);
+
+            // Taken off the screen whether or not the next share happens, so an
+            // answered question does not sit there being asked again.
+            Offers = [.. Offers.Where(other => other != offer)];
+            Status = "Those two folders are one from now on. Share again to bring "
+                   + "everybody's answers across.";
+
+            await ReadAsync().ConfigureAwait(true);
+        }
+        catch (Exception ex) when (ex is IOException
+                                      or UnauthorizedAccessException
+                                      or InvalidOperationException
+                                      or ArgumentException)
+        {
+            Status = $"Those folders could not be paired: {ex.Message}";
         }
         finally
         {

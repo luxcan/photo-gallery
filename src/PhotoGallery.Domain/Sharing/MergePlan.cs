@@ -32,10 +32,14 @@ public sealed record MergePlan(
     IReadOnlyList<SharedEra> Eras,
     HeldAnswers Held,
     IReadOnlyList<PersonJoin> Joins,
-    IReadOnlyList<RefusedSet> Refused)
+    IReadOnlyList<RefusedSet> Refused,
+    IReadOnlyList<SourceLink> Links,
+    IReadOnlyDictionary<Guid, Guid> Renames,
+    IReadOnlyList<PairingProposal> Pairings)
 {
     public static MergePlan Nothing { get; } =
-        new([], [], [], [], [], [], [], [], [], [], HeldAnswers.None, [], []);
+        new([], [], [], [], [], [], [], [], [], [], HeldAnswers.None, [], [],
+            [], new Dictionary<Guid, Guid>(), []);
 
     /// <summary>Whether this merge would change anything at all.</summary>
     /// <remarks>
@@ -54,5 +58,11 @@ public sealed record MergePlan(
         && Moves.Count == 0
         && Rejections.Count == 0
         && Eras.Count == 0
-        && Held.Count == 0;
+        && Held.Count == 0
+
+        // A rename is a change, and a big one: every key in this library's own
+        // answers means a different photograph afterwards. Links on their own
+        // are not - a link this library has no source in is a fact about two
+        // other machines, worth keeping and passing on and nothing more.
+        && Renames.Count == 0;
 }

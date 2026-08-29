@@ -64,6 +64,7 @@ public static class AppServiceCollectionExtensions
             .AddScoped<SetSharedFolderHandler>()
             .AddScoped<GetSharingHandler>()
             .AddScoped<ShareNowHandler>()
+            .AddScoped<ConfirmPairingHandler>()
             .AddScoped<RefreshLibraryHandler>()
             .AddScoped<QueryGalleryHandler>()
             .AddScoped<GetFolderTreeHandler>()

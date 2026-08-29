@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using PhotoGallery.Application.Ports;
 using PhotoGallery.Domain.Collections;
 using PhotoGallery.Domain.Faces;
+using PhotoGallery.Domain.Library;
 using PhotoGallery.Domain.Sharing;
 using PhotoGallery.Infrastructure.Sharing;
 
@@ -59,7 +60,8 @@ public sealed class SqliteDecisionReader : IDecisionReader
             await AlbumsAsync(cancellationToken).ConfigureAwait(false),
             await MembershipsAsync(machine, photographs, cancellationToken).ConfigureAwait(false),
             await RejectionsAsync(machine, photographs, cancellationToken).ConfigureAwait(false),
-            await ErasAsync(people, cancellationToken).ConfigureAwait(false));
+            await ErasAsync(people, cancellationToken).ConfigureAwait(false),
+            await LinksAsync(cancellationToken).ConfigureAwait(false));
     }
 
     public async Task<LibraryContents> ContentsAsync(CancellationToken cancellationToken = default)
@@ -85,7 +87,9 @@ public sealed class SqliteDecisionReader : IDecisionReader
         }
 
         return new LibraryContents(
-            new HashSet<Guid>(await SourcesAsync(cancellationToken).ConfigureAwait(false)),
+            new HashSet<Guid>(
+                (await SourcesAsync(cancellationToken).ConfigureAwait(false))
+                    .Select(source => source.SharedId)),
             new HashSet<AssetKey>(photographs.Values),
             faces);
     }
@@ -140,11 +144,48 @@ public sealed class SqliteDecisionReader : IDecisionReader
             .ToDictionaryAsync(source => source.Id, source => source.SharedId, cancellationToken)
             .ConfigureAwait(false);
 
-    private async Task<IReadOnlyList<Guid>> SourcesAsync(CancellationToken cancellationToken) =>
-        await _db.PhotoSources
-            .Select(source => source.SharedId)
+    /// <summary>
+    /// The folders this library holds, by shared id and by the name it calls
+    /// them.
+    /// </summary>
+    /// <remarks>
+    /// The count comes with them, as a second signal for the one question the
+    /// root is carried to answer: two folders holding sixteen thousand files
+    /// each are a likelier pair than one holding sixteen thousand and one
+    /// holding nine.
+    /// </remarks>
+    private async Task<IReadOnlyList<SharedSource>> SourcesAsync(
+        CancellationToken cancellationToken)
+    {
+        Dictionary<int, int> counts = await _db.Assets
+            .GroupBy(asset => asset.PhotoSourceId)
+            .Select(group => new { Source = group.Key, Held = group.Count() })
+            .ToDictionaryAsync(row => row.Source, row => row.Held, cancellationToken)
+            .ConfigureAwait(false);
+
+        List<PhotoSource> sources = await _db.PhotoSources
+            .AsNoTracking()
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
+
+        return
+        [
+            .. sources.Select(source => new SharedSource(
+                source.SharedId,
+                source.Path,
+                counts.TryGetValue(source.Id, out int held) ? held : 0)),
+        ];
+    }
+
+    private async Task<IReadOnlyList<SourceLink>> LinksAsync(CancellationToken cancellationToken)
+    {
+        List<PairedSource> pairs = await _db.PairedSources
+            .AsNoTracking()
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        return [.. pairs.Select(pair => pair.AsLink())];
+    }
 
     /// <summary>Every indexed file, by row, as the other machines know it.</summary>
     private async Task<Dictionary<int, AssetKey>> PhotographsAsync(

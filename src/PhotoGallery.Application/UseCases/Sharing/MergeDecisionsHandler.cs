@@ -66,10 +66,10 @@ public sealed class MergeDecisionsHandler
         if (fetched.Sets.Count == 0)
         {
             return new MergeResult(
-                true, string.Empty, MergeOutcome.Nothing, 0, fetched.Unreadable);
+                true, string.Empty, MergeOutcome.Nothing, 0, fetched.Unreadable, []);
         }
 
-        MergeOutcome outcome = await OnePassAsync(
+        (MergeOutcome outcome, IReadOnlyList<PairingProposal> pairings) = await OnePassAsync(
             machine, fetched, progress, cancellationToken).ConfigureAwait(false);
 
         // A turn moved the boxes the next answers are keyed on, so the names
@@ -77,7 +77,7 @@ public sealed class MergeDecisionsHandler
         // pass: nothing a second merge applies moves a box again.
         if (outcome.PhotographsTurned > 0 && !outcome.WasCancelled)
         {
-            MergeOutcome again = await OnePassAsync(
+            (MergeOutcome again, _) = await OnePassAsync(
                 machine, fetched, progress, cancellationToken).ConfigureAwait(false);
 
             outcome = Both(outcome, again);
@@ -91,10 +91,11 @@ public sealed class MergeDecisionsHandler
         }
 
         return new MergeResult(
-            true, string.Empty, outcome, fetched.Sets.Count, fetched.Unreadable);
+            true, string.Empty, outcome, fetched.Sets.Count, fetched.Unreadable, pairings);
     }
 
-    private async Task<MergeOutcome> OnePassAsync(
+    private async Task<(MergeOutcome Outcome, IReadOnlyList<PairingProposal> Pairings)>
+        OnePassAsync(
         MachineIdentity machine,
         FetchedDecisions fetched,
         IProgress<MergeProgress>? progress,
@@ -111,9 +112,11 @@ public sealed class MergeDecisionsHandler
 
         plan = await _turns.CarryOutAsync(plan, cancellationToken).ConfigureAwait(false);
 
-        return await _repository
+        MergeOutcome outcome = await _repository
             .ApplyAsync(plan, progress, cancellationToken)
             .ConfigureAwait(false);
+
+        return (outcome, plan.Pairings);
     }
 
     /// <summary>Two passes of one merge, reported as the one thing the user did.</summary>

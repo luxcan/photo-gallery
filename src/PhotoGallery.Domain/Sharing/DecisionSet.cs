@@ -26,15 +26,23 @@ namespace PhotoGallery.Domain.Sharing;
 /// cheapest possible guarantee that they never travel.</para>
 /// </remarks>
 /// <param name="Sources">
-/// The shared ids this machine holds sources for. Derivable from the keys, and
-/// carried anyway: a machine with answers about nothing in common would
-/// otherwise be indistinguishable from one with no answers, and the two need
-/// different things said about them.
+/// The folders this machine holds, by shared id and by the name it calls them.
+/// Derivable from the keys, and carried anyway: a machine with answers about
+/// nothing in common would otherwise be indistinguishable from one with no
+/// answers, and the two need different things said about them.
+///
+/// <para>The root travels only so that two folders can be <em>proposed</em> as
+/// the same one. Nothing is keyed on it - see <see cref="SharedSource"/>.</para>
+/// </param>
+/// <param name="Links">
+/// Pairs of shared ids somebody has confirmed are one folder. Published like
+/// any other decision, because a pairing that lived only where it was made
+/// would leave the house half paired for ever.
 /// </param>
 public sealed record DecisionSet(
     MachineIdentity Machine,
     DateTime WrittenUtc,
-    IReadOnlyList<Guid> Sources,
+    IReadOnlyList<SharedSource> Sources,
     IReadOnlyList<SharedPerson> People,
     IReadOnlyList<FaceAnswer> Answers,
     IReadOnlyList<StrangerFace> Strangers,
@@ -42,11 +50,12 @@ public sealed record DecisionSet(
     IReadOnlyList<SharedAlbum> Albums,
     IReadOnlyList<AlbumMembership> Memberships,
     IReadOnlyList<AlbumRejection> Rejections,
-    IReadOnlyList<SharedEra> Eras)
+    IReadOnlyList<SharedEra> Eras,
+    IReadOnlyList<SourceLink> Links)
 {
     /// <summary>An empty set from a machine, for a library that has decided nothing.</summary>
     public static DecisionSet Empty(MachineIdentity machine, DateTime writtenUtc) =>
-        new(machine, writtenUtc, [], [], [], [], [], [], [], [], []);
+        new(machine, writtenUtc, [], [], [], [], [], [], [], [], [], []);
 
     /// <summary>
     /// The same set with the app's own guesses taken out, which is what is

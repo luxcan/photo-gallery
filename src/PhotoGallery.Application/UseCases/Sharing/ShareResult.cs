@@ -1,8 +1,22 @@
+using PhotoGallery.Domain.Sharing;
+
 namespace PhotoGallery.Application.UseCases.Sharing;
 
 /// <summary>What one share did: what it took, and what it gave.</summary>
 public sealed record ShareResult(MergeResult Merged, PublishResult Published)
 {
+    /// <summary>
+    /// Folders on another machine that might be folders here, to put to the
+    /// user.
+    /// </summary>
+    /// <remarks>
+    /// Only the ones somebody can act on. A pair filed at different depths is a
+    /// diagnosis, and it is already in <see cref="Summary"/> - offering a button
+    /// beside it would offer to make something worse.
+    /// </remarks>
+    public IReadOnlyList<PairingProposal> Offers =>
+        [.. Merged.Pairings.Where(pairing => pairing.CanPair)];
+
     /// <summary>Whether anything happened at all.</summary>
     public bool Shared => Merged.Merged && Published.Published;
 

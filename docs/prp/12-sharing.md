@@ -933,7 +933,7 @@ family looking at the same photographs is usually nothing at all.
       is unchanged by any number of machines merging it.
 - [ ] A machine that receives face vectors for photographs it has indexed gains
       those faces and does not detect them again on the next scan.
-- [ ] Two machines reaching one share by a UNC path and a mapped drive letter
+- [x] Two machines reaching one share by a UNC path and a mapped drive letter
       can be paired, and every decision matches afterwards.
 - [x] Adding a photo source that contains the shared folder is refused.
 - [x] The Sharing screen shows how recently each machine last shared.
@@ -948,7 +948,7 @@ family looking at the same photographs is usually nothing at all.
       reporting itself complete without a preview.
 - [ ] Two machines fetching the same missing rendition at once cannot leave a
       third reading a partial file.
-- [ ] Two machines whose sources are rooted at different depths of the same
+- [x] Two machines whose sources are rooted at different depths of the same
       share are told they are filed differently, rather than shown an exchange
       that matched nothing and claimed success.
 - [ ] A photograph quarantined on one machine and later restored comes back with

@@ -2400,6 +2400,44 @@
                            Visibility="{Binding Sharing.HasStatus,
                                         Converter={StaticResource BoolToVisibility}}" />
 
+                <!-- Asked, never assumed. A UNC path and a mapped drive letter
+                     are the same place and nothing in the text says so; and
+                     absorbing two unrelated folders into one identity would file
+                     every photograph in each under a key meaning a different
+                     photograph in the other, with nothing ever saying so. -->
+                <StackPanel Margin="0,18,0,0"
+                            Visibility="{Binding Sharing.HasOffers,
+                                         Converter={StaticResource BoolToVisibility}}">
+                  <TextBlock Style="{DynamicResource FieldLabel}"
+                             Text="Is this the same folder?" />
+                  <TextBlock Style="{DynamicResource HintText}" Margin="0,0,0,8"
+                             TextWrapping="Wrap"
+                             Text="One computer keeps its photos somewhere that looks like a folder here, reached a different way. Say so once and everything in both lines up from then on." />
+
+                  <ItemsControl ItemsSource="{Binding Sharing.Offers}">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate>
+                        <Border Background="{DynamicResource Panel.Background}"
+                                BorderBrush="{DynamicResource Panel.Border}" BorderThickness="1"
+                                CornerRadius="4" Padding="12,9" Margin="0,0,0,8">
+                          <DockPanel>
+                            <Button DockPanel.Dock="Right" Style="{DynamicResource PrimaryButton}"
+                                    MinWidth="120" Margin="12,0,0,0" VerticalAlignment="Center"
+                                    Content="Same folder"
+                                    ToolTip="Treat these two as one folder from now on"
+                                    Command="{Binding DataContext.Sharing.PairCommand,
+                                              RelativeSource={RelativeSource AncestorType=Window}}"
+                                    CommandParameter="{Binding}" />
+                            <TextBlock VerticalAlignment="Center" TextWrapping="Wrap"
+                                       Style="{DynamicResource BodyText}"
+                                       Text="{Binding Question}" />
+                          </DockPanel>
+                        </Border>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </StackPanel>
+
                 <!-- The one number this screen must never hide: the difference
                      between nothing to do, and an evening's work waiting for a
                      folder nobody has added. -->

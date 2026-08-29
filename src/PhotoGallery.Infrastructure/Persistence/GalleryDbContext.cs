@@ -57,6 +57,8 @@ public sealed class GalleryDbContext : DbContext
 
     public DbSet<Peer> Peers => Set<Peer>();
 
+    public DbSet<PairedSource> PairedSources => Set<PairedSource>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(GalleryDbContext).Assembly);
