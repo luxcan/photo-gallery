@@ -11,6 +11,14 @@ public sealed class CollectionConfiguration : IEntityTypeConfiguration<Collectio
         builder.ToTable("Collections");
         builder.HasKey(c => c.Id);
 
+        // The same rule as a person's, for the same reason: one album, one row,
+        // however many machines have been told about it.
+        builder.HasIndex(c => c.PublicId).IsUnique();
+
+        // And the same tombstone rule. A deleted album is out of every query in
+        // the app; only the sharing code asks to see it.
+        builder.HasQueryFilter(c => c.DeletedUtc == null);
+
         builder.Property(c => c.Name).IsRequired().HasMaxLength(128);
         builder.Property(c => c.ProposalKey).HasMaxLength(24);
 

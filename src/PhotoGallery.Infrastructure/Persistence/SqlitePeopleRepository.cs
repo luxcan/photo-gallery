@@ -40,10 +40,14 @@ public sealed class SqlitePeopleRepository : IPeopleRepository
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(displayName);
 
+        DateTime now = DateTime.UtcNow;
+
         await _db.Set<Person>()
             .Where(person => person.Id == personId)
             .ExecuteUpdateAsync(
-                setters => setters.SetProperty(p => p.DisplayName, displayName.Trim()),
+                setters => setters
+                    .SetProperty(p => p.DisplayName, displayName.Trim())
+                    .SetProperty(p => p.UpdatedUtc, now),
                 cancellationToken)
             .ConfigureAwait(false);
     }
@@ -125,12 +129,18 @@ public sealed class SqlitePeopleRepository : IPeopleRepository
             }
         }
 
+        // One moment for the whole batch, not one per row. Confirming a
+        // screenful is a single answer, and stamping each face as the loop
+        // reaches it would order them by nothing anybody did.
+        DateTime decided = DateTime.UtcNow;
+
         _db.FaceAssignments.AddRange(distinct.Select(face => new FaceAssignment
         {
             FaceId = face.FaceId,
             PersonId = personId,
             Source = source,
             Score = face.Score,
+            DecidedUtc = decided,
         }));
 
         await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
@@ -222,10 +232,30 @@ public sealed class SqlitePeopleRepository : IPeopleRepository
 
     public async Task RemovePersonAsync(int personId, CancellationToken cancellationToken = default)
     {
-        // Eras and assignments cascade from the row, so this is the whole of it.
-        await _db.Set<Person>()
-            .Where(person => person.Id == personId)
+        // Everything they were is taken - their faces go back to being nobody in
+        // particular - but the row stays as a tombstone. It is the only record
+        // that this person was deleted rather than never known, and without it
+        // the next merge from any machine that still holds them puts them back,
+        // and then propagates. It is never expired for the same reason.
+        await _db.FaceAssignments
+            .Where(assignment => assignment.PersonId == personId)
             .ExecuteDeleteAsync(cancellationToken)
             .ConfigureAwait(false);
+
+        await _db.Set<PersonEra>()
+            .Where(era => era.PersonId == personId)
+            .ExecuteDeleteAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        DateTime now = DateTime.UtcNow;
+
+        await _db.Set<Person>()
+            .Where(person => person.Id == personId)
+            .ExecuteUpdateAsync(
+                setters => setters.SetProperty(p => p.DeletedUtc, now),
+                cancellationToken)
+            .ConfigureAwait(false);
+
+        _db.ChangeTracker.Clear();
     }
 }

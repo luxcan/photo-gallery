@@ -13,5 +13,10 @@ public sealed class PhotoSourceConfiguration : IEntityTypeConfiguration<PhotoSou
 
         builder.Property(s => s.Path).IsRequired().HasMaxLength(512);
         builder.HasIndex(s => s.Path).IsUnique();
+
+        // Two sources in one library cannot be the same folder on another
+        // machine, so pairing the second to a shared id already taken is a
+        // mistake the database refuses rather than one a handler has to remember.
+        builder.HasIndex(s => s.SharedId).IsUnique();
     }
 }

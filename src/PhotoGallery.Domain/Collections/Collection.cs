@@ -13,6 +13,21 @@ public sealed class Collection
     public int Id { get; set; }
 
     /// <summary>
+    /// Which album this is, on every machine that has been told about it.
+    /// </summary>
+    /// <remarks>
+    /// Minted where it is declared, for the same reason a person's is: row ids
+    /// are local, and a call site that forgot would write a row claiming the same
+    /// identity as every other album in the library - failing on the second one
+    /// rather than the first.
+    ///
+    /// <para>A proposal carries one too and does not travel on it. A proposed row
+    /// is derived, so it is matched by its <see cref="ProposalKey"/> instead,
+    /// which is what survives the rebuild that renumbers it.</para>
+    /// </remarks>
+    public Guid PublicId { get; set; } = Guid.NewGuid();
+
+    /// <summary>
     /// What it is called. Written by the namer for a proposal, typed by the
     /// user for anything else.
     /// </summary>
@@ -52,9 +67,26 @@ public sealed class Collection
     public string? ProposalKey { get; set; }
 
     /// <summary>
-    /// The user typed this name, so no pass may write over it.
+    /// When the user typed this name, or null while it is still the app's own.
     /// </summary>
-    public bool WasRenamed { get; set; }
+    /// <remarks>
+    /// A date where a flag used to be. The flag answered the only question one
+    /// library has - may a pass write over this name? - and cannot answer the one
+    /// two libraries have, which is whose name is newer. Null still means the app
+    /// named it, so the rebuild rule is unchanged.
+    /// </remarks>
+    public DateTime? NamedUtc { get; set; }
+
+    /// <summary>
+    /// When this album was deleted, or null while it is still in the library.
+    /// </summary>
+    /// <remarks>
+    /// A tombstone, kept for ever, for the same reason a person's is: without one
+    /// the next merge from a machine that still holds the album puts it back.
+    /// Only albums somebody made need one - a proposal removed by a rebuild was
+    /// never a decision, and a rejection already records the one that was.
+    /// </remarks>
+    public DateTime? DeletedUtc { get; set; }
 
     /// <summary>When the pass last wrote this row.</summary>
     public DateTime BuiltUtc { get; set; }

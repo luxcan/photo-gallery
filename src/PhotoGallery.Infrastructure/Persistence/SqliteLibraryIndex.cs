@@ -23,10 +23,27 @@ public sealed class SqliteLibraryIndex : ILibraryIndex
 
         if (settings is not null)
         {
+            // A library carried here from a copy of the working folder, or one
+            // whose row was written by hand, can arrive without a machine of its
+            // own. Minting it on the way out rather than at every call site is
+            // what keeps a published decision set from being signed by nobody.
+            if (settings.MachineId == Guid.Empty)
+            {
+                settings.MachineId = Guid.NewGuid();
+                settings.MachineName = ThisMachine();
+                await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+            }
+
             return settings;
         }
 
-        settings = new LibrarySettings { Id = 1 };
+        settings = new LibrarySettings
+        {
+            Id = 1,
+            MachineId = Guid.NewGuid(),
+            MachineName = ThisMachine(),
+        };
+
         _db.LibrarySettings.Add(settings);
         await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
         return settings;
@@ -62,6 +79,10 @@ public sealed class SqliteLibraryIndex : ILibraryIndex
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
 
+        // The shared id comes with the row, minted locally. Two machines pairing
+        // this folder with the same one on the other side settle on one of the
+        // two; until then it is simply this library's name for it, and every
+        // decision is already scoped by something that is not a drive letter.
         var source = new PhotoSource { Path = path, AddedUtc = DateTime.UtcNow };
         _db.PhotoSources.Add(source);
         await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
@@ -158,4 +179,11 @@ public sealed class SqliteLibraryIndex : ILibraryIndex
             thumbnails, faces, people, duplicateSets,
             awaitingFaces, awaitingDescription, collections);
     }
+
+    /// <summary>
+    /// What to call this machine until somebody says otherwise. The computer's
+    /// own name is the one answer the user will recognise without being asked,
+    /// and nothing is ever decided from it.
+    /// </summary>
+    private static string ThisMachine() => Environment.MachineName;
 }

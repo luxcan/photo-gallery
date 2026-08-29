@@ -179,6 +179,23 @@ public sealed class Asset
     public int Rotation { get; set; }
 
     /// <summary>
+    /// When that turn was last asked for, or null while nobody has turned this
+    /// picture.
+    /// </summary>
+    /// <remarks>
+    /// Six rows in this library, and a turn is a decision like any other: the file
+    /// did not say which way up it goes, so a person did, and of two machines that
+    /// turned it differently the later one stands.
+    ///
+    /// <para>It is also what orders a merge. Rotations settle before face answers
+    /// do, because turning a photograph rewrites every face's bounds through
+    /// <see cref="Faces.FaceBounds.TurnedClockwise"/> - so a box means nothing on
+    /// its own, and only once both machines have agreed the turn and moved their
+    /// own boxes through the same arithmetic are the two in the same frame.</para>
+    /// </remarks>
+    public DateTime? RotatedUtc { get; set; }
+
+    /// <summary>
     /// When this copy was set aside as redundant, or null while it is still in
     /// the library.
     /// </summary>

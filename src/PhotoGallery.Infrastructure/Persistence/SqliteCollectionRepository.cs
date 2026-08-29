@@ -178,7 +178,7 @@ public sealed class SqliteCollectionRepository : ICollectionRepository
             Kind = CollectionKind.Period,
             Origin = CollectionOrigin.Made,
             ProposalKey = null,
-            WasRenamed = true,
+            NamedUtc = DateTime.UtcNow,
             BuiltUtc = DateTime.UtcNow,
         };
 
@@ -400,13 +400,14 @@ public sealed class SqliteCollectionRepository : ICollectionRepository
         }
 
         collection.Name = name.Trim();
-        collection.WasRenamed = true;
+        collection.NamedUtc = DateTime.UtcNow;
         await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
     }
 
     public async Task DeleteAsync(int collectionId, CancellationToken cancellationToken = default)
     {
         Collection? collection = await _db.Collections
+            .Include(row => row.Members)
             .FirstOrDefaultAsync(row => row.Id == collectionId, cancellationToken)
             .ConfigureAwait(false);
 
@@ -415,7 +416,14 @@ public sealed class SqliteCollectionRepository : ICollectionRepository
             return;
         }
 
-        _db.Collections.Remove(collection);
+        // The photographs come out and the row stays as a tombstone, for the
+        // reason a deleted person leaves one: without it the next merge from a
+        // machine that still holds the album puts it back. Its members go with
+        // it, so they are free to join another - a tombstone holding photographs
+        // against the one-album rule would be the hostage the dismissal path
+        // already refuses to take.
+        collection.Members.Clear();
+        collection.DeletedUtc = DateTime.UtcNow;
         await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
     }
 
@@ -629,7 +637,7 @@ public sealed class SqliteCollectionRepository : ICollectionRepository
     /// </remarks>
     private void Rewrite(Collection row, ProposedCollection proposal, DateTime now)
     {
-        if (!row.WasRenamed)
+        if (row.NamedUtc is null)
         {
             row.Name = proposal.Name;
         }

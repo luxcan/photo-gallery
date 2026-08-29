@@ -7,6 +7,7 @@ using PhotoGallery.Domain.Library;
 using PhotoGallery.Domain.People;
 using PhotoGallery.Domain.Places;
 using PhotoGallery.Domain.Search;
+using PhotoGallery.Domain.Sharing;
 
 namespace PhotoGallery.Infrastructure.Persistence;
 
@@ -51,6 +52,10 @@ public sealed class GalleryDbContext : DbContext
     public DbSet<LibrarySettings> LibrarySettings => Set<LibrarySettings>();
 
     public DbSet<PhotoSource> PhotoSources => Set<PhotoSource>();
+
+    public DbSet<HeldDecision> HeldDecisions => Set<HeldDecision>();
+
+    public DbSet<Peer> Peers => Set<Peer>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

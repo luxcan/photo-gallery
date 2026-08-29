@@ -31,5 +31,8 @@ public sealed class LibrarySettingsConfiguration : IEntityTypeConfiguration<Libr
         // Declared for the same reason: a library that predates the column takes
         // the column's default, and the nav should open the way it always has.
         builder.Property(s => s.NavigationCollapsed).HasDefaultValue(false);
+
+        builder.Property(s => s.MachineName).IsRequired().HasMaxLength(128);
+        builder.Property(s => s.SharedFolder).HasMaxLength(512);
     }
 }

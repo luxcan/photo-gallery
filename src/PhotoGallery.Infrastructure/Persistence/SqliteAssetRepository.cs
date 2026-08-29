@@ -469,16 +469,25 @@ public sealed class SqliteAssetRepository : IAssetRepository
             return;
         }
 
+        DateTime now = DateTime.UtcNow;
+
         // Added to whatever turn was already recorded and folded back into a
         // quarter, so four turns one way is no turn rather than a full circle
         // the preparation pass would have to work through.
+        //
+        // Dated whichever way it lands, including back to nothing: somebody
+        // deciding a picture was upright all along is an answer like any other,
+        // and another machine holding a turn must not win by default because
+        // this one recorded no moment for undoing it.
         foreach (int[] chunk in assetIds.Chunk(400))
         {
             await _db.Assets
                 .Where(a => chunk.Contains(a.Id))
                 .ExecuteUpdateAsync(
-                    setters => setters.SetProperty(
-                        a => a.Rotation, a => (a.Rotation + degrees % 360 + 360) % 360),
+                    setters => setters
+                        .SetProperty(
+                            a => a.Rotation, a => (a.Rotation + degrees % 360 + 360) % 360)
+                        .SetProperty(a => a.RotatedUtc, now),
                     cancellationToken)
                 .ConfigureAwait(false);
         }
@@ -495,13 +504,16 @@ public sealed class SqliteAssetRepository : IAssetRepository
         }
 
         int settled = ((rotation % 360) + 360) % 360;
+        DateTime now = DateTime.UtcNow;
 
         foreach (int[] chunk in assetIds.Chunk(400))
         {
             await _db.Assets
                 .Where(a => chunk.Contains(a.Id))
                 .ExecuteUpdateAsync(
-                    setters => setters.SetProperty(a => a.Rotation, settled),
+                    setters => setters
+                        .SetProperty(a => a.Rotation, settled)
+                        .SetProperty(a => a.RotatedUtc, now),
                     cancellationToken)
                 .ConfigureAwait(false);
         }
