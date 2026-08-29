@@ -184,7 +184,8 @@ internal sealed class Library : IDisposable
 
     /// <summary>Taking everybody's pictures, and leaving this library's.</summary>
     public ShareRenditionsHandler Pooling =>
-        field ??= new ShareRenditionsHandler(Index, Decisions, Writing, Pool, Thumbnails);
+        field ??= new ShareRenditionsHandler(
+            Index, Decisions, Writing, Pool, Thumbnails, Waiting);
 
     /// <summary>
     /// A photograph this library has prepared: a row that is Ready, and two real
@@ -233,8 +234,11 @@ internal sealed class Library : IDisposable
         return new FileSystemThumbnailStore(working);
     }
 
-    /// <summary>Stands in for the cached pictures, which these tests have none of.</summary>
-    public StubRenditionTurner Renditions { get; } = new();
+    /// <summary>
+    /// Stands in for the cached pictures, and can see the ones that are really
+    /// there.
+    /// </summary>
+    public StubRenditionTurner Renditions => field ??= new StubRenditionTurner(Thumbnails);
 
     public string Root { get; }
 

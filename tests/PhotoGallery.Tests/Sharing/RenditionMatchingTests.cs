@@ -224,7 +224,8 @@ public sealed class RenditionMatchingTests
             null,
             null,
             null,
-            status);
+            status,
+            []);
 
     private static PreparedSet Set(params PreparedFact[] facts) =>
         new(

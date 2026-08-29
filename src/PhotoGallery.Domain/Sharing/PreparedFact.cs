@@ -33,6 +33,13 @@ namespace PhotoGallery.Domain.Sharing;
 /// What the two renditions are called in the pool. Null for a file that never
 /// decoded, which is a fact worth carrying and not a picture to fetch.
 /// </param>
+/// <param name="Keyframes">
+/// For a video, where in the clip each of its stills was taken from - and
+/// deliberately not what any of them is called. A frame's name is seeded from
+/// the path, the length, the modified time and the ordinal, every one of which
+/// the receiving machine's own crawl knows for free, so it works the names out
+/// rather than being told them. Empty for a photograph.
+/// </param>
 public sealed record PreparedFact(
     AssetKey Photo,
     long Length,
@@ -46,7 +53,8 @@ public sealed record PreparedFact(
     double? Longitude,
     string? PerceptualHash,
     TimeSpan? Duration,
-    AssetStatus Status)
+    AssetStatus Status,
+    IReadOnlyList<SharedKeyframe> Keyframes)
 {
     /// <summary>Whether this fact brings a picture with it, or only what was learnt.</summary>
     public bool HasPicture => !string.IsNullOrEmpty(ThumbnailName);

@@ -1,4 +1,5 @@
 using PhotoGallery.Application.Ports;
+using PhotoGallery.Domain.Assets;
 
 namespace PhotoGallery.Infrastructure.Storage;
 
@@ -195,10 +196,7 @@ public sealed class FileSystemThumbnailStore : IThumbnailStore
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(contentHash);
 
-        return string.Concat(
-            contentHash.Length <= NameLength ? contentHash : contentHash[..NameLength],
-            Extension);
+        return RenditionName.For(contentHash);
     }
 
-    private const int NameLength = 32;
 }

@@ -796,6 +796,8 @@ public sealed class SqliteDecisionRepository : IDecisionRepository
                 asset.PerceptualHash = hash;
             }
 
+            Frames(asset, fact);
+
             filled++;
         }
 
@@ -803,6 +805,50 @@ public sealed class SqliteDecisionRepository : IDecisionRepository
         _db.ChangeTracker.Clear();
 
         return filled;
+    }
+
+    /// <summary>
+    /// Writes a clip's frame rows, with the names this machine works out for
+    /// itself.
+    /// </summary>
+    /// <remarks>
+    /// The rows come from the manifest and the names do not. A frame's name is
+    /// seeded from the path, the length, the modified time and the ordinal, all
+    /// of which this library's own crawl already collected - so being told them
+    /// would be carrying 4,743 clips' worth of strings that can be derived in a
+    /// millisecond, and would break the moment one machine's copy of a video
+    /// differed.
+    /// </remarks>
+    private void Frames(Asset asset, PreparedFact fact)
+    {
+        if (fact.Keyframes.Count == 0)
+        {
+            return;
+        }
+
+        HashSet<int> here =
+        [
+            .. _db.VideoKeyframes
+                .Where(frame => frame.AssetId == asset.Id)
+                .Select(frame => frame.Ordinal),
+        ];
+
+        foreach (SharedKeyframe still in fact.Keyframes)
+        {
+            if (!here.Add(still.Ordinal))
+            {
+                continue;
+            }
+
+            _db.VideoKeyframes.Add(new VideoKeyframe
+            {
+                AssetId = asset.Id,
+                Ordinal = still.Ordinal,
+                Position = still.Position,
+                ThumbnailName = RenditionName.For(VideoKeyframeIdentity.For(
+                    asset.RelativePath, asset.Length, asset.ModifiedUtc, still.Ordinal)),
+            });
+        }
     }
 
     /// <inheritdoc/>

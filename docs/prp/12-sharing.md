@@ -913,7 +913,7 @@ family looking at the same photographs is usually nothing at all.
       the exchange, the generating phase finds nothing outstanding.
 - [x] A photograph filled in from the pool carries its capture date, dimensions,
       coordinates and perceptual hash — not just its picture.
-- [ ] A video's frame *names* are worked out by the receiving machine rather
+- [x] A video's frame *names* are worked out by the receiving machine rather
       than looked up — while its duration, dimensions and keyframe rows still
       come from the manifest, and a clip ends up with a poster either way.
 - [x] A rendition whose row this machine has not indexed is not applied, and no
@@ -927,7 +927,7 @@ family looking at the same photographs is usually nothing at all.
       both machines end up showing it the same way up.
 - [x] A machine that has merged a turn still fetches that photograph's rendition
       from the pool, and turns it itself.
-- [ ] A turn merged before its rendition arrives is applied when the picture
+- [x] A turn merged before its rendition arrives is applied when the picture
       lands, not dropped.
 - [x] Merging a turn writes no original: the file's modified time on the share
       is unchanged by any number of machines merging it.

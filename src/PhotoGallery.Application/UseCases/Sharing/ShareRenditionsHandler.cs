@@ -1,4 +1,5 @@
 using PhotoGallery.Application.Ports;
+using PhotoGallery.Domain.Assets;
 using PhotoGallery.Domain.Sharing;
 
 namespace PhotoGallery.Application.UseCases.Sharing;
@@ -29,19 +30,22 @@ public sealed class ShareRenditionsHandler
     private readonly IDecisionRepository _repository;
     private readonly IRenditionPool _pool;
     private readonly IThumbnailStore _thumbnails;
+    private readonly ApplyHeldDecisionsHandler _waiting;
 
     public ShareRenditionsHandler(
         ILibraryIndex index,
         IDecisionReader decisions,
         IDecisionRepository repository,
         IRenditionPool pool,
-        IThumbnailStore thumbnails)
+        IThumbnailStore thumbnails,
+        ApplyHeldDecisionsHandler waiting)
     {
         _index = index;
         _decisions = decisions;
         _repository = repository;
         _pool = pool;
         _thumbnails = thumbnails;
+        _waiting = waiting;
     }
 
     public async Task<PoolResult> HandleAsync(
@@ -88,6 +92,18 @@ public sealed class ShareRenditionsHandler
 
             (int filled, int fetched, int mismatched, bool stopped) =
                 await TakeAsync(pooled, progress, cancellationToken).ConfigureAwait(false);
+
+            // A turn merged before its picture arrived was held rather than
+            // dropped, and this is the moment the picture arrives. Waiting for
+            // the next scan would leave a photograph the user straightened
+            // sitting sideways for however long that took - and this run is the
+            // one that knows a picture landed.
+            if (fetched > 0 && !stopped)
+            {
+                await _waiting
+                    .HandleAsync(progress, cancellationToken)
+                    .ConfigureAwait(false);
+            }
 
             return new PoolResult(
                 true, string.Empty, filled, fetched, offered, mismatched, stopped);
@@ -181,17 +197,35 @@ public sealed class ShareRenditionsHandler
             return (0, 0, plan.Mismatched, false);
         }
 
+        // A video's frame names are worked out here rather than looked up. The
+        // digest is seeded from the path, the length, the modified time and the
+        // ordinal - every one of which this machine's own crawl already knows -
+        // so the manifest carries where each frame came from and nothing about
+        // what it is called.
+        HashSet<string> wanted = new(plan.Wanted, StringComparer.OrdinalIgnoreCase);
+
+        foreach (PreparedFact fact in plan.FillIn)
+        {
+            foreach (string frame in Frames(fact))
+            {
+                if (!_thumbnails.Exists(frame))
+                {
+                    wanted.Add(frame);
+                }
+            }
+        }
+
         HashSet<string> landed = new(StringComparer.OrdinalIgnoreCase);
         int done = 0;
 
-        foreach (string name in plan.Wanted)
+        foreach (string name in wanted)
         {
             if (cancellationToken.IsCancellationRequested)
             {
                 break;
             }
 
-            progress?.Report(new MergeProgress("Taking pictures", done++, plan.Wanted.Count));
+            progress?.Report(new MergeProgress("Taking pictures", done++, wanted.Count));
 
             if (await _pool
                     .PullAsync(
@@ -222,6 +256,25 @@ public sealed class ShareRenditionsHandler
             .ConfigureAwait(false);
 
         return (filled, landed.Count, plan.Mismatched, cancellationToken.IsCancellationRequested);
+    }
+
+    /// <summary>
+    /// What a video's frames are called here, worked out rather than looked up.
+    /// </summary>
+    /// <remarks>
+    /// A photograph's rendition is named after a hash of its bytes, which is
+    /// exactly what the receiving machine is trying to avoid reading - so it has
+    /// to be told. A video's frame is named from facts a scan collects for free,
+    /// so being told would be carrying 4,743 clips' worth of names that this
+    /// machine can derive in a millisecond.
+    /// </remarks>
+    private IEnumerable<string> Frames(PreparedFact fact)
+    {
+        foreach (SharedKeyframe still in fact.Keyframes)
+        {
+            yield return _thumbnails.NameFor(VideoKeyframeIdentity.For(
+                fact.Photo.RelativePath, fact.Length, fact.ModifiedUtc, still.Ordinal));
+        }
     }
 
     /// <summary>

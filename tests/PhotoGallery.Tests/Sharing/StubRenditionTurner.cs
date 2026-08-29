@@ -15,6 +15,22 @@ namespace PhotoGallery.Tests.Sharing;
 internal sealed class StubRenditionTurner : IRenditionTurner
 {
     private readonly Dictionary<string, TurnedRendition> _pictures = [];
+    private readonly IThumbnailStore? _store;
+
+    public StubRenditionTurner()
+    {
+    }
+
+    /// <summary>
+    /// Answers from a real thumbnail store as well as from what it was told.
+    /// </summary>
+    /// <remarks>
+    /// For the tests where a picture arrives from the pool rather than being
+    /// arranged: "was there a rendition to turn?" is then a question about the
+    /// disk, and a stub that answered from its own dictionary would say no to a
+    /// file that is sitting right there.
+    /// </remarks>
+    public StubRenditionTurner(IThumbnailStore store) => _store = store;
 
     /// <summary>Every turn asked for, in order, as name and degrees.</summary>
     public List<(string Name, int Degrees)> Turns { get; } = [];
@@ -32,7 +48,12 @@ internal sealed class StubRenditionTurner : IRenditionTurner
 
         if (!_pictures.TryGetValue(thumbnailName, out TurnedRendition before))
         {
-            return null;
+            if (_store?.Exists(thumbnailName) != true)
+            {
+                return null;
+            }
+
+            before = new TurnedRendition(1024, 768);
         }
 
         // The picture is now the other way round, which is what the next turn of

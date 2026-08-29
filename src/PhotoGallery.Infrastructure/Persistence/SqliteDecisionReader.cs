@@ -481,6 +481,25 @@ public sealed class SqliteDecisionReader : IDecisionReader
         Dictionary<int, Guid> sources =
             await SourceIdsAsync(cancellationToken).ConfigureAwait(false);
 
+        // Where each clip's stills were taken from. Not their names: those are
+        // seeded from facts the receiving machine's own crawl already has, so it
+        // works them out rather than being told.
+        Dictionary<int, List<SharedKeyframe>> keyframes = [];
+
+        foreach (var frame in await _db.VideoKeyframes
+            .AsNoTracking()
+            .Select(frame => new { frame.AssetId, frame.Ordinal, frame.Position })
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false))
+        {
+            if (!keyframes.TryGetValue(frame.AssetId, out List<SharedKeyframe>? stills))
+            {
+                keyframes[frame.AssetId] = stills = [];
+            }
+
+            stills.Add(new SharedKeyframe(frame.Ordinal, frame.Position));
+        }
+
         var rows = await _db.Assets
             .AsNoTracking()
             // What another machine can actually use: a picture to fetch, or the
@@ -491,6 +510,7 @@ public sealed class SqliteDecisionReader : IDecisionReader
                          || asset.Status == AssetStatus.Skipped)
             .Select(asset => new
             {
+                asset.Id,
                 asset.PhotoSourceId,
                 asset.RelativePath,
                 asset.Length,
@@ -544,7 +564,10 @@ public sealed class SqliteDecisionReader : IDecisionReader
                 row.Longitude,
                 row.PerceptualHash?.ToString(),
                 row.Duration,
-                row.Status));
+                row.Status,
+                keyframes.TryGetValue(row.Id, out List<SharedKeyframe>? stills)
+                    ? [.. stills.OrderBy(still => still.Ordinal)]
+                    : []));
         }
 
         return new PreparedSet(machine, DateTime.UtcNow, facts, new Dictionary<string, string>());
@@ -593,11 +616,37 @@ public sealed class SqliteDecisionReader : IDecisionReader
         var rows = await _db.Assets
             .AsNoTracking()
             .Where(asset => asset.ThumbnailName != null)
-            .Select(asset => new { asset.ThumbnailName, asset.Rotation })
+            .Select(asset => new { asset.Id, asset.ThumbnailName, asset.Rotation })
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
 
-        return [.. rows.Select(row => new PooledRendition(row.ThumbnailName!, row.Rotation))];
+        List<PooledRendition> renditions =
+            [.. rows.Select(row => new PooledRendition(row.ThumbnailName!, row.Rotation))];
+
+        // A clip's other frames, which are renditions in the same store under the
+        // same rules. Only its poster is on the asset row, so a pool built from
+        // the rows alone would offer one frame in four and leave the receiving
+        // machine unable to fetch the rest of a video it can already name.
+        Dictionary<int, int> rotations = [];
+        foreach (var row in rows)
+        {
+            rotations[row.Id] = row.Rotation;
+        }
+
+        var frames = await _db.VideoKeyframes
+            .AsNoTracking()
+            .Select(frame => new { frame.AssetId, frame.ThumbnailName })
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        foreach (var frame in frames)
+        {
+            renditions.Add(new PooledRendition(
+                frame.ThumbnailName,
+                rotations.TryGetValue(frame.AssetId, out int turned) ? turned : 0));
+        }
+
+        return renditions;
     }
 
     /// <inheritdoc/>
