@@ -1,5 +1,7 @@
 using System.Diagnostics;
 using PhotoGallery.Application.Ports;
+using PhotoGallery.Application.UseCases.Sharing;
+using PhotoGallery.Domain.Sharing;
 using PhotoGallery.Domain.Assets;
 using PhotoGallery.Domain.Library;
 
@@ -28,17 +30,23 @@ public sealed class ScanPhotoSourceHandler
     private readonly IAssetRepository _assets;
     private readonly IMediaFileWalker _walker;
     private readonly IThumbnailStore _thumbnails;
+    private readonly IDecisionReader _decisions;
+    private readonly IDecisionRepository _sharing;
 
     public ScanPhotoSourceHandler(
         ILibraryIndex index,
         IAssetRepository assets,
         IMediaFileWalker walker,
-        IThumbnailStore thumbnails)
+        IThumbnailStore thumbnails,
+        IDecisionReader decisions,
+        IDecisionRepository sharing)
     {
         _index = index;
         _assets = assets;
         _walker = walker;
         _thumbnails = thumbnails;
+        _decisions = decisions;
+        _sharing = sharing;
     }
 
     public async Task<ScanResult> HandleAsync(
@@ -244,6 +252,15 @@ public sealed class ScanPhotoSourceHandler
 
             if (missing.Count > 0)
             {
+                // What anybody decided about these photographs, parked before the
+                // rows go. Quarantine is why: setting a duplicate aside moves the
+                // file off the shared drive, so every other machine's scan sees
+                // it simply vanish and removes it - and a restore later brings
+                // the picture back to three laptops that have never named it. The
+                // guard the app already has protects only the machine that did
+                // the quarantining; this is the same protection for the rest.
+                await ParkAsync(missing).ConfigureAwait(false);
+
                 await _assets.RemoveAsync(missing, CancellationToken.None).ConfigureAwait(false);
                 removed = missing.Count;
             }
@@ -312,6 +329,48 @@ public sealed class ScanPhotoSourceHandler
     /// to the source root, one separator, and with a trailing one so that "2016"
     /// cannot match "2016 Bali".
     /// </summary>
+    /// <summary>
+    /// Keeps what was decided about photographs whose rows are about to go.
+    /// </summary>
+    /// <remarks>
+    /// An answer waiting for its photograph, which is exactly what a held
+    /// decision is - the same table, reached from the other direction. If the
+    /// file comes back the names come back with it; if it never does, a few
+    /// hundred bytes sit in a table.
+    ///
+    /// <para>Reported rather than thrown. A scan that could not park is a scan
+    /// that would otherwise refuse to tidy up a folder somebody emptied months
+    /// ago, and the removal is the part the user asked for.</para>
+    /// </remarks>
+    private async Task ParkAsync(IReadOnlyList<int> leaving)
+    {
+        try
+        {
+            MachineIdentity machine = await PublishDecisionsHandler
+                .ThisMachineAsync(_index, CancellationToken.None)
+                .ConfigureAwait(false);
+
+            HeldAnswers said = await _decisions
+                .AboutAsync(leaving, machine, CancellationToken.None)
+                .ConfigureAwait(false);
+
+            if (said.Count == 0)
+            {
+                return;
+            }
+
+            await _sharing
+                .ApplyAsync(MergePlan.Nothing with { Held = said }, null, CancellationToken.None)
+                .ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or IOException)
+        {
+            // Nothing to report it to from here. The rows still go, which is what
+            // the scan is for; what is lost is the chance to bring the names back
+            // if the file returns.
+        }
+    }
+
     private static string[] RelativePrefixes(MediaWalk walk) =>
         [.. walk.UnreadableFolders
             .Select(folder => Path.GetRelativePath(walk.Root, folder))

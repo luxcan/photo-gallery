@@ -541,7 +541,13 @@ public sealed class RefreshLibraryHandlerTests : IDisposable
     }
 
     private RefreshLibraryHandler NewHandler(IModelStore? models = null) =>
-        new(new ScanPhotoSourceHandler(_index, _assets, _walker, _store),
+        new(new ScanPhotoSourceHandler(
+                _index,
+                _assets,
+                _walker,
+                _store,
+                new SqliteDecisionReader(_db),
+                new SqliteDecisionRepository(_db)),
             new BuildThumbnailsHandler(_reader, _assets, _store, _generator),
             new IndexContentHandler(
                 _reader,

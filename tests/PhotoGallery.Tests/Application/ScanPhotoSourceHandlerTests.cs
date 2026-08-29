@@ -44,7 +44,17 @@ public sealed class ScanPhotoSourceHandlerTests : IDisposable
         _thumbnails = new FileSystemThumbnailStore(_workingFolder);
     }
 
-    private ScanPhotoSourceHandler NewHandler() => new(_index, _assets, _walker, _thumbnails);
+    private ScanPhotoSourceHandler NewHandler() =>
+        new(_index,
+            _assets,
+            _walker,
+            _thumbnails,
+
+            // The real ones. A scan parks what was decided about a photograph
+            // before its row goes, and these tests are where that has to be
+            // true - they are the ones that make files vanish.
+            new SqliteDecisionReader(_db),
+            new SqliteDecisionRepository(_db));
 
     private async Task<PhotoSource> AddSourceAsync(string path) =>
         await new AddPhotoSourceHandler(_index, _workingFolder).HandleAsync(path);

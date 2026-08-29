@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using PhotoGallery.Application.Ports;
+using PhotoGallery.Application.UseCases.Scanning;
 using PhotoGallery.Application.UseCases.Sharing;
 using PhotoGallery.Domain.Assets;
 using PhotoGallery.Domain.Collections;
@@ -9,6 +10,7 @@ using PhotoGallery.Domain.People;
 using PhotoGallery.Domain.Sharing;
 using PhotoGallery.Infrastructure.Persistence;
 using PhotoGallery.Infrastructure.Sharing;
+using PhotoGallery.Infrastructure.Storage;
 
 namespace PhotoGallery.Tests.Sharing;
 
@@ -224,6 +226,41 @@ internal sealed class Library : IDisposable
 
     /// <summary>What this library's source is called after a rename.</summary>
     public Guid CurrentSharedId => Db.PhotoSources.AsNoTracking().Single().SharedId;
+
+    /// <summary>
+    /// Runs a real scan over a folder with nothing in it, so every indexed
+    /// photograph is one the scan finds gone.
+    /// </summary>
+    /// <remarks>
+    /// Through the scanner rather than by deleting rows, because the claim under
+    /// test is about what a scan does when a file is not where the source says
+    /// it is - and a test that removed the rows itself would be asserting the
+    /// parking that it had just arranged.
+    /// </remarks>
+    public async Task ScanFindsNothingAsync()
+    {
+        string empty = Path.Combine(Root, "source");
+        Directory.CreateDirectory(empty);
+
+        PhotoSource source = Db.PhotoSources.Single();
+        source.Path = empty;
+        Db.SaveChanges();
+        Db.ChangeTracker.Clear();
+
+        var working = new WorkingFolder(Path.Combine(Root, "working"));
+        working.EnsureCreated();
+
+        var scan = new ScanPhotoSourceHandler(
+            Index,
+            new SqliteAssetRepository(Db),
+            new MediaFileWalker(working),
+            new FileSystemThumbnailStore(working),
+            Decisions,
+            Writing);
+
+        await scan.HandleAsync(source.Id);
+        Db.ChangeTracker.Clear();
+    }
 
     /// <summary>Indexes a photograph, as a crawl would.</summary>
     public Asset Photo(string relativePath, DateTime? takenUtc = null)

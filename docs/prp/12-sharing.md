@@ -951,9 +951,9 @@ family looking at the same photographs is usually nothing at all.
 - [x] Two machines whose sources are rooted at different depths of the same
       share are told they are filed differently, rather than shown an exchange
       that matched nothing and claimed success.
-- [ ] A photograph quarantined on one machine and later restored comes back with
+- [x] A photograph quarantined on one machine and later restored comes back with
       its names on every machine, not only the one that set it aside.
-- [ ] A photograph deleted for good stays gone everywhere, and says nothing
+- [x] A photograph deleted for good stays gone everywhere, and says nothing
       about it.
 - [x] A payload from a machine whose clock is far ahead is refused, naming the
       machine and the skew.

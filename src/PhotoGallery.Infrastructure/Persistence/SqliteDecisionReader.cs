@@ -4,6 +4,7 @@ using PhotoGallery.Application.Ports;
 using PhotoGallery.Domain.Collections;
 using PhotoGallery.Domain.Faces;
 using PhotoGallery.Domain.Library;
+using PhotoGallery.Domain.People;
 using PhotoGallery.Domain.Sharing;
 using PhotoGallery.Infrastructure.Sharing;
 
@@ -415,6 +416,59 @@ public sealed class SqliteDecisionReader : IDecisionReader
                     era.Centroid,
                     era.SampleCount)),
         ];
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// Built by reading the whole decision set and keeping the part about these
+    /// photographs. Wasteful on paper - the alternative is a second, narrower
+    /// projection of every kind of decision - and wrong in practice: two ways of
+    /// working out what this library has said about a photograph would agree
+    /// today and drift by the third one somebody added. A scan that is deleting
+    /// rows can afford one read.
+    /// </remarks>
+    public async Task<HeldAnswers> AboutAsync(
+        IReadOnlyList<int> assetIds,
+        MachineIdentity machine,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(assetIds);
+        ArgumentNullException.ThrowIfNull(machine);
+
+        if (assetIds.Count == 0)
+        {
+            return HeldAnswers.None;
+        }
+
+        Dictionary<int, AssetKey> photographs =
+            await PhotographsAsync(cancellationToken).ConfigureAwait(false);
+
+        HashSet<AssetKey> leaving =
+        [
+            .. assetIds
+                .Where(photographs.ContainsKey)
+                .Select(asset => photographs[asset]),
+        ];
+
+        if (leaving.Count == 0)
+        {
+            return HeldAnswers.None;
+        }
+
+        DecisionSet said = await ReadAsync(machine, cancellationToken).ConfigureAwait(false);
+
+        // Proposals are not decisions. A guess parked against a photograph that
+        // has gone would come back years later as though somebody had made it.
+        return new HeldAnswers(
+            [
+                .. said.Answers
+                    .Where(a => a.Source != AssignmentSource.Proposed
+                             && leaving.Contains(a.Face.Photo)),
+            ],
+            [.. said.Strangers.Where(s => leaving.Contains(s.Face.Photo))],
+            [.. said.Turns.Where(t => leaving.Contains(t.Photo))],
+            [.. said.Memberships.Where(m => leaving.Contains(m.Photo))],
+            [.. said.Rejections.Where(r => leaving.Contains(r.Photo))]);
     }
 
     /// <inheritdoc/>

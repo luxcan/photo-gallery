@@ -42,6 +42,28 @@ public interface IDecisionReader
     /// </remarks>
     Task<HeldAnswers> WaitingAsync(CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Everything this library has decided about some photographs, in the shape
+    /// a held answer is stored in.
+    /// </summary>
+    /// <remarks>
+    /// Asked when those photographs are about to leave the index, so that what
+    /// somebody decided about them survives the row going away. Quarantine is
+    /// why: setting a duplicate aside moves the file off the shared drive, every
+    /// other machine's next scan finds it gone and removes the row, and a restore
+    /// later brings the photograph back to three laptops that have never named
+    /// it. Parking the decisions turns that back into an answer waiting for its
+    /// photograph, which is a thing this feature already knows how to finish.
+    ///
+    /// <para>It covers the ordinary accidents too, which look identical to a
+    /// deletion at scan time: a folder moved and moved back, a drive remounted,
+    /// a tidy-up somebody undoes.</para>
+    /// </remarks>
+    Task<HeldAnswers> AboutAsync(
+        IReadOnlyList<int> assetIds,
+        MachineIdentity machine,
+        CancellationToken cancellationToken = default);
+
     /// <summary>How many answers are waiting, without reading any of them.</summary>
     /// <remarks>
     /// Separate from <see cref="WaitingAsync"/> because the Sharing screen asks

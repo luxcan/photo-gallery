@@ -82,7 +82,9 @@ public sealed class ScanFolderProgressTests : IDisposable
         new(new SqliteLibraryIndex(_db),
             new SqliteAssetRepository(_db),
             new MediaFileWalker(_workingFolder),
-            new FileSystemThumbnailStore(_workingFolder));
+            new FileSystemThumbnailStore(_workingFolder),
+            new SqliteDecisionReader(_db),
+            new SqliteDecisionRepository(_db));
 
     private Task<PhotoSource> AddSourceAsync() =>
         new AddPhotoSourceHandler(new SqliteLibraryIndex(_db), _workingFolder)
