@@ -42,6 +42,23 @@ public interface IDecisionReader
     /// </remarks>
     Task<HeldAnswers> WaitingAsync(CancellationToken cancellationToken = default);
 
+    /// <summary>How many answers are waiting, without reading any of them.</summary>
+    /// <remarks>
+    /// Separate from <see cref="WaitingAsync"/> because the Sharing screen asks
+    /// this every time it opens and only wants the number. Nine thousand held
+    /// answers is nine thousand payloads to parse for a line of text nobody
+    /// reads twice.
+    /// </remarks>
+    Task<int> WaitingCountAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>The other machines this library has taken answers from.</summary>
+    /// <remarks>
+    /// Here rather than behind a port of its own because it is read for one
+    /// screen and written by one merge, and a port with a single query on it is
+    /// a file to open before you can read the query.
+    /// </remarks>
+    Task<IReadOnlyList<Peer>> PeersAsync(CancellationToken cancellationToken = default);
+
     /// <summary>
     /// The rows a set of merged turns would land on, with the rendition each one
     /// would have to move.

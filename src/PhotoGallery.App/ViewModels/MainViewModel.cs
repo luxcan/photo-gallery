@@ -10,6 +10,7 @@ using PhotoGallery.App.Duplicates;
 using PhotoGallery.App.Gallery;
 using PhotoGallery.App.Imaging;
 using PhotoGallery.App.Models;
+using PhotoGallery.App.Sharing;
 using PhotoGallery.App.People;
 using PhotoGallery.App.Shell;
 using PhotoGallery.App.Theme;
@@ -268,6 +269,7 @@ public sealed partial class MainViewModel : ObservableObject
         About = new AboutViewModel();
         Collections = new CollectionsViewModel(scopeFactory, thumbnails);
         Models = new ModelsViewModel(scopeFactory);
+        Sharing = new SharingViewModel(scopeFactory);
 
         // The nav and the search box both gate on what is installed, and neither
         // of them owns it.
@@ -295,6 +297,10 @@ public sealed partial class MainViewModel : ObservableObject
         // twice is the one at the very bottom.
         BottomSections =
         [
+            // Above Settings, because it is something somebody does rather
+            // than something they configure - and it needs photos to be worth
+            // opening at all, which is what the flag says.
+            new ActivitySection(ActivitySection.SharingKey, "Sharing", "\uE72D", true),
             new ActivitySection(ActivitySection.SettingsKey, "Settings", "\uE713", false),
             new ActivitySection(ActivitySection.AboutKey, "About", "\uE946", false),
         ];
@@ -389,6 +395,9 @@ public sealed partial class MainViewModel : ObservableObject
     public AboutViewModel About { get; }
 
     public ModelsViewModel Models { get; }
+
+    /// <summary>The other computers in the house, and the button that reaches them.</summary>
+    public SharingViewModel Sharing { get; }
 
     /// <summary>
     /// Whether faces can be worked with at all.
@@ -577,6 +586,8 @@ public sealed partial class MainViewModel : ObservableObject
     public bool ShowDuplicates => SelectedSection.Key == ActivitySection.DuplicatesKey;
 
     public bool ShowAbout => SelectedSection.Key == ActivitySection.AboutKey;
+
+    public bool ShowSharing => SelectedSection.Key == ActivitySection.SharingKey;
 
     public string SourceSummary => Sources.Count switch
     {
@@ -1818,6 +1829,7 @@ public sealed partial class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(ShowCollections));
         OnPropertyChanged(nameof(ShowDuplicates));
         OnPropertyChanged(nameof(ShowAbout));
+        OnPropertyChanged(nameof(ShowSharing));
 
         if (ShowLibrary)
         {
@@ -1849,6 +1861,13 @@ public sealed partial class MainViewModel : ObservableObject
             // proved unless a file has changed underneath it.
             Models.Reopened();
             _ = Models.RefreshAsync();
+        }
+        else if (ShowSharing)
+        {
+            // Read on every open rather than cached. It is a directory listing
+            // and a count, and the thing it reports - who has shared, and when -
+            // is exactly what changes while this screen is closed.
+            _ = Sharing.RefreshAsync();
         }
         else if (ShowAbout)
         {

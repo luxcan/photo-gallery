@@ -2332,6 +2332,125 @@
                the bar down the left. So it is read where every other screen is
                read, which also means it can hold the credits a modal would have
                been a poor place to keep. -->
+          <Grid Visibility="{Binding ShowSharing, Converter={StaticResource BoolToVisibility}}">
+            <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="36,28,36,24">
+              <StackPanel HorizontalAlignment="Left" MaxWidth="620">
+
+                <TextBlock Text="Sharing" Style="{DynamicResource Heading}" />
+
+                <!-- The screen opens by saying what will and will not be sent,
+                     before anything is nominated. Somebody about to point this
+                     at a family drive is entitled to know that the photographs
+                     themselves stay where they are, and to know it first. -->
+                <TextBlock Style="{DynamicResource BodyText}" Margin="0,10,0,0"
+                           TextWrapping="Wrap"
+                           Text="The other computers in the house can share what everybody has worked out: the names on faces, the albums, which way up a photo goes. Choose a folder they can all reach, and each one leaves a small file there." />
+                <TextBlock Style="{DynamicResource HintText}" Margin="0,8,0,0"
+                           TextWrapping="Wrap"
+                           Text="Your photographs are never sent — not the originals, not by request, not as an option. Nothing is uploaded anywhere, and nothing leaves the folder you choose." />
+
+                <TextBlock Style="{DynamicResource FieldLabel}" Margin="0,22,0,0"
+                           Text="Shared folder" />
+                <TextBlock Style="{DynamicResource HintText}" Margin="0,0,0,8"
+                           TextWrapping="Wrap"
+                           Text="Somewhere every computer can already reach — a drive on the network, or a folder that syncs. It must not sit inside a folder of your photos, or hold one, because what is kept here would then be indexed as pictures." />
+
+                <Border Background="{DynamicResource Panel.Background}"
+                        BorderBrush="{DynamicResource Panel.Border}" BorderThickness="1"
+                        CornerRadius="4" Padding="12,9" Margin="0,0,0,8">
+                  <DockPanel>
+                    <Button DockPanel.Dock="Right" Style="{DynamicResource PrimaryButton}"
+                            MinWidth="100" Margin="12,0,0,0" VerticalAlignment="Center"
+                            Content="Change..."
+                            ToolTip="Choose the folder this library shares answers through"
+                            IsEnabled="{Binding Sharing.IsIdle}"
+                            Click="OnChooseSharedFolderClicked" />
+                    <TextBlock VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                               Style="{DynamicResource BodyText}"
+                               FontFamily="{StaticResource Font.Mono}" FontSize="12"
+                               Text="{Binding Sharing.Folder}"
+                               Visibility="{Binding Sharing.HasFolder,
+                                            Converter={StaticResource BoolToVisibility}}" />
+                    <TextBlock VerticalAlignment="Center" Style="{DynamicResource HintText}"
+                               Text="No folder chosen yet"
+                               Visibility="{Binding Sharing.HasFolder,
+                                            Converter={StaticResource InverseBoolToVisibility}}" />
+                  </DockPanel>
+                </Border>
+
+                <TextBlock Style="{DynamicResource HintText}" TextWrapping="Wrap"
+                           Foreground="{DynamicResource Status.Danger}"
+                           Text="{Binding Sharing.Problem}"
+                           Visibility="{Binding Sharing.HasProblem,
+                                        Converter={StaticResource BoolToVisibility}}" />
+
+                <!-- One button. Nobody wants to publish; they want the names
+                     they typed last night to be on the other laptop, and two
+                     buttons would be a procedure to remember - whose wrong
+                     order is not an error anything could report. -->
+                <Button Style="{DynamicResource PrimaryButton}" MinWidth="150"
+                        HorizontalAlignment="Left" Margin="0,18,0,0"
+                        Content="Share now"
+                        ToolTip="Take what the other computers have worked out, and give them yours"
+                        Command="{Binding Sharing.ShareCommand}" />
+
+                <TextBlock Style="{DynamicResource BodyText}" Margin="0,12,0,0"
+                           TextWrapping="Wrap"
+                           Text="{Binding Sharing.Status}"
+                           Visibility="{Binding Sharing.HasStatus,
+                                        Converter={StaticResource BoolToVisibility}}" />
+
+                <!-- The one number this screen must never hide: the difference
+                     between nothing to do, and an evening's work waiting for a
+                     folder nobody has added. -->
+                <Border Margin="0,12,0,0" Padding="12,9" CornerRadius="4"
+                        Background="{DynamicResource Status.CautionBack}"
+                        Visibility="{Binding Sharing.HasWaiting,
+                                     Converter={StaticResource BoolToVisibility}}">
+                  <TextBlock Style="{DynamicResource BodyText}" TextWrapping="Wrap"
+                             Foreground="{DynamicResource Status.Caution}"
+                             Text="{Binding Sharing.WaitingLabel}" />
+                </Border>
+
+                <TextBlock Style="{DynamicResource FieldLabel}" Margin="0,24,0,0"
+                           Text="The other computers"
+                           Visibility="{Binding Sharing.HasMachines,
+                                        Converter={StaticResource BoolToVisibility}}" />
+
+                <!-- Recency, not presence. The whole advantage of a shared
+                     folder is that it does not need two laptops on at once,
+                     which also means presence is not a thing it can report. -->
+                <ItemsControl Margin="0,4,0,0" ItemsSource="{Binding Sharing.Machines}"
+                              Visibility="{Binding Sharing.HasMachines,
+                                           Converter={StaticResource BoolToVisibility}}">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                      <Border BorderBrush="{DynamicResource Panel.Border}"
+                              BorderThickness="0,0,0,1" Padding="0,8">
+                        <DockPanel>
+                          <TextBlock DockPanel.Dock="Right" Margin="12,0,0,0"
+                                     VerticalAlignment="Center"
+                                     Style="{DynamicResource HintText}"
+                                     Text="{Binding Recency}" />
+                          <TextBlock VerticalAlignment="Center"
+                                     TextTrimming="CharacterEllipsis"
+                                     Style="{DynamicResource BodyText}"
+                                     Text="{Binding Name}" />
+                        </DockPanel>
+                      </Border>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <TextBlock Style="{DynamicResource HintText}" Margin="0,14,0,0"
+                           TextWrapping="Wrap"
+                           Text="Nobody has to be switched on at the same time as you. Each computer leaves its answers in the folder and picks up everybody else's the next time it shares."
+                           Visibility="{Binding Sharing.HasFolder,
+                                        Converter={StaticResource BoolToVisibility}}" />
+              </StackPanel>
+            </ScrollViewer>
+          </Grid>
+
           <Grid Visibility="{Binding ShowAbout, Converter={StaticResource BoolToVisibility}}">
             <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="36,28,36,24">
               <StackPanel HorizontalAlignment="Left" MaxWidth="620">

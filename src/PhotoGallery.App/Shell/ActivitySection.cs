@@ -37,5 +37,7 @@ public sealed record ActivitySection(
 
     public const string AboutKey = "about";
 
+    public const string SharingKey = "sharing";
+
     public const string SettingsKey = "settings";
 }

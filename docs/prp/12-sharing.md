@@ -1,19 +1,20 @@
 # 12 — Sharing between machines
 
-**Status: 🟨 In progress — the order of operations cannot be got wrong; no screen yet**
+**Status: 🟨 In progress — the decisions half works, end to end, from a screen**
 
-Built so far: the schema every decision needs to be nameable on a second
-machine; the merge itself, written as a pure function of decision sets so that
-the rules could be argued out against tests rather than against a shared folder;
-the exchange — a gzipped file per machine in a nominated folder, published and
-merged, with the both-directions rule about where that folder may sit; and the
-scan phase that applies answers which arrived before their photographs did.
+Built: the schema every decision needs to be nameable on a second machine; the
+merge, written as a pure function of decision sets so that the rules could be
+argued out against tests rather than against a shared folder; the exchange — a
+gzipped file per machine in a nominated folder, with the both-directions rule
+about where that folder may sit; the scan phase that applies answers which
+arrived before their photographs did; and the screen, which nominates the
+folder, says who is up to date, and shares in one press rather than two.
 
-A name given on one machine reaches another, and it no longer matters which way
-round you scan and share. What is missing is source pairing, so two machines
-reaching one share by a UNC path and a mapped drive letter can be matched; the
-Sharing screen, so any of it can be reached without a test; the rendition pool;
-and the direct connection, which the design defers until last.
+A family can use this today for everything except the pictures. What is missing
+is source pairing, so two machines reaching one share by a UNC path and a mapped
+drive letter can be matched; the rendition pool, which is the 2.1 GB half that
+makes a new laptop usable the same evening; the vectors; and the direct
+connection, which the design defers until last.
 
 The app is installed on every laptop in the house. One person spends an evening
 naming faces; everybody else's copy knows nothing about it. This is how that
@@ -935,7 +936,7 @@ family looking at the same photographs is usually nothing at all.
 - [ ] Two machines reaching one share by a UNC path and a mapped drive letter
       can be paired, and every decision matches afterwards.
 - [x] Adding a photo source that contains the shared folder is refused.
-- [ ] The Sharing screen shows how recently each machine last shared.
+- [x] The Sharing screen shows how recently each machine last shared.
 - [x] Ana's laptop, which has only ever paired with Dad's, holds Mum's answers.
 - [x] Clearing a name does not stop that person being proposed for that face
       again, on any machine.

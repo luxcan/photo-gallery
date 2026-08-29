@@ -1,0 +1,248 @@
+using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
+using Microsoft.Extensions.DependencyInjection;
+using PhotoGallery.Application.UseCases.Sharing;
+
+namespace PhotoGallery.App.Sharing;
+
+/// <summary>
+/// The Sharing screen: which folder the house shares through, who is up to
+/// date, and one button that makes everybody's answers everybody's answers.
+/// </summary>
+/// <remarks>
+/// <strong>One button, not two.</strong> Nobody wants to publish; they want the
+/// names they typed last night to be on the other laptop. Separate "send" and
+/// "receive" would be a procedure to remember, and the wrong order in it is not
+/// an error anything could report - it quietly works and leaves the house one
+/// merge behind.
+///
+/// <para>The screen opens saying what will and will not be sent, before a folder
+/// is nominated. Originals never travel, and somebody about to point this at a
+/// family drive is entitled to know that before they point it anywhere.</para>
+/// </remarks>
+public sealed partial class SharingViewModel : ObservableObject
+{
+    private readonly IServiceScopeFactory _scopeFactory;
+
+    /// <summary>
+    /// One job at a time.
+    /// </summary>
+    /// <remarks>
+    /// A read is raised by opening the screen, which can happen while a share is
+    /// still running - and both of them touch the same folder.
+    /// </remarks>
+    private readonly SemaphoreSlim _gate = new(1, 1);
+
+    /// <summary>The folder this library shares answers through.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasFolder))]
+    [NotifyCanExecuteChangedFor(nameof(ShareCommand))]
+    private string _folder = string.Empty;
+
+    /// <summary>Why nothing can be exchanged, in the user's words.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasProblem))]
+    [NotifyCanExecuteChangedFor(nameof(ShareCommand))]
+    private string _problem = string.Empty;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasMachines))]
+    private IReadOnlyList<MachineRow> _machines = [];
+
+    /// <summary>What the last share did, or why it could not.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasStatus))]
+    private string _status = string.Empty;
+
+    /// <summary>
+    /// Answers waiting for photographs this library has not indexed.
+    /// </summary>
+    /// <remarks>
+    /// The one number this screen must never hide. It is the difference between
+    /// "nothing to do" and "an evening's work is waiting for a folder nobody has
+    /// added", and nothing else on the screen would ever hint at it.
+    /// </remarks>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasWaiting), nameof(WaitingLabel))]
+    private int _waiting;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsIdle))]
+    [NotifyCanExecuteChangedFor(nameof(ShareCommand))]
+    private bool _isBusy;
+
+    public SharingViewModel(IServiceScopeFactory scopeFactory) =>
+        _scopeFactory = scopeFactory;
+
+    public bool HasFolder => Folder.Length > 0;
+
+    public bool HasProblem => Problem.Length > 0;
+
+    public bool HasMachines => Machines.Count > 0;
+
+    public bool HasStatus => Status.Length > 0;
+
+    public bool HasWaiting => Waiting > 0;
+
+    public bool IsIdle => !IsBusy;
+
+    /// <summary>Whether there is anywhere to share, so the button can be pressed.</summary>
+    public bool CanShare => IsIdle && HasFolder && !HasProblem;
+
+    public string WaitingLabel =>
+        Waiting == 1
+            ? "1 answer is waiting for a photo this library has not indexed yet. "
+              + "Scanning will bring it in."
+            : $"{Waiting:N0} answers are waiting for photos this library has not indexed yet. "
+              + "Scanning will bring them in.";
+
+    /// <summary>Reads the folder, who has shared, and what is waiting.</summary>
+    /// <remarks>
+    /// Skipped rather than queued when something else is running: the answer is
+    /// the same, and a share ends by reading this itself.
+    /// </remarks>
+    public async Task RefreshAsync()
+    {
+        if (!await _gate.WaitAsync(0).ConfigureAwait(true))
+        {
+            return;
+        }
+
+        try
+        {
+            await ReadAsync().ConfigureAwait(true);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    /// <summary>
+    /// Shares this library through a folder from now on.
+    /// </summary>
+    /// <remarks>
+    /// Refused rather than accepted where the folder overlaps a photo source,
+    /// in either direction: sharing writes files into a folder tree, and a scan
+    /// would index them as photographs and grow the library a second copy of
+    /// itself on every refresh.
+    /// </remarks>
+    public async Task ChooseFolderAsync(string? folder)
+    {
+        if (string.IsNullOrWhiteSpace(folder))
+        {
+            return;
+        }
+
+        await _gate.WaitAsync().ConfigureAwait(true);
+        IsBusy = true;
+
+        try
+        {
+            await Task.Run(async () =>
+            {
+                using IServiceScope scope = _scopeFactory.CreateScope();
+                await scope.ServiceProvider
+                    .GetRequiredService<SetSharedFolderHandler>()
+                    .HandleAsync(folder)
+                    .ConfigureAwait(false);
+            }).ConfigureAwait(true);
+
+            Status = string.Empty;
+            await ReadAsync().ConfigureAwait(true);
+        }
+        catch (Exception ex) when (ex is IOException
+                                      or UnauthorizedAccessException
+                                      or InvalidOperationException
+                                      or DirectoryNotFoundException)
+        {
+            // Every reason this fails is one the user can do something about, so
+            // none of them may be reported as a bare failure.
+            Status = ex.Message;
+        }
+        finally
+        {
+            IsBusy = false;
+            _gate.Release();
+        }
+    }
+
+    /// <summary>
+    /// Takes everybody's answers, then gives this library's back.
+    /// </summary>
+    /// <remarks>
+    /// That order is what makes three machines converge with no machinery for
+    /// it: this library's file carries what it has just been told as well as
+    /// what it decided itself.
+    /// </remarks>
+    [RelayCommand(CanExecute = nameof(CanShare))]
+    private async Task ShareAsync()
+    {
+        await _gate.WaitAsync().ConfigureAwait(true);
+        IsBusy = true;
+        Status = string.Empty;
+
+        try
+        {
+            ShareResult result = await Task.Run(async () =>
+            {
+                using IServiceScope scope = _scopeFactory.CreateScope();
+                return await scope.ServiceProvider
+                    .GetRequiredService<ShareNowHandler>()
+                    .HandleAsync()
+                    .ConfigureAwait(false);
+            }).ConfigureAwait(true);
+
+            Status = result.Summary;
+
+            // Named rather than swallowed. A smaller exchange reported as a
+            // complete one is the kind of quiet wrong this feature cannot
+            // afford, and a file being written as this one read is the ordinary
+            // cause - which comes good on the next press.
+            if (result.Merged.Unreadable.Count > 0)
+            {
+                Status += result.Merged.Unreadable.Count == 1
+                    ? " One computer's answers could not be read this time."
+                    : $" {result.Merged.Unreadable.Count} computers' answers could not be read "
+                      + "this time.";
+            }
+
+            await ReadAsync().ConfigureAwait(true);
+        }
+        catch (Exception ex) when (ex is IOException
+                                      or UnauthorizedAccessException
+                                      or InvalidOperationException)
+        {
+            Status = $"Sharing could not finish: {ex.Message}";
+        }
+        finally
+        {
+            IsBusy = false;
+            _gate.Release();
+        }
+    }
+
+    /// <summary>The read itself, without the gate, so callers holding it can use it.</summary>
+    private async Task ReadAsync()
+    {
+        SharingStatus status = await Task.Run(async () =>
+        {
+            using IServiceScope scope = _scopeFactory.CreateScope();
+            return await scope.ServiceProvider
+                .GetRequiredService<GetSharingHandler>()
+                .HandleAsync()
+                .ConfigureAwait(false);
+        }).ConfigureAwait(true);
+
+        DateTime now = DateTime.UtcNow;
+
+        Folder = status.Folder;
+        Problem = status.Problem;
+        Waiting = status.Waiting;
+        Machines =
+        [
+            .. status.Machines.Select(machine => new MachineRow(
+                machine.Name, machine.Recency(now), !machine.Merged)),
+        ];
+    }
+}

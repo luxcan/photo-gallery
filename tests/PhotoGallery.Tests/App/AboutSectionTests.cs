@@ -51,8 +51,11 @@ public sealed class AboutSectionTests : IDisposable
     [Fact]
     public void AboutSitsUnderSettingsAndNeedsNoPhotographs()
     {
+        // Sharing leads, because it is something somebody does rather than
+        // something they configure; About is last, because it is the one nobody
+        // opens twice.
         Assert.Equal(
-            ["settings", "about"],
+            ["sharing", "settings", "about"],
             _main.BottomSections.Select(section => section.Key));
 
         Assert.False(

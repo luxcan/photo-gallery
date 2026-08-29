@@ -863,6 +863,35 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
+    /// Chooses the folder this library shares answers through.
+    /// </summary>
+    /// <remarks>
+    /// The view model refuses a folder that overlaps a photo source, in either
+    /// direction, and says why. Nothing is validated here: a picker that decided
+    /// for itself which folders were allowed would be a second copy of a rule
+    /// that already exists, and the two would drift.
+    /// </remarks>
+    private async void OnChooseSharedFolderClicked(object sender, RoutedEventArgs e)
+    {
+        var dialog = new OpenFolderDialog
+        {
+            Title = "Choose a folder every computer in the house can reach",
+
+            // A folder that is not there any more makes the picker refuse to
+            // open, and it refuses silently - which looks exactly like a button
+            // that does nothing.
+            InitialDirectory = Directory.Exists(_viewModel.Sharing.Folder)
+                ? _viewModel.Sharing.Folder
+                : string.Empty,
+        };
+
+        if (dialog.ShowDialog(this) == true)
+        {
+            await _viewModel.Sharing.ChooseFolderAsync(dialog.FolderName);
+        }
+    }
+
+    /// <summary>
     /// Re-reads the model folder when the window comes back to the front.
     /// </summary>
     /// <remarks>

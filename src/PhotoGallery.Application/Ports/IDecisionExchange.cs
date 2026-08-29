@@ -37,6 +37,25 @@ public interface IDecisionExchange
     /// </summary>
     Task PublishAsync(DecisionSet mine, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// When each machine last put its answers where this one could see them.
+    /// </summary>
+    /// <remarks>
+    /// The honest form of "is everybody in step?" for a mechanism whose whole
+    /// advantage is that it does not need two laptops on at once - which also
+    /// means presence, in the usual sense, is not a thing it can report.
+    /// Recency is. Without it a decision set written six months ago by a laptop
+    /// now in a drawer merges exactly like one written an hour ago, and there is
+    /// nothing on screen to tell them apart.
+    ///
+    /// <para>Deliberately cheap: this is a directory listing, not a read. The
+    /// Sharing screen asks it every time it opens, and decompressing half a
+    /// megabyte per machine to draw a line of text would be a screen nobody
+    /// opens twice.</para>
+    /// </remarks>
+    Task<IReadOnlyList<PublishedAnswers>> StandingAsync(
+        CancellationToken cancellationToken = default);
+
     /// <summary>Reads what every other machine has published.</summary>
     Task<FetchedDecisions> FetchAsync(CancellationToken cancellationToken = default);
 }

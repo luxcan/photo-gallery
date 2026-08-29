@@ -377,6 +377,18 @@ public sealed class SqliteDecisionReader : IDecisionReader
     }
 
     /// <inheritdoc/>
+    public async Task<int> WaitingCountAsync(CancellationToken cancellationToken = default) =>
+        await _db.HeldDecisions.CountAsync(cancellationToken).ConfigureAwait(false);
+
+    /// <inheritdoc/>
+    public async Task<IReadOnlyList<Peer>> PeersAsync(
+        CancellationToken cancellationToken = default) =>
+        await _db.Peers
+            .AsNoTracking()
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+    /// <inheritdoc/>
     public async Task<HeldAnswers> WaitingAsync(CancellationToken cancellationToken = default)
     {
         List<HeldDecision> rows = await _db.HeldDecisions

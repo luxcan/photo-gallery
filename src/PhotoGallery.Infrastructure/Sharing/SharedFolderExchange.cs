@@ -137,6 +137,49 @@ public sealed class SharedFolderExchange : IDecisionExchange
         return new FetchedDecisions(sets, unreadable);
     }
 
+    public async Task<IReadOnlyList<PublishedAnswers>> StandingAsync(
+        CancellationToken cancellationToken = default)
+    {
+        LibrarySettings settings =
+            await _index.GetSettingsAsync(cancellationToken).ConfigureAwait(false);
+
+        if (string.IsNullOrWhiteSpace(settings.SharedFolder))
+        {
+            return [];
+        }
+
+        string answers = Path.Combine(settings.SharedFolder, AnswersFolder);
+
+        if (!Directory.Exists(answers))
+        {
+            return [];
+        }
+
+        List<PublishedAnswers> standing = [];
+
+        // A listing and nothing else. The name is the machine and the file's own
+        // last-write time is when that machine last shared, so this reads no
+        // bytes at all - which is what lets the screen ask it on every open.
+        foreach (string path in Directory.EnumerateFiles(answers, "*" + DecisionSetFile.Extension))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            string name = Path.GetFileNameWithoutExtension(
+                Path.GetFileNameWithoutExtension(path));
+
+            // A file somebody dropped in by hand, or one a later version writes
+            // under a different name. Left alone rather than guessed at.
+            if (!Guid.TryParse(name, out Guid machine))
+            {
+                continue;
+            }
+
+            standing.Add(new PublishedAnswers(machine, File.GetLastWriteTimeUtc(path)));
+        }
+
+        return standing;
+    }
+
     /// <summary>
     /// A machine's file is named after the machine, which is what makes one
     /// writer per file true.

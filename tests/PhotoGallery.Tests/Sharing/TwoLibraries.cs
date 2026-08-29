@@ -164,6 +164,12 @@ internal sealed class Library : IDisposable
     public ApplyHeldDecisionsHandler Waiting =>
         field ??= new ApplyHeldDecisionsHandler(Index, Decisions, Writing, Turning);
 
+    /// <summary>What the Sharing screen opens showing.</summary>
+    public GetSharingHandler Overview => field ??= new GetSharingHandler(Index, Decisions, Exchange);
+
+    /// <summary>Its one button: take everybody's answers, then give yours back.</summary>
+    public ShareNowHandler Sharing => field ??= new ShareNowHandler(Merging, Publishing);
+
     /// <summary>Stands in for the cached pictures, which these tests have none of.</summary>
     public StubRenditionTurner Renditions { get; } = new();
 
