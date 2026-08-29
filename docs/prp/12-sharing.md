@@ -1,13 +1,20 @@
 # 12 — Sharing between machines
 
-**Status: 🟨 In progress — the decisions can be settled, not yet exchanged**
+**Status: 🟨 In progress — answers cross between machines; no screen yet**
 
 Built so far: the schema every decision needs to be nameable on a second
-machine, and the merge itself, written as a pure function of decision sets so
-that the rules could be argued out against tests rather than against a shared
-folder. Nothing is published or read yet — `IDecisionExchange`,
-`ApplyHeldDecisionsHandler`, the rendition pool and the Sharing screen are all
-still to come.
+machine; the merge itself, written as a pure function of decision sets so that
+the rules could be argued out against tests rather than against a shared folder;
+and the exchange — a gzipped file per machine in a nominated folder, published
+and merged, with the both-directions rule about where that folder may sit.
+
+A name given on one machine reaches another, with no scan in between. What is
+missing is everything after that: `ApplyHeldDecisionsHandler` as a scan phase,
+so answers waiting for photographs are applied rather than only counted; source
+pairing, so two machines reaching one share by a UNC path and a mapped drive
+letter can be matched; the Sharing screen, so any of it can be reached without a
+test; the rendition pool; and the direct connection, which the design defers
+until last.
 
 The app is installed on every laptop in the house. One person spends an evening
 naming faces; everybody else's copy knows nothing about it. This is how that
@@ -878,11 +885,11 @@ family looking at the same photographs is usually nothing at all.
 
 ## Acceptance
 
-- [ ] A name given on one machine appears on another after one merge, with no
+- [x] A name given on one machine appears on another after one merge, with no
       scan in between, where both have already indexed the photograph.
 - [ ] Answers about photographs this machine has not indexed are held, reported
-      by count, and applied by the next scan. *(Held and counted; the scan phase
-      that applies them is not built.)*
+      by count, and applied by the next scan. *(Held as rows and reported; the
+      scan phase that applies them is not built.)*
 - [x] Merging twice changes nothing the second time.
 - [x] A merge stopped halfway leaves what it applied applied, and finishes on
       the next run.
@@ -900,7 +907,7 @@ family looking at the same photographs is usually nothing at all.
       exchange that did nothing and reported success.
 - [ ] A file re-saved in place keeps its decisions and does not take the pooled
       rendition of the bytes it no longer has.
-- [ ] Nothing is written inside a photo source, and a shared folder inside one
+- [x] Nothing is written inside a photo source, and a shared folder inside one
       is refused with a reason.
 - [ ] No original is ever sent, requested or received.
 - [ ] A machine that takes the pool prepares no photographs of its own: after
@@ -929,7 +936,7 @@ family looking at the same photographs is usually nothing at all.
       those faces and does not detect them again on the next scan.
 - [ ] Two machines reaching one share by a UNC path and a mapped drive letter
       can be paired, and every decision matches afterwards.
-- [ ] Adding a photo source that contains the shared folder is refused.
+- [x] Adding a photo source that contains the shared folder is refused.
 - [ ] The Sharing screen shows how recently each machine last shared.
 - [x] Ana's laptop, which has only ever paired with Dad's, holds Mum's answers.
 - [x] Clearing a name does not stop that person being proposed for that face

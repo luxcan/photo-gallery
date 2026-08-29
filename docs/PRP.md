@@ -139,7 +139,7 @@ before them. A number is a PRP's identity, not its turn.
 | 11 | Collections — proposed groupings | ⬜ **Next** | [11-collections.md](prp/11-collections.md) |
 | 09 | Models — installing, removing and licence | ◐ Half built | [09-models.md](prp/09-models.md) |
 | 08 | Video | ◐ Posters ship | [08-video.md](prp/08-video.md) |
-| 12 | Sharing between machines | 🟨 Schema and merge built | [12-sharing.md](prp/12-sharing.md) |
+| 12 | Sharing between machines | 🟨 Answers cross; no screen | [12-sharing.md](prp/12-sharing.md) |
 
 **Location before models** deliberately. It needs no weights, it rides a read the
 app already does, and it is the one signal the collection names cannot fake — a
