@@ -156,7 +156,7 @@ public static class DecisionMerge
                 continue;
             }
 
-            TimeSpan ahead = them.LatestDecision - nowUtc;
+            TimeSpan ahead = them.LatestDecision() - nowUtc;
             if (ahead > FurthestAhead)
             {
                 refused.Add(new RefusedSet(

@@ -1,4 +1,6 @@
 using Microsoft.EntityFrameworkCore;
+using PhotoGallery.Application.Ports;
+using PhotoGallery.Application.UseCases.Sharing;
 using PhotoGallery.Domain.Assets;
 using PhotoGallery.Domain.Collections;
 using PhotoGallery.Domain.Faces;
@@ -6,6 +8,7 @@ using PhotoGallery.Domain.Library;
 using PhotoGallery.Domain.People;
 using PhotoGallery.Domain.Sharing;
 using PhotoGallery.Infrastructure.Persistence;
+using PhotoGallery.Infrastructure.Sharing;
 
 namespace PhotoGallery.Tests.Sharing;
 
@@ -56,13 +59,35 @@ internal sealed class TwoLibraries : IDisposable
     public string SharedFolder { get; }
 
     /// <summary>A third machine, for the rules that only three can show.</summary>
-    public Library Add(string name) =>
-        new(Path.Combine(_root, name.Replace(' ', '-')), name, Mum.SharedSourceId);
+    public Library Add(string name)
+    {
+        var third = new Library(
+            Path.Combine(_root, name.Replace(' ', '-')), name, Mum.SharedSourceId);
+
+        third.SharesThrough(SharedFolder);
+        _others.Add(third);
+        return third;
+    }
+
+    /// <summary>Points every machine at the folder between them.</summary>
+    public TwoLibraries Sharing()
+    {
+        Mum.SharesThrough(SharedFolder);
+        Dad.SharesThrough(SharedFolder);
+        return this;
+    }
+
+    private readonly List<Library> _others = [];
 
     public void Dispose()
     {
         Mum.Dispose();
         Dad.Dispose();
+
+        foreach (Library other in _others)
+        {
+            other.Dispose();
+        }
 
         try
         {
@@ -117,6 +142,24 @@ internal sealed class Library : IDisposable
 
     public GalleryDbContext Db { get; }
 
+    /// <summary>The real implementations, so a test exercises what ships.</summary>
+    public SqliteLibraryIndex Index => field ??= new SqliteLibraryIndex(Db);
+
+    public SqliteDecisionReader Decisions => field ??= new SqliteDecisionReader(Db);
+
+    public SqliteDecisionRepository Writing => field ??= new SqliteDecisionRepository(Db);
+
+    public SharedFolderExchange Exchange => field ??= new SharedFolderExchange(Index);
+
+    public PublishDecisionsHandler Publishing =>
+        field ??= new PublishDecisionsHandler(Index, Decisions, Exchange);
+
+    public MergeDecisionsHandler Merging => field ??= new MergeDecisionsHandler(
+        Index, Decisions, Writing, Exchange, Renditions, new SqliteFaceRepository(Db));
+
+    /// <summary>Stands in for the cached pictures, which these tests have none of.</summary>
+    public StubRenditionTurner Renditions { get; } = new();
+
     public string Root { get; }
 
     public Guid MachineId { get; }
@@ -125,6 +168,15 @@ internal sealed class Library : IDisposable
 
     /// <summary>What this machine's source is called on both machines.</summary>
     public Guid SharedSourceId { get; private set; }
+
+    /// <summary>Nominates the folder this machine shares answers through.</summary>
+    public void SharesThrough(string folder)
+    {
+        LibrarySettings settings = Db.LibrarySettings.Single();
+        settings.SharedFolder = folder;
+        Db.SaveChanges();
+        Db.ChangeTracker.Clear();
+    }
 
     /// <summary>
     /// Repoints the source at a different shared id, which is what two machines

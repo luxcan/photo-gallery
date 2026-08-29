@@ -79,7 +79,32 @@ public readonly struct AssetKey : IEquatable<AssetKey>
             SharedSourceId,
             StringComparer.OrdinalIgnoreCase.GetHashCode(RelativePath ?? string.Empty));
 
+    /// <summary>
+    /// The key as one string, which is how it is written to a file.
+    /// </summary>
+    /// <remarks>
+    /// A colon separates the two halves because Windows will not have one in a
+    /// path - it is reserved for the drive and for alternate streams - so the
+    /// free-text half cannot contain the separator and the split needs no
+    /// escaping. The identity half never does either.
+    /// </remarks>
     public override string ToString() => $"{SharedSourceId:D}:{RelativePath}";
+
+    /// <summary>Reads back what <see cref="ToString"/> wrote.</summary>
+    /// <exception cref="FormatException">The text is not a key.</exception>
+    public static AssetKey Parse(string text)
+    {
+        ArgumentNullException.ThrowIfNull(text);
+
+        int cut = text.IndexOf(':', StringComparison.Ordinal);
+
+        if (cut <= 0 || cut == text.Length - 1 || !Guid.TryParse(text[..cut], out Guid source))
+        {
+            throw new FormatException($"Not a photograph key: {text}");
+        }
+
+        return new AssetKey(source, text[(cut + 1)..]);
+    }
 
     public static bool operator ==(AssetKey left, AssetKey right) => left.Equals(right);
 

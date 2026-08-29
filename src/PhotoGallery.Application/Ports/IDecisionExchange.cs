@@ -1,0 +1,42 @@
+using PhotoGallery.Domain.Sharing;
+
+namespace PhotoGallery.Application.Ports;
+
+/// <summary>
+/// How this library's answers reach the other machines in the house, and
+/// theirs reach it.
+/// </summary>
+/// <remarks>
+/// The seam that lets a shared folder ship first and a direct connection arrive
+/// later without touching the merge. A shared folder is one file written and
+/// everybody else's read; a direct connection is a listener, a pairing and a
+/// framing. <strong>The merge cannot tell them apart and must never learn
+/// to.</strong>
+///
+/// <para>Separate from anything that moves renditions, because the two have
+/// different shapes and different costs: decisions are one small document
+/// written whole, renditions are tens of thousands of files copied one at a time
+/// and stopped halfway more often than not. Keeping them apart is also what lets
+/// a machine take the decisions and decline the gigabytes.</para>
+/// </remarks>
+public interface IDecisionExchange
+{
+    /// <summary>
+    /// Whether there is anywhere to exchange answers yet, and why not when there
+    /// is not.
+    /// </summary>
+    /// <remarks>
+    /// Asked rather than discovered by a failure, because the Sharing screen has
+    /// to open by saying what will happen before anything is nominated.
+    /// </remarks>
+    Task<ExchangeReadiness> ReadinessAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Writes this machine's whole decision set, replacing whatever it wrote
+    /// last time.
+    /// </summary>
+    Task PublishAsync(DecisionSet mine, CancellationToken cancellationToken = default);
+
+    /// <summary>Reads what every other machine has published.</summary>
+    Task<FetchedDecisions> FetchAsync(CancellationToken cancellationToken = default);
+}

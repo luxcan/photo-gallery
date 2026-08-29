@@ -71,6 +71,11 @@ public sealed record DecisionSet(
 
     /// <summary>The latest moment anybody decided anything in here.</summary>
     /// <remarks>
+    /// A method rather than a property because a decision set is written to a
+    /// file, and a computed property would be written with it - a value nothing
+    /// reads back, recalculated from the very fields it sits beside.
+    /// </remarks>
+    /// <remarks>
     /// What a clock check is made against, and deliberately not
     /// <see cref="WrittenUtc"/>. A machine whose clock is a year ahead stamps
     /// the answers as well as the file, and it is the answers that do the harm:
@@ -79,7 +84,7 @@ public sealed record DecisionSet(
     /// refusal with nothing behind it, and would let an old set written today
     /// look suspicious for no reason.
     /// </remarks>
-    public DateTime LatestDecision =>
+    public DateTime LatestDecision() =>
         new[]
         {
             Answers.Count == 0 ? DateTime.MinValue : Answers.Max(a => a.DecidedUtc),
