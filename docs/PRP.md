@@ -16,6 +16,12 @@ searchable — by person, by folder, by date, and later by what is in the pictur
 **One user, their own machine, their own photos.** Not a server, not multi-user,
 not shared. That single fact justifies most of the architecture below.
 
+It survives [12](prp/12-sharing.md) intact, which is the test of whether it was
+the right fact. Sharing between the family's laptops exchanges *decisions* — who
+is in a picture, what an album is called — and never opens one database to two
+machines. Every copy stays a single-user library that happens to have been told
+what another single-user library concluded.
+
 ### The library it was built against
 
 | | |
@@ -133,6 +139,7 @@ before them. A number is a PRP's identity, not its turn.
 | 11 | Collections — proposed groupings | ⬜ **Next** | [11-collections.md](prp/11-collections.md) |
 | 09 | Models — installing, removing and licence | ◐ Half built | [09-models.md](prp/09-models.md) |
 | 08 | Video | ◐ Posters ship | [08-video.md](prp/08-video.md) |
+| 12 | Sharing between machines | ⬜ Not started | [12-sharing.md](prp/12-sharing.md) |
 
 **Location before models** deliberately. It needs no weights, it rides a read the
 app already does, and it is the one signal the collection names cannot fake — a
