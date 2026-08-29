@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using PhotoGallery.App.Duplicates;
 using PhotoGallery.App.Gallery;
 using PhotoGallery.App.People;
+using PhotoGallery.App.Sharing;
 using PhotoGallery.App.ViewModels;
 using PhotoGallery.Application.Ports;
 using PhotoGallery.Application.UseCases.Gallery;
@@ -86,7 +87,8 @@ public sealed class DeleteOverlayTests : IDisposable
             new PeopleViewModel(scopeFactory, thumbnails),
             new DuplicatesViewModel(scopeFactory, thumbnails),
             thumbnails,
-            new SilentLog());
+            new SilentLog(),
+            new DirectSharing(scopeFactory));
     }
 
     /// <summary>

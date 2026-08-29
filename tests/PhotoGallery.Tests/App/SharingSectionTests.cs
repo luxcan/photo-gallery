@@ -45,6 +45,17 @@ public sealed class SharingSectionTests
     [InlineData("Sharing.HasUnprepared")]
     [InlineData("Sharing.PicturesLabel")]
     [InlineData("Sharing.TakePicturesCommand")]
+    [InlineData("Sharing.NetworkProblem")]
+    [InlineData("Sharing.HasNetworkProblem")]
+    [InlineData("Sharing.TypedAddress")]
+    [InlineData("Sharing.TypedCode")]
+    [InlineData("Sharing.HasReached")]
+    [InlineData("Sharing.ReachCommand")]
+    [InlineData("Sharing.PairByCodeCommand")]
+    [InlineData("Sharing.MyCode")]
+    [InlineData("Sharing.IsOffering")]
+    [InlineData("Sharing.OfferCommand")]
+    [InlineData("Sharing.StopOfferingCommand")]
     public void EverythingBoundOnTheScreenExists(string path)
     {
         // Bound in the window, and a member of the view model behind it. The
@@ -60,6 +71,10 @@ public sealed class SharingSectionTests
         {
             "ShareCommand" => "ShareAsync",
             "TakePicturesCommand" => "TakePicturesAsync",
+            "ReachCommand" => "ReachAsync",
+            "PairByCodeCommand" => "PairByCodeAsync",
+            "OfferCommand" => "Offer",
+            "StopOfferingCommand" => "StopOffering",
             _ => member,
         };
         Assert.Contains(expected, s_viewModel);
@@ -145,6 +160,24 @@ public sealed class SharingSectionTests
 
         Assert.True(share > 0 && pictures > 0, "one of the two actions is missing");
         Assert.True(share < pictures, "the pictures are offered before the answers are shared");
+    }
+
+    [Fact]
+    public void ABlockedNetworkIsSaidAndATypedAddressIsOfferedBesideIt()
+    {
+        // Discovery blocked by a Public network profile finds nothing and raises
+        // no error at all, so an empty list is the same picture as nobody being
+        // there. The two need completely different things from the person
+        // reading it - and every one of those cases ends with a typed address as
+        // the way through.
+        string section = Section();
+
+        int said = section.IndexOf("Sharing.NetworkProblem", StringComparison.Ordinal);
+        int typed = section.IndexOf("Sharing.TypedAddress", StringComparison.Ordinal);
+
+        Assert.True(said > 0, "the screen never says why nothing was found");
+        Assert.True(typed > 0, "the screen offers no typed address");
+        Assert.True(said < typed, "the address is offered before the reason is given");
     }
 
     [Fact]

@@ -74,11 +74,16 @@ public sealed class PublishDecisionsHandler
     /// Who this library says it is, which every published answer is signed with.
     /// </summary>
     /// <remarks>
-    /// Shared with the merge rather than built twice: the schema version decides
-    /// whether another machine's payload can be read at all, and two places
-    /// deciding it would eventually decide differently.
+    /// Shared rather than built twice: the schema version decides whether
+    /// another machine's payload can be read at all, and two places deciding it
+    /// would eventually decide differently.
+    ///
+    /// <para>Public because the listener that answers a direct connection has to
+    /// say who this machine is before any use case is involved - it is spoken to
+    /// rather than asked, so there is nothing above it to have worked this out.
+    /// </para>
     /// </remarks>
-    internal static async Task<MachineIdentity> ThisMachineAsync(
+    public static async Task<MachineIdentity> ThisMachineAsync(
         ILibraryIndex index, CancellationToken cancellationToken)
     {
         LibrarySettings settings =

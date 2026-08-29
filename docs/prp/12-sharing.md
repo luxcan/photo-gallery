@@ -1,20 +1,19 @@
 # 12 — Sharing between machines
 
-**Status: 🟨 In progress — the decisions half works, end to end, from a screen**
+**Status: ✅ Done — every acceptance criterion holds**
 
-Built: the schema every decision needs to be nameable on a second machine; the
-merge, written as a pure function of decision sets so that the rules could be
-argued out against tests rather than against a shared folder; the exchange — a
-gzipped file per machine in a nominated folder, with the both-directions rule
-about where that folder may sit; the scan phase that applies answers which
-arrived before their photographs did; and the screen, which nominates the
-folder, says who is up to date, and shares in one press rather than two.
+Both halves. The decisions cross through a folder every machine can reach, or
+over a direct TLS connection to a machine that shares no folder with anybody;
+the small copies pool, so a new laptop is usable the same evening instead of the
+following week; and the face vectors travel, refused by name when the models
+differ.
 
-A family can use this today for everything except the pictures. What is missing
-is source pairing, so two machines reaching one share by a UNC path and a mapped
-drive letter can be matched; the rendition pool, which is the 2.1 GB half that
-makes a new laptop usable the same evening; the vectors; and the direct
-connection, which the design defers until last.
+The two things worth remembering about the shape of it: the merge is a pure
+function of decision sets, so every rule about two machines disagreeing was
+argued out against tests rather than against two real network shares; and
+answers about photographs a machine has not indexed are held rather than
+dropped, which is what makes the order of scanning and sharing impossible to get
+wrong.
 
 The app is installed on every laptop in the house. One person spends an evening
 naming faces; everybody else's copy knows nothing about it. This is how that
@@ -966,7 +965,7 @@ family looking at the same photographs is usually nothing at all.
       differs.
 - [x] Three machines converge, in any order, with no machine designated first.
 - [x] The pooled thumbnail folder is never indexed as photographs.
-- [ ] Discovery blocked by a Public network profile says so, and offers the
+- [x] Discovery blocked by a Public network profile says so, and offers the
       typed address.
 - [x] A payload from a newer schema is refused with a plain message rather than
       partially applied.

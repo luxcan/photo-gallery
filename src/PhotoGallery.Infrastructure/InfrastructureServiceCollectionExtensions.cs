@@ -74,6 +74,14 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddScoped<IDecisionExchange, SharedFolderExchange>();
         services.AddScoped<IRenditionPool, SharedFolderPool>();
 
+        // Finding the other computers with no folder in common. The profile
+        // check is its own seam because a Public network cannot be detected by
+        // trying: the socket opens, the packet goes nowhere, and nothing fails.
+        services.AddSingleton<INetworkProfile, WindowsNetworkProfile>();
+        services.AddScoped<IPeerDiscovery, UdpPeerDiscovery>();
+        services.AddSingleton<PeerCertificate>();
+        services.AddSingleton<IPeerLink, PeerLink>();
+
         services.AddSingleton(ModelManifest.Default);
         services.AddSingleton<IModelFolder, ModelFolder>();
         services.AddSingleton<IModelStore, FileModelStore>();

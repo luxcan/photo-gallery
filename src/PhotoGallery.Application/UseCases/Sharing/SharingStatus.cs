@@ -1,3 +1,5 @@
+using PhotoGallery.Domain.Sharing.Direct;
+
 namespace PhotoGallery.Application.UseCases.Sharing;
 
 /// <summary>
@@ -31,9 +33,22 @@ public sealed record SharingStatus(
     string Problem,
     IReadOnlyList<MachineStanding> Machines,
     int Waiting,
-    int Unprepared)
+    int Unprepared,
+    DiscoveryProblem Discovery = DiscoveryProblem.None)
 {
     public static SharingStatus Nothing { get; } = new(string.Empty, string.Empty, [], 0, 0);
+
+    /// <summary>
+    /// Why the other computers cannot be found on the network, said plainly, or
+    /// empty when they can.
+    /// </summary>
+    /// <remarks>
+    /// Said rather than discovered. Discovery blocked by a Public network
+    /// profile finds nothing and raises no error at all, so an empty list is the
+    /// same picture as nobody being there - and the two need completely
+    /// different things from the person reading it.
+    /// </remarks>
+    public string DiscoveryProblem => Discovery.Explain();
 
     /// <summary>Whether a folder is chosen and reachable.</summary>
     public bool CanShare => Folder.Length > 0 && Problem.Length == 0;

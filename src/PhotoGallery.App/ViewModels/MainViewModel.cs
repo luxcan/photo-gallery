@@ -257,7 +257,8 @@ public sealed partial class MainViewModel : ObservableObject
         PeopleViewModel people,
         DuplicatesViewModel duplicates,
         IThumbnailStore thumbnails,
-        IActivityLog activityLog)
+        IActivityLog activityLog,
+        DirectSharing direct)
     {
         _scopeFactory = scopeFactory;
         _thumbnails = thumbnails;
@@ -269,7 +270,7 @@ public sealed partial class MainViewModel : ObservableObject
         About = new AboutViewModel();
         Collections = new CollectionsViewModel(scopeFactory, thumbnails);
         Models = new ModelsViewModel(scopeFactory);
-        Sharing = new SharingViewModel(scopeFactory);
+        Sharing = new SharingViewModel(scopeFactory, direct);
 
         // The nav and the search box both gate on what is installed, and neither
         // of them owns it.
@@ -1872,6 +1873,15 @@ public sealed partial class MainViewModel : ObservableObject
         else if (ShowAbout)
         {
             About.Reopened();
+        }
+
+        // Leaving the Sharing screen stops this machine offering to pair. The
+        // code was read aloud across a room; leaving it live on a laptop nobody
+        // is sitting at is the one way this becomes something that happens to
+        // somebody rather than something they did.
+        if (!ShowSharing)
+        {
+            Sharing.StopOfferingCommand.Execute(null);
         }
     }
 

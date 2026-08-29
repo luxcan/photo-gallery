@@ -118,7 +118,8 @@ public sealed class SourcePairingTests
         Assert.Equal(Hers, link.Canonical);
         Assert.Equal(His, link.Absorbed);
         Assert.Equal(link.Ordered(), new SourceLink(His, Hers, Monday, Guid.NewGuid()).Ordered()
-            with { DecidedBy = link.DecidedBy });
+            with
+        { DecidedBy = link.DecidedBy });
     }
 
     [Fact]

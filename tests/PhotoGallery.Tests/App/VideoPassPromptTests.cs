@@ -3,6 +3,7 @@ using PhotoGallery.App.Duplicates;
 using PhotoGallery.App.Gallery;
 using PhotoGallery.App.People;
 using PhotoGallery.App.Shell;
+using PhotoGallery.App.Sharing;
 using PhotoGallery.App.ViewModels;
 using PhotoGallery.Application.Ports;
 using PhotoGallery.Application.UseCases.OpenLibrary;
@@ -152,7 +153,8 @@ public sealed class VideoPassPromptTests : IDisposable
             new PeopleViewModel(scopeFactory, store),
             new DuplicatesViewModel(scopeFactory, store),
             store,
-            new FileActivityLog(workingFolder));
+            new FileActivityLog(workingFolder),
+            new DirectSharing(scopeFactory));
     }
 
     public void Dispose()

@@ -1,7 +1,9 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.DependencyInjection;
+using System.Net.Sockets;
 using PhotoGallery.Application.UseCases.Sharing;
+using PhotoGallery.Domain.Sharing.Direct;
 
 namespace PhotoGallery.App.Sharing;
 
@@ -23,6 +25,7 @@ namespace PhotoGallery.App.Sharing;
 public sealed partial class SharingViewModel : ObservableObject
 {
     private readonly IServiceScopeFactory _scopeFactory;
+    private readonly DirectSharing _direct;
 
     /// <summary>
     /// One job at a time.
@@ -44,6 +47,49 @@ public sealed partial class SharingViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(HasProblem))]
     [NotifyCanExecuteChangedFor(nameof(ShareCommand))]
     private string _problem = string.Empty;
+
+    /// <summary>
+    /// Why the other computers cannot be found on the network, or empty when
+    /// they can.
+    /// </summary>
+    /// <remarks>
+    /// Said rather than discovered. A network set to Public blocks the beacon
+    /// outright and raises no error at all, so an empty list looks exactly like
+    /// nobody being there - and there is always a typed address as the way
+    /// through and the shared folder as the way round.
+    /// </remarks>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasNetworkProblem))]
+    private string _networkProblem = string.Empty;
+
+    /// <summary>An address somebody typed, for the network that will not carry a beacon.</summary>
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(ReachCommand))]
+    private string _typedAddress = string.Empty;
+
+    /// <summary>The six digits showing on the other computer.</summary>
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(PairByCodeCommand))]
+    private string _typedCode = string.Empty;
+
+    /// <summary>The computer that answered, waiting on six digits.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasReached), nameof(ReachedName))]
+    [NotifyCanExecuteChangedFor(nameof(PairByCodeCommand))]
+    private ReachResult? _reached;
+
+    /// <summary>
+    /// The six digits this machine is showing, for somebody else to type.
+    /// </summary>
+    /// <remarks>
+    /// Only while this screen is open, and spent as soon as one pairing uses it.
+    /// A machine that would accept a pairing at any time is one anybody on the
+    /// Wi-Fi can guess their way into at their leisure - a million tries,
+    /// unattended.
+    /// </remarks>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsOffering))]
+    private string _myCode = string.Empty;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasMachines))]
@@ -97,12 +143,23 @@ public sealed partial class SharingViewModel : ObservableObject
     [NotifyCanExecuteChangedFor(nameof(ShareCommand), nameof(TakePicturesCommand))]
     private bool _isBusy;
 
-    public SharingViewModel(IServiceScopeFactory scopeFactory) =>
+    public SharingViewModel(IServiceScopeFactory scopeFactory, DirectSharing direct)
+    {
         _scopeFactory = scopeFactory;
+        _direct = direct;
+    }
 
     public bool HasFolder => Folder.Length > 0;
 
     public bool HasProblem => Problem.Length > 0;
+
+    public bool HasNetworkProblem => NetworkProblem.Length > 0;
+
+    public bool HasReached => Reached is not null;
+
+    public bool IsOffering => MyCode.Length > 0;
+
+    public string ReachedName => Reached?.Name ?? string.Empty;
 
     public bool HasMachines => Machines.Count > 0;
 
@@ -124,6 +181,12 @@ public sealed partial class SharingViewModel : ObservableObject
 
     /// <summary>Whether there is anywhere to share, so the button can be pressed.</summary>
     public bool CanShare => IsIdle && HasFolder && !HasProblem;
+
+    /// <summary>Whether the typed address could be one at all.</summary>
+    public bool CanReach => IsIdle && TypedAddress.Trim().Length > 0;
+
+    /// <summary>Whether there is a machine waiting and six digits to give it.</summary>
+    public bool CanPairByCode => IsIdle && HasReached && PairingCode.IsWellFormed(TypedCode);
 
     /// <summary>
     /// What taking the pictures would save, and what it costs, said before the
@@ -155,6 +218,32 @@ public sealed partial class SharingViewModel : ObservableObject
               + "Scanning will bring it in."
             : $"{Waiting:N0} answers are waiting for photos this library has not indexed yet. "
               + "Scanning will bring them in.";
+
+    /// <summary>
+    /// Shows six digits, so another computer can pair with this one.
+    /// </summary>
+    /// <remarks>
+    /// Offered rather than always on. The other machine is the one that types,
+    /// and this end has to be a person deciding to let it - otherwise a pairing
+    /// is something that can happen to a laptop nobody is sitting at.
+    /// </remarks>
+    [RelayCommand]
+    private void Offer()
+    {
+        MyCode = PairingCode.Mint();
+        _direct.Offering = MyCode;
+
+        Status = "Read these six digits to whoever is at the other computer, and have them "
+               + "type this computer's name or address into their Sharing screen.";
+    }
+
+    /// <summary>Stops offering, which the screen closing also does.</summary>
+    [RelayCommand]
+    private void StopOffering()
+    {
+        MyCode = string.Empty;
+        _direct.Offering = null;
+    }
 
     /// <summary>Reads the folder, who has shared, and what is waiting.</summary>
     /// <remarks>
@@ -399,6 +488,114 @@ public sealed partial class SharingViewModel : ObservableObject
         _ => $"{Math.Round(span.TotalHours):N0} hours",
     };
 
+    /// <summary>
+    /// Reaches a computer at an address somebody typed.
+    /// </summary>
+    /// <remarks>
+    /// The way through when the network will not carry a beacon - which is every
+    /// case the diagnosis names and several it cannot: guest Wi-Fi and
+    /// access-point isolation block machine-to-machine traffic outright, and no
+    /// setting in this app can change that.
+    /// </remarks>
+    [RelayCommand(CanExecute = nameof(CanReach))]
+    private async Task ReachAsync()
+    {
+        await _gate.WaitAsync().ConfigureAwait(true);
+        IsBusy = true;
+
+        try
+        {
+            ReachResult found = await Task.Run(async () =>
+            {
+                using IServiceScope scope = _scopeFactory.CreateScope();
+                return await scope.ServiceProvider
+                    .GetRequiredService<ReachMachineHandler>()
+                    .FindAsync(TypedAddress)
+                    .ConfigureAwait(false);
+            }).ConfigureAwait(true);
+
+            if (!found.Reached)
+            {
+                Reached = null;
+                Status = found.Problem;
+                return;
+            }
+
+            Reached = found;
+            Status = $"Found {found.Name}. Ask whoever is at it to open Sharing, and read "
+                   + "you the six digits it shows.";
+        }
+        catch (Exception ex) when (ex is IOException
+                                      or InvalidOperationException
+                                      or SocketException)
+        {
+            Reached = null;
+            Status = $"That computer could not be reached: {ex.Message}";
+        }
+        finally
+        {
+            IsBusy = false;
+            _gate.Release();
+        }
+    }
+
+    /// <summary>
+    /// Reads six digits to the computer that was reached.
+    /// </summary>
+    /// <remarks>
+    /// The code alone proves nothing - somebody else on the Wi-Fi could answer
+    /// first and guess it. What makes it safe is that both ends derive a check
+    /// value from the code and both certificates, so a machine in the middle
+    /// cannot produce either end's value.
+    /// </remarks>
+    [RelayCommand(CanExecute = nameof(CanPairByCode))]
+    private async Task PairByCodeAsync()
+    {
+        if (Reached is not ReachResult there)
+        {
+            return;
+        }
+
+        await _gate.WaitAsync().ConfigureAwait(true);
+        IsBusy = true;
+
+        try
+        {
+            ReachResult paired = await Task.Run(async () =>
+            {
+                using IServiceScope scope = _scopeFactory.CreateScope();
+                return await scope.ServiceProvider
+                    .GetRequiredService<ReachMachineHandler>()
+                    .PairAsync(there.Host, there.Port, TypedCode)
+                    .ConfigureAwait(false);
+            }).ConfigureAwait(true);
+
+            if (!paired.Reached)
+            {
+                Status = paired.Problem;
+                return;
+            }
+
+            Reached = null;
+            TypedCode = string.Empty;
+            TypedAddress = string.Empty;
+            Status = $"Paired with {paired.Name}. It will be remembered from now on.";
+
+            await ReadAsync().ConfigureAwait(true);
+        }
+        catch (Exception ex) when (ex is IOException
+                                      or InvalidOperationException
+                                      or SocketException)
+        {
+            Status = $"That pairing could not finish: {ex.Message}";
+        }
+        finally
+        {
+            IsBusy = false;
+            _gate.Release();
+        }
+    }
+
     /// <summary>The read itself, without the gate, so callers holding it can use it.</summary>
     private async Task ReadAsync()
     {
@@ -415,6 +612,7 @@ public sealed partial class SharingViewModel : ObservableObject
 
         Folder = status.Folder;
         Problem = status.Problem;
+        NetworkProblem = status.DiscoveryProblem;
         Waiting = status.Waiting;
         Unprepared = status.Unprepared;
         Machines =
