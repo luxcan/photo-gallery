@@ -680,8 +680,10 @@
                width on names instead.
 
                Two tabs, because a suggestion and something the user made answer
-               to different rules: a rebuild may change the first and never
-               touches the second. -->
+               to different rules: a rebuild never touches what the user made,
+               and may change anything it proposed itself. Their own albums are
+               the first tab and the one the screen opens on - a proposal is a
+               question, and nobody comes to this screen to be asked one. -->
           <Grid Margin="20,14,20,10"
                 Visibility="{Binding ShowCollections, Converter={StaticResource BoolToVisibility}}">
             <Grid.RowDefinitions>
@@ -731,13 +733,13 @@
                         VerticalAlignment="Center" SnapsToDevicePixels="True">
                   <UniformGrid Rows="1">
                     <RadioButton Style="{DynamicResource SegmentedToggle}" MinWidth="96"
+                                 Content="Your albums"
+                                 ToolTip="The ones you made or kept. No pass ever changes these."
+                                 IsChecked="{Binding Collections.ShowMine, Mode=TwoWay}" />
+                    <RadioButton Style="{DynamicResource SegmentedToggle}" MinWidth="96"
                                  Content="Suggested"
                                  ToolTip="What the app grouped for you, to keep or throw away"
                                  IsChecked="{Binding Collections.IsShowingSuggested, Mode=TwoWay}" />
-                    <RadioButton Style="{DynamicResource SegmentedToggle}" MinWidth="96"
-                                 Content="Yours"
-                                 ToolTip="The ones you made or kept. No pass ever changes these."
-                                 IsChecked="{Binding Collections.ShowMine, Mode=TwoWay}" />
                   </UniformGrid>
                 </Border>
               </StackPanel>
@@ -1055,10 +1057,17 @@
                   <StackPanel Margin="0,16,0,0"
                               Visibility="{Binding Collections.SelectedIsMine,
                                            Converter={StaticResource BoolToVisibility}}">
+                    <!-- Asked for before it happens, which is why this is a click
+                         rather than the command: removing an album throws away
+                         a name and a rule somebody wrote, and the button sits
+                         directly under Save the rule. IsEnabled says what
+                         CanDelete would have, the panel itself being shown only
+                         for an album of the user's own. -->
                     <Button Style="{DynamicResource SecondaryButton}"
                             HorizontalAlignment="Stretch" Content="Remove this album"
                             ToolTip="Remove it. Your photographs stay where they are."
-                            Command="{Binding Collections.DeleteCommand}" />
+                            IsEnabled="{Binding Collections.IsIdle}"
+                            Click="OnRemoveAlbumClicked" />
                   </StackPanel>
 
                   <Button Style="{DynamicResource LinkButton}" Margin="0,14,0,0"

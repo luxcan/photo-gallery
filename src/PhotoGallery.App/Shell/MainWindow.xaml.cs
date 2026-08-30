@@ -1446,4 +1446,57 @@ public partial class MainWindow : Window
             _confirming = false;
         }
     }
+
+    /// <summary>
+    /// Removes one of the user's own albums, after saying what goes with it.
+    /// </summary>
+    /// <remarks>
+    /// Asked for the same reason removing a person is, and in the same tone: no
+    /// file is touched, but the name and the rule are somebody's own writing and
+    /// there is no undo - they would have to be typed again. The button also
+    /// sits directly under Save the rule, which is a very small distance between
+    /// keeping an album and losing it.
+    ///
+    /// <para>What it says first is the thing a person is actually afraid of,
+    /// which is that the photographs go with it. The count comes off the album's
+    /// own summary rather than the tiles on screen, which are loaded a window at
+    /// a time and would say the wrong number for a long album.</para>
+    /// </remarks>
+    private async void OnRemoveAlbumClicked(object sender, RoutedEventArgs e)
+    {
+        if (_confirming || _viewModel.Collections.Selected is not CollectionItem album)
+        {
+            return;
+        }
+
+        _confirming = true;
+        try
+        {
+            string counted = album.Summary.PhotoCount switch
+            {
+                0 => "Nothing is in it yet.",
+                1 => "The photograph in it stays in your library, and belongs to no album "
+                     + "afterwards.",
+                int photos => $"The {photos:N0} photographs in it stay in your library, and "
+                              + "belong to no album afterwards.",
+            };
+
+            bool answer = AppDialog.Confirm(
+                this,
+                $"Remove \"{album.Name}\"?",
+                $"{counted}\n\nThe album's name and what it looks for go, and cannot be "
+                + "brought back.",
+                confirm: "Remove album",
+                tone: DialogTone.Caution);
+
+            if (answer)
+            {
+                await _viewModel.Collections.DeleteCommand.ExecuteAsync(null);
+            }
+        }
+        finally
+        {
+            _confirming = false;
+        }
+    }
 }

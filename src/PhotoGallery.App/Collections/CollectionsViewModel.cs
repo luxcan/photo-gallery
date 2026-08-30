@@ -73,11 +73,22 @@ public sealed partial class CollectionsViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(HasStatus))]
     private string _status = string.Empty;
 
-    /// <summary>Which tab is showing: what the app suggests, or what the user made.</summary>
+    /// <summary>Which tab is showing: what the user made, or what the app suggests.</summary>
+    /// <remarks>
+    /// True to begin with, so the screen opens on the albums the user made.
+    /// Those are the ones they named, and the ones a scan never changes; the
+    /// proposals are a queue of questions, and a queue of questions is not what
+    /// somebody who came here to find their own holiday wants to arrive at.
+    ///
+    /// <para>Set in the field rather than in a constructor, which also means the
+    /// change notification does not run before anything is listening - nothing
+    /// is loaded yet at that point, so there is no wall to show and no album to
+    /// close.</para>
+    /// </remarks>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsShowingSuggested), nameof(Showing),
         nameof(HasNone), nameof(EmptyMessage))]
-    private bool _showMine;
+    private bool _showMine = true;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasSelected), nameof(SelectedIsProposed),
@@ -1150,10 +1161,18 @@ public sealed partial class CollectionsViewModel : ObservableObject
         }
     }
 
+    /// <summary>Changing tab shows that tab's wall, with nothing open.</summary>
+    /// <remarks>
+    /// It opened the first album of whichever tab was arrived at, which is what
+    /// a list beside a grid wanted and is wrong for two states: pressing
+    /// Suggested asked to see the suggestions, and answered by walking into one
+    /// of them. Whichever album happens to be first is not the one anybody meant
+    /// to open.
+    /// </remarks>
     partial void OnShowMineChanged(bool value)
     {
         OnPropertyChanged(nameof(HasNone));
-        Selected = Showing.FirstOrDefault();
+        Selected = null;
     }
 
     /// <summary>Opens one collection on its photographs, in the order they were taken.</summary>
