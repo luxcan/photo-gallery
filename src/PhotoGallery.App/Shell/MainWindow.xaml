@@ -2338,16 +2338,12 @@
 
                 <TextBlock Text="Sharing" Style="{DynamicResource Heading}" />
 
-                <!-- The screen opens by saying what will and will not be sent,
-                     before anything is nominated. Somebody about to point this
-                     at a family drive is entitled to know that the photographs
-                     themselves stay where they are, and to know it first. -->
+                <!-- The screen opens by saying what it is for, before anything
+                     is nominated: everybody's work kept level between the
+                     computers, through a folder they all already reach. -->
                 <TextBlock Style="{DynamicResource BodyText}" Margin="0,10,0,0"
                            TextWrapping="Wrap"
-                           Text="The other computers in the house can share what everybody has worked out: the names on faces, the albums, which way up a photo goes. Choose a folder they can all reach, and each one leaves a small file there." />
-                <TextBlock Style="{DynamicResource HintText}" Margin="0,8,0,0"
-                           TextWrapping="Wrap"
-                           Text="Your photographs are never sent — not the originals, not by request, not as an option. Nothing is uploaded anywhere, and nothing leaves the folder you choose." />
+                           Text="You and the other computers in the house can keep each other up to date with the work everybody has done: the names on faces, the albums, which way up a photo goes. Choose a folder you can all reach, and each computer leaves a small file there for the others to pick up." />
 
                 <TextBlock Style="{DynamicResource FieldLabel}" Margin="0,22,0,0"
                            Text="Shared folder" />

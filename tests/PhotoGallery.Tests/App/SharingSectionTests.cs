@@ -81,19 +81,18 @@ public sealed class SharingSectionTests
     }
 
     [Fact]
-    public void TheScreenSaysWhatWillNotBeSentBeforeAnyFolderIsChosen()
+    public void TheScreenSaysWhatItIsForBeforeAnyFolderIsChosen()
     {
-        // A rule of the design, not a nicety: somebody about to point this at a
-        // family drive is entitled to know the photographs stay where they are.
-        // It sits above the folder picker, so the order is asserted, not just
-        // the presence.
-        int promise = s_window.IndexOf(
-            "Your photographs are never sent", StringComparison.Ordinal);
+        // Somebody about to point this at a family drive is entitled to know
+        // what it is for first. It sits above the folder picker, so the order is
+        // asserted, not just the presence.
+        int purpose = s_window.IndexOf(
+            "keep each other up to date", StringComparison.Ordinal);
         int picker = s_window.IndexOf("OnChooseSharedFolderClicked", StringComparison.Ordinal);
 
-        Assert.True(promise > 0, "the screen does not say that originals never travel");
+        Assert.True(purpose > 0, "the screen does not say what sharing is for");
         Assert.True(picker > 0, "the screen has no folder picker");
-        Assert.True(promise < picker, "the promise is made after the folder is chosen");
+        Assert.True(purpose < picker, "the purpose is stated after the folder is chosen");
     }
 
     [Fact]
