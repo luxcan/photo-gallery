@@ -41,8 +41,7 @@ public sealed class NavigationCollapseTests : IDisposable
             new PeopleViewModel(scopeFactory, store),
             new DuplicatesViewModel(scopeFactory, store),
             store,
-            new FileActivityLog(workingFolder),
-            new DirectSharing(scopeFactory));
+            new FileActivityLog(workingFolder));
     }
 
     [Fact]

@@ -20,7 +20,6 @@ namespace PhotoGallery.App;
 public partial class App : System.Windows.Application
 {
     private ServiceProvider? _services;
-    private DirectSharing? _direct;
 
     private IActivityLog? _log;
 
@@ -126,17 +125,6 @@ public partial class App : System.Windows.Application
 
         _log = _services.GetRequiredService<IActivityLog>();
 
-        // Listening starts with the app and stops with it. Announcing does not:
-        // that happens only while somebody has the Sharing screen open, because
-        // an app that called out on the family network for ever is not something
-        // to put on somebody else's laptop.
-        _direct = _services.GetRequiredService<DirectSharing>();
-        if (!_direct.Start())
-        {
-            DiagnosticLog.Write(
-                "sharing: could not listen for other computers; the shared folder still works");
-        }
-
         var viewModel = _services.GetRequiredService<MainViewModel>();
         viewModel.RestoreDiagnostics(config.Diagnostics);
         viewModel.WorkingFolder = folder;
@@ -197,10 +185,6 @@ public partial class App : System.Windows.Application
 
     protected override void OnExit(ExitEventArgs e)
     {
-        // The socket first, so nothing is half-answered while the container that
-        // serves it is being taken apart.
-        _direct?.DisposeAsync().AsTask().GetAwaiter().GetResult();
-
         DiagnosticLog.Stop();
         _services?.Dispose();
         base.OnExit(e);

@@ -168,17 +168,7 @@ internal sealed class Library : IDisposable
 
     /// <summary>What the Sharing screen opens showing.</summary>
     public GetSharingHandler Overview =>
-        field ??= new GetSharingHandler(Index, Decisions, Exchange, Network);
-
-    /// <summary>
-    /// What the network looks like to this library.
-    /// </summary>
-    /// <remarks>
-    /// A stub, because the real one asks Windows about the adapters this machine
-    /// is actually on - which is a fact about the test runner, not about
-    /// anything under test. Tests that want the Public case say so.
-    /// </remarks>
-    public StubPeerDiscovery Network { get; } = new();
+        field ??= new GetSharingHandler(Index, Decisions, Exchange);
 
     /// <summary>Its one button: take everybody's answers, then give yours back.</summary>
     public ShareNowHandler Sharing => field ??= new ShareNowHandler(Merging, Publishing);

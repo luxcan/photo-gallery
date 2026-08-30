@@ -87,8 +87,7 @@ public sealed class DeleteOverlayTests : IDisposable
             new PeopleViewModel(scopeFactory, thumbnails),
             new DuplicatesViewModel(scopeFactory, thumbnails),
             thumbnails,
-            new SilentLog(),
-            new DirectSharing(scopeFactory));
+            new SilentLog());
     }
 
     /// <summary>

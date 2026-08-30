@@ -67,7 +67,6 @@ public static class AppServiceCollectionExtensions
             .AddScoped<ShareNowHandler>()
             .AddScoped<ConfirmPairingHandler>()
             .AddScoped<ShareRenditionsHandler>()
-            .AddScoped<ReachMachineHandler>()
             .AddScoped<RefreshLibraryHandler>()
             .AddScoped<QueryGalleryHandler>()
             .AddScoped<GetFolderTreeHandler>()
@@ -76,11 +75,6 @@ public static class AppServiceCollectionExtensions
             .AddScoped<SaveGallerySortOrderHandler>()
             .AddScoped<SaveNavigationCollapsedHandler>()
             .AddScoped<GetModelStatusHandler>()
-            .AddScoped<ImportModelsHandler>()
-
-            // This machine's ear on the family network, open for as long as the
-            // app is. A singleton because it holds a socket, not because it
-            // holds state.
-            .AddSingleton<DirectSharing>();
+            .AddScoped<ImportModelsHandler>();
     }
 }

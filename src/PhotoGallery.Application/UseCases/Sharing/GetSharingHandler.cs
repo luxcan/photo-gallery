@@ -1,7 +1,6 @@
 using PhotoGallery.Application.Ports;
 using PhotoGallery.Domain.Library;
 using PhotoGallery.Domain.Sharing;
-using PhotoGallery.Domain.Sharing.Direct;
 
 namespace PhotoGallery.Application.UseCases.Sharing;
 
@@ -10,7 +9,7 @@ namespace PhotoGallery.Application.UseCases.Sharing;
 /// </summary>
 /// <remarks>
 /// Answered before anything is nominated, because the screen has to say what
-/// will and will not be sent before the user chooses a folder rather than after.
+/// sharing is for before the user chooses a folder rather than after.
 ///
 /// <para>Nothing here reads a decision. A directory listing, a count and the
 /// machines already heard from - so opening the screen on a library of sixteen
@@ -21,18 +20,15 @@ public sealed class GetSharingHandler
     private readonly ILibraryIndex _index;
     private readonly IDecisionReader _decisions;
     private readonly IDecisionExchange _exchange;
-    private readonly IPeerDiscovery _discovery;
 
     public GetSharingHandler(
         ILibraryIndex index,
         IDecisionReader decisions,
-        IDecisionExchange exchange,
-        IPeerDiscovery discovery)
+        IDecisionExchange exchange)
     {
         _index = index;
         _decisions = decisions;
         _exchange = exchange;
-        _discovery = discovery;
     }
 
     public async Task<SharingStatus> HandleAsync(CancellationToken cancellationToken = default)
@@ -64,20 +60,12 @@ public sealed class GetSharingHandler
         IReadOnlyList<Unprepared> outstanding =
             await _decisions.UnpreparedAsync(cancellationToken).ConfigureAwait(false);
 
-        // Asked on every open, and it costs nothing: one question to Windows
-        // about the networks this machine is on. It is the difference between an
-        // empty list meaning "nobody is there" and meaning "nothing you do here
-        // will ever find them".
-        DiscoveryProblem discovery =
-            await _discovery.ReadinessAsync(cancellationToken).ConfigureAwait(false);
-
         return new SharingStatus(
             folder,
             problem,
             Standing(known, published, settings),
             waiting,
-            outstanding.Count,
-            discovery);
+            outstanding.Count);
     }
 
     /// <summary>

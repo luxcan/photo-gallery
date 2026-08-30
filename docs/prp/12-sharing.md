@@ -1,12 +1,29 @@
 # 12 — Sharing between machines
 
-**Status: ✅ Done — every acceptance criterion holds**
+**Status: ✅ Done — the shared folder half. The direct connection was built,
+then removed.**
 
-Both halves. The decisions cross through a folder every machine can reach, or
-over a direct TLS connection to a machine that shares no folder with anybody;
-the small copies pool, so a new laptop is usable the same evening instead of the
-following week; and the face vectors travel, refused by name when the models
-differ.
+> **The direct connection is no longer in the app.** Everything below about
+> finding each other on the Wi-Fi — the UDP beacon, the TLS link, the six-digit
+> pairing code, the Public-network diagnosis — was built, tested and then taken
+> out, because this house has one folder every machine already reaches and the
+> fallback earned none of the room it took on the screen.
+>
+> **It is kept in git rather than thrown away**, and the design below is the
+> reason it can come back cheaply. To restore it:
+>
+> ```
+> git log --oneline --diff-filter=D -- src/PhotoGallery.Infrastructure/Sharing/PeerListener.cs
+> git revert <that commit>
+> ```
+>
+> The removal is one commit and touches nothing the shared folder needs, so the
+> revert is close to clean. What it will not restore is anything added to the
+> Sharing screen afterwards, so read the conflict rather than forcing it.
+
+The decisions cross through a folder every machine can reach; the small copies
+pool, so a new laptop is usable the same evening instead of the following week;
+and the face vectors travel, refused by name when the models differ.
 
 The two things worth remembering about the shape of it: the merge is a pure
 function of decision sets, so every rule about two machines disagreeing was
