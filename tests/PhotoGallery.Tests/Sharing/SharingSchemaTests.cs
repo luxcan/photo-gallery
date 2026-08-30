@@ -160,13 +160,13 @@ public sealed class SharingSchemaTests : IDisposable
     }
 
     [Fact]
-    public async Task OneMachineIsOneRowHoweverManyWaysItIsHeardFrom()
+    public async Task OneMachineIsOneRowHoweverManyTimesItIsHeardFrom()
     {
         Guid dad = _house.Dad.MachineId;
-        Mum.Db.Peers.Add(new Peer { MachineId = dad, Name = "Dad's laptop" });
+        Mum.Db.KnownMachines.Add(new KnownMachine { MachineId = dad, Name = "Dad's laptop" });
         await Mum.Db.SaveChangesAsync();
 
-        Mum.Db.Peers.Add(new Peer { MachineId = dad, Name = "Dad's laptop", Fingerprint = "ab:cd" });
+        Mum.Db.KnownMachines.Add(new KnownMachine { MachineId = dad, Name = "Dad's laptop" });
 
         await Assert.ThrowsAsync<DbUpdateException>(() => Mum.Db.SaveChangesAsync());
     }

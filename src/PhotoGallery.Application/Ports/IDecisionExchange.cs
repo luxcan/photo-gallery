@@ -7,11 +7,10 @@ namespace PhotoGallery.Application.Ports;
 /// theirs reach it.
 /// </summary>
 /// <remarks>
-/// The seam that lets a shared folder ship first and a direct connection arrive
-/// later without touching the merge. A shared folder is one file written and
-/// everybody else's read; a direct connection is a listener, a pairing and a
-/// framing. <strong>The merge cannot tell them apart and must never learn
-/// to.</strong>
+/// A shared folder is one file written and everybody else's read. It is the
+/// only way answers travel, and the seam is kept anyway because
+/// <strong>the merge must never learn how they arrived.</strong> Everything
+/// downstream is defined on decision sets, not on where they came from.
 ///
 /// <para>Separate from anything that moves renditions, because the two have
 /// different shapes and different costs: decisions are one small document

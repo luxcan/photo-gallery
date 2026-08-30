@@ -119,7 +119,7 @@ public interface IDecisionReader
     /// screen and written by one merge, and a port with a single query on it is
     /// a file to open before you can read the query.
     /// </remarks>
-    Task<IReadOnlyList<Peer>> PeersAsync(CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<KnownMachine>> KnownMachinesAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
     /// The rows a set of merged turns would land on, with the rendition each one

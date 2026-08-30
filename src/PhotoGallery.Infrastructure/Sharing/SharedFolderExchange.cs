@@ -10,13 +10,11 @@ namespace PhotoGallery.Infrastructure.Sharing;
 /// reach.
 /// </summary>
 /// <remarks>
-/// The obvious reading of "sync between laptops" is a direct connection, and it
-/// is not what ships first. The deciding fact is that a shared folder
-/// <strong>does not need the other laptop switched on</strong> - and a family
-/// will not get two laptops open at the same moment on purpose. A design that
-/// requires it is a design that gets used twice and then forgotten. It also
-/// works on a network profile set to Public, which blocks inbound traffic
-/// outright and is what Windows chooses by default.
+/// The deciding fact is that a shared folder <strong>does not need the other
+/// laptop switched on</strong> - and a family will not get two laptops open at
+/// the same moment on purpose. A design that requires it is a design that gets
+/// used twice and then forgotten. It also asks nothing of the network beyond a
+/// folder everybody already reaches.
 ///
 /// <para>Each machine writes one file, named after itself, and reads everybody
 /// else's. Written whole and renamed into place, so a reader never sees half a

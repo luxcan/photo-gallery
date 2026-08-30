@@ -235,10 +235,10 @@ public sealed class ExchangeTests : IDisposable
         await Mum.Publishing.HandleAsync();
         await Dad.Merging.HandleAsync();
 
-        Peer peer = Dad.Db.Peers.Single();
-        Assert.Equal(Mum.MachineId, peer.MachineId);
-        Assert.Equal("Mum's laptop", peer.Name);
-        Assert.NotNull(peer.LastMergedUtc);
+        KnownMachine machine = Dad.Db.KnownMachines.Single();
+        Assert.Equal(Mum.MachineId, machine.MachineId);
+        Assert.Equal("Mum's laptop", machine.Name);
+        Assert.NotNull(machine.LastMergedUtc);
     }
 
     [Fact]

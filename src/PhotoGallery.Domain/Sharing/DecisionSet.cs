@@ -13,13 +13,10 @@ namespace PhotoGallery.Domain.Sharing;
 /// halfway simply finishes next time.
 ///
 /// <para><strong>Everything it holds, not only what it decided itself.</strong>
-/// Over a shared folder that changes nothing, because everybody reads
-/// everybody's file. Over a direct connection it is the difference between
-/// working and not: if Ana's laptop only ever pairs with Dad's, it receives
-/// Mum's answers solely because Dad's published set carries them. Forwarding
-/// what you were told is what makes three machines converge with no machinery
-/// for it, and it is safe only because every answer keeps when it was decided
-/// and by whom rather than who handed it over.</para>
+/// A set is whole rather than a delta, which is what lets the merge be a pure
+/// function of two of them and lets merging twice change nothing. Forwarding
+/// what you were told is safe only because every answer keeps when it was
+/// decided and by whom, rather than who handed it over.</para>
 ///
 /// <para>Nothing here describes how anybody looks at their pictures. The theme,
 /// the cell size, the sort order and the nav state have no field, which is the

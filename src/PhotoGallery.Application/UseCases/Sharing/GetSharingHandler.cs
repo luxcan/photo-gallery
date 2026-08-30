@@ -48,8 +48,8 @@ public sealed class GetSharingHandler
             ? readiness.Problem
             : string.Empty;
 
-        IReadOnlyList<Peer> known =
-            await _decisions.PeersAsync(cancellationToken).ConfigureAwait(false);
+        IReadOnlyList<KnownMachine> known =
+            await _decisions.KnownMachinesAsync(cancellationToken).ConfigureAwait(false);
 
         IReadOnlyList<PublishedAnswers> published = folder.Length > 0 && readiness.CanExchange
             ? await _exchange.StandingAsync(cancellationToken).ConfigureAwait(false)
@@ -80,14 +80,14 @@ public sealed class GetSharingHandler
     /// is the only place that is written down.
     /// </remarks>
     private static List<MachineStanding> Standing(
-        IReadOnlyList<Peer> known,
+        IReadOnlyList<KnownMachine> known,
         IReadOnlyList<PublishedAnswers> published,
         LibrarySettings settings)
     {
         Dictionary<Guid, string> names = [];
-        foreach (Peer peer in known)
+        foreach (KnownMachine machine in known)
         {
-            names[peer.MachineId] = peer.Name;
+            names[machine.MachineId] = machine.Name;
         }
 
         Dictionary<Guid, DateTime> shared = [];

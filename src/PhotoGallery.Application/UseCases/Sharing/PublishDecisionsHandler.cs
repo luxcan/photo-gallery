@@ -14,12 +14,11 @@ namespace PhotoGallery.Application.UseCases.Sharing;
 /// write one small file.
 ///
 /// <para><strong>Everything it holds, not only what it decided itself.</strong>
-/// Over a shared folder that changes nothing, because everybody reads
-/// everybody's file. Over a direct connection it is the difference between
-/// working and not: a laptop that only ever pairs with one other receives the
-/// third machine's answers solely because that one's published set carries them.
-/// Forwarding what you were told is what makes three machines converge with no
-/// machinery for it.</para>
+/// Over a shared folder that is redundant on the ordinary day, because
+/// everybody reads everybody's file. It is kept because the merge is defined on
+/// whole decision sets rather than on deltas, so a published set has to be
+/// complete to be merged at all - and because a machine whose own file is lost
+/// or deleted is then carried by everybody else's.</para>
 ///
 /// <para>The one thing left out is the app's own guesses. The other machine will
 /// make its own, and better ones, from the confirmations it has just been given -
@@ -78,10 +77,9 @@ public sealed class PublishDecisionsHandler
     /// another machine's payload can be read at all, and two places deciding it
     /// would eventually decide differently.
     ///
-    /// <para>Public because the listener that answers a direct connection has to
-    /// say who this machine is before any use case is involved - it is spoken to
-    /// rather than asked, so there is nothing above it to have worked this out.
-    /// </para>
+    /// <para>Public because six handlers need it - scanning, merging, holding,
+    /// pairing and both halves of sharing - and it belongs to none of them more
+    /// than the others.</para>
     /// </remarks>
     public static async Task<MachineIdentity> ThisMachineAsync(
         ILibraryIndex index, CancellationToken cancellationToken)

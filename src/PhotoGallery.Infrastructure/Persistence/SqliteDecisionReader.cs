@@ -684,9 +684,9 @@ public sealed class SqliteDecisionReader : IDecisionReader
         await _db.HeldDecisions.CountAsync(cancellationToken).ConfigureAwait(false);
 
     /// <inheritdoc/>
-    public async Task<IReadOnlyList<Peer>> PeersAsync(
+    public async Task<IReadOnlyList<KnownMachine>> KnownMachinesAsync(
         CancellationToken cancellationToken = default) =>
-        await _db.Peers
+        await _db.KnownMachines
             .AsNoTracking()
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);

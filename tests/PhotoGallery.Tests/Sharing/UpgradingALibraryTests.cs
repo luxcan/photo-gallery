@@ -193,7 +193,7 @@ public sealed class UpgradingALibraryTests : IDisposable
 
         Assert.Empty(_db.People);
         Assert.Empty(_db.HeldDecisions);
-        Assert.Empty(_db.Peers);
+        Assert.Empty(_db.KnownMachines);
     }
 
     private void Upgrade()

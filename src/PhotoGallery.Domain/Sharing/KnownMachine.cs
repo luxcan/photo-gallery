@@ -1,7 +1,7 @@
 namespace PhotoGallery.Domain.Sharing;
 
 /// <summary>Another machine in the house that this library has heard from.</summary>
-public sealed class Peer
+public sealed class KnownMachine
 {
     public int Id { get; set; }
 
@@ -10,17 +10,6 @@ public sealed class Peer
 
     /// <summary>What it calls itself. Editable there, and carries no meaning here.</summary>
     public required string Name { get; set; }
-
-    /// <summary>
-    /// Its certificate, for a direct connection. Null for a machine met only
-    /// through a shared folder, which is every machine until the second half of
-    /// this feature exists.
-    /// </summary>
-    /// <remarks>
-    /// A fingerprint that changes means pairing again rather than a silent
-    /// accept, which is the whole reason it is remembered.
-    /// </remarks>
-    public string? Fingerprint { get; set; }
 
     /// <summary>
     /// When this library last took that machine's answers.

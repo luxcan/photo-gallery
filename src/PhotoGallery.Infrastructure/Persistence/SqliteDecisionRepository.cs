@@ -181,13 +181,13 @@ public sealed class SqliteDecisionRepository : IDecisionRepository
     {
         ArgumentNullException.ThrowIfNull(machine);
 
-        Peer? peer = await _db.Peers
+        KnownMachine? known = await _db.KnownMachines
             .FirstOrDefaultAsync(row => row.MachineId == machine.Id, cancellationToken)
             .ConfigureAwait(false);
 
-        if (peer is null)
+        if (known is null)
         {
-            _db.Peers.Add(new Peer
+            _db.KnownMachines.Add(new KnownMachine
             {
                 MachineId = machine.Id,
                 Name = machine.Name,
@@ -198,8 +198,8 @@ public sealed class SqliteDecisionRepository : IDecisionRepository
         {
             // The name is theirs to change, so it is taken every time rather
             // than only when the row is new.
-            peer.Name = machine.Name;
-            peer.LastMergedUtc = mergedUtc;
+            known.Name = machine.Name;
+            known.LastMergedUtc = mergedUtc;
         }
 
         await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);

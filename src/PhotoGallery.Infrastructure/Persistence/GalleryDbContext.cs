@@ -55,7 +55,7 @@ public sealed class GalleryDbContext : DbContext
 
     public DbSet<HeldDecision> HeldDecisions => Set<HeldDecision>();
 
-    public DbSet<Peer> Peers => Set<Peer>();
+    public DbSet<KnownMachine> KnownMachines => Set<KnownMachine>();
 
     public DbSet<PairedSource> PairedSources => Set<PairedSource>();
 
