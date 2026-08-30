@@ -1506,8 +1506,15 @@
 
             <!-- One proposal on the picture it came out of. Last in the People
                  grid and spanning it, so it covers the review it belongs to and
-                 nothing else. -->
-            <Border x:Name="FaceInspector" Grid.Row="0" Grid.RowSpan="2" Grid.ColumnSpan="2"
+                 nothing else.
+
+                 The span must reach the star row, and reaching only the two Auto
+                 rows above it is not a cosmetic mistake. An overlay measured
+                 against Auto has no height to fit into, so the picture inside it
+                 sizes to the width instead - and on a wide screen it grew until
+                 the Yes/No buttons were pushed off the bottom of the window,
+                 with nothing on screen to say where they had gone. -->
+            <Border x:Name="FaceInspector" Grid.Row="0" Grid.RowSpan="3" Grid.ColumnSpan="2"
                     Focusable="True" KeyDown="OnInspectorKeyDown"
                     Background="{DynamicResource Editor.Background}"
                     Visibility="{Binding People.IsInspecting,
