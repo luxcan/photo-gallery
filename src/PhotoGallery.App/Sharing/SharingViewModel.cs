@@ -136,18 +136,30 @@ public sealed partial class SharingViewModel : ObservableObject
     /// photographs, at roughly six a second on a network share. Copying the two
     /// small renditions instead runs at about fifty a second. Rounded hard,
     /// because it is a decision aid and not a promise.
+    ///
+    /// <para>Rounding that hard means the two costs land on the same words
+    /// whenever there is only a handful outstanding - fourteen photographs is
+    /// two seconds against a quarter of one, and both are "a minute". Said as a
+    /// comparison, that offered a choice and quoted the same figure for either
+    /// answer, which reads as a mistake and hides the one thing the sentence is
+    /// for. So when the two round together it is stated once, as the honest
+    /// answer that it hardly matters.</para>
     /// </remarks>
     public string PicturesLabel
     {
         get
         {
-            TimeSpan making = TimeSpan.FromSeconds(Unprepared / 6.0);
-            TimeSpan copying = TimeSpan.FromSeconds(Unprepared / 50.0);
+            string making = Roughly(TimeSpan.FromSeconds(Unprepared / 6.0));
+            string copying = Roughly(TimeSpan.FromSeconds(Unprepared / 50.0));
+
+            string cost = making == copying
+                ? "Taking the ones another computer has already made, or making them from "
+                  + $"your own files, is about {making} either way."
+                : $"Making them from your own files takes about {making}; taking the ones "
+                  + $"another computer has already made takes about {copying}.";
 
             return $"{Unprepared:N0} {(Unprepared == 1 ? "photo has" : "photos have")} no small "
-                 + $"copy here yet. Making them from your own files takes about {Roughly(making)}; "
-                 + $"taking the ones another computer has already made takes about "
-                 + $"{Roughly(copying)}. Your photographs themselves are never copied.";
+                 + $"copy here yet. {cost} Your photographs themselves are never copied.";
         }
     }
 
