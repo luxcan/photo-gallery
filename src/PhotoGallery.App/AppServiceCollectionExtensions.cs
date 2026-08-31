@@ -44,6 +44,7 @@ public static class AppServiceCollectionExtensions
             .AddScoped<BuildVideoKeyframesHandler>()
             .AddScoped<DetectFacesHandler>()
             .AddScoped<BuildCollectionsHandler>()
+            .AddScoped<MoveAlbumFilesHandler>()
             .AddScoped<IndexContentHandler>()
             .AddScoped<LocatePhotosHandler>()
             .AddScoped<FindPlacesHandler>()

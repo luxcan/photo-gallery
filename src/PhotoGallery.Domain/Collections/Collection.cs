@@ -5,8 +5,9 @@ namespace PhotoGallery.Domain.Collections;
 /// day out.
 /// </summary>
 /// <remarks>
-/// Proposed by the app or made by the user, and in both cases only ever a view
-/// of the library. Nothing on disk is moved, renamed or copied to make one.
+/// Proposed by the app or made by the user. Making and arranging an album is a
+/// view of the library; a separate, confirmed action may later put its originals
+/// together in one folder without changing which assets the album contains.
 /// </remarks>
 public sealed class Collection
 {

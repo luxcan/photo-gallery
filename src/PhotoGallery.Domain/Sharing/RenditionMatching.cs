@@ -1,3 +1,5 @@
+using PhotoGallery.Domain.Assets;
+
 namespace PhotoGallery.Domain.Sharing;
 
 /// <summary>
@@ -69,6 +71,16 @@ public static class RenditionMatching
                 continue;
             }
 
+            // A manifest is an untrusted boundary. A rendition is a file name,
+            // never a path; rejecting it here also prevents the unsafe fact from
+            // being written into this library's index after the copy is refused.
+            if (fact.ThumbnailName is string unsafeName
+                && !RenditionName.IsSafeFileName(unsafeName))
+            {
+                mismatched++;
+                continue;
+            }
+
             fillIn.Add(fact);
 
             // A file that never decoded brings its status and nothing else,
@@ -116,14 +128,17 @@ public static class RenditionMatching
         // rendition and one of them being turned makes that picture unfit for
         // everybody. A single pass would offer it or not depending on which
         // duplicate came first.
-        foreach (PooledRendition rendition in mine.Where(r => r.Rotation != 0))
+        foreach (PooledRendition rendition in mine.Where(r =>
+                     r.Rotation != 0 && RenditionName.IsSafeFileName(r.Name)))
         {
             turned.Add(rendition.Name);
         }
 
         foreach (PooledRendition rendition in mine)
         {
-            if (!turned.Contains(rendition.Name) && !there.Contains(rendition.Name))
+            if (RenditionName.IsSafeFileName(rendition.Name)
+                && !turned.Contains(rendition.Name)
+                && !there.Contains(rendition.Name))
             {
                 offer.Add(rendition.Name);
             }

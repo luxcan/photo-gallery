@@ -1,6 +1,7 @@
 using System.IO.Compression;
 using System.Text.Json;
 using PhotoGallery.Application.Ports;
+using PhotoGallery.Domain.Assets;
 using PhotoGallery.Domain.Library;
 using PhotoGallery.Domain.Sharing;
 
@@ -245,7 +246,8 @@ public sealed class SharedFolderPool : IRenditionPool
 
             string name = Path.GetFileName(path);
 
-            if (name.Contains(PreviewSuffix, StringComparison.Ordinal))
+            if (!RenditionName.IsSafeFileName(name)
+                || name.Contains(PreviewSuffix, StringComparison.Ordinal))
             {
                 continue;
             }
@@ -267,7 +269,9 @@ public sealed class SharedFolderPool : IRenditionPool
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(thumbnailName);
 
-        if (!File.Exists(tilePath) || !File.Exists(previewPath))
+        if (!RenditionName.IsSafeFileName(thumbnailName)
+            || !File.Exists(tilePath)
+            || !File.Exists(previewPath))
         {
             return false;
         }
@@ -292,6 +296,11 @@ public sealed class SharedFolderPool : IRenditionPool
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(thumbnailName);
+
+        if (!RenditionName.IsSafeFileName(thumbnailName))
+        {
+            return false;
+        }
 
         string shard = await ShardPathAsync(thumbnailName, cancellationToken).ConfigureAwait(false);
         string tile = Path.Combine(shard, thumbnailName);

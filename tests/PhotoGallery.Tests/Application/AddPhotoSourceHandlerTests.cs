@@ -67,6 +67,15 @@ public sealed class AddPhotoSourceHandlerTests : IDisposable
     }
 
     [Fact]
+    public void FolderNormalisationPreservesTheDriveRoot()
+    {
+        string root = Path.GetPathRoot(_photosRoot)!;
+
+        Assert.Equal(root, FolderOverlap.Normalise(root));
+        Assert.True(FolderOverlap.Holds(root, _photosRoot));
+    }
+
+    [Fact]
     public async Task Add_SamePathTwiceThrows()
     {
         await NewHandler().HandleAsync(_photosRoot);

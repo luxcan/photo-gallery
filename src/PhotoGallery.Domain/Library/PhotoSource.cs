@@ -5,8 +5,9 @@ namespace PhotoGallery.Domain.Library;
 /// network share. A library can aggregate any number of them.
 /// </summary>
 /// <remarks>
-/// Sources are only ever read. Scanning walks each source in turn, and every
-/// asset remembers which source it came from, so a source can be detached
+/// Scanning normally only reads a source. A confirmed album action may move an
+/// original within the same source and update that asset's relative path; every
+/// asset still remembers which source it came from, so a source can be detached
 /// without disturbing the others.
 /// </remarks>
 public sealed class PhotoSource

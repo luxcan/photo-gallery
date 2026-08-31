@@ -46,36 +46,45 @@ public sealed class FileSystemThumbnailStore : IThumbnailStore
         string tilePath = ResolveTilePath(name);
         Directory.CreateDirectory(Path.GetDirectoryName(tilePath)!);
 
-        await File.WriteAllBytesAsync(tilePath, thumbnail.Tile, cancellationToken)
-            .ConfigureAwait(false);
+        // The tile is the readiness marker, so it lands last. Exists also checks
+        // both files, but this order keeps an interrupted write incomplete in
+        // the same direction as copies arriving from the shared pool.
         await File.WriteAllBytesAsync(ResolvePreviewPath(name), thumbnail.Preview, cancellationToken)
+            .ConfigureAwait(false);
+        await File.WriteAllBytesAsync(tilePath, thumbnail.Tile, cancellationToken)
             .ConfigureAwait(false);
 
         return name;
     }
 
-    public string ResolveTilePath(string thumbnailName) =>
-        Path.Combine(_workingFolder.ThumbnailsPath, Shard(thumbnailName), thumbnailName);
+    public string ResolveTilePath(string thumbnailName)
+    {
+        string name = RenditionName.RequireSafeFileName(thumbnailName, nameof(thumbnailName));
+        return Path.Combine(_workingFolder.ThumbnailsPath, Shard(name), name);
+    }
 
     public string ResolvePreviewPath(string thumbnailName)
     {
-        string preview = Path.GetFileNameWithoutExtension(thumbnailName)
+        string name = RenditionName.RequireSafeFileName(thumbnailName, nameof(thumbnailName));
+        string preview = Path.GetFileNameWithoutExtension(name)
                        + PreviewSuffix
-                       + Path.GetExtension(thumbnailName);
-        return Path.Combine(_workingFolder.ThumbnailsPath, Shard(thumbnailName), preview);
+                       + Path.GetExtension(name);
+        return Path.Combine(_workingFolder.ThumbnailsPath, Shard(name), preview);
     }
 
     public bool Exists(string? thumbnailName) =>
-        !string.IsNullOrWhiteSpace(thumbnailName) && File.Exists(ResolveTilePath(thumbnailName));
+        RenditionName.IsSafeFileName(thumbnailName)
+        && File.Exists(ResolveTilePath(thumbnailName!))
+        && File.Exists(ResolvePreviewPath(thumbnailName!));
 
     public DateTime? PreviewWrittenUtc(string? thumbnailName)
     {
-        if (string.IsNullOrWhiteSpace(thumbnailName))
+        if (!RenditionName.IsSafeFileName(thumbnailName))
         {
             return null;
         }
 
-        var file = new FileInfo(ResolvePreviewPath(thumbnailName));
+        var file = new FileInfo(ResolvePreviewPath(thumbnailName!));
         return file.Exists ? file.LastWriteTimeUtc : null;
     }
 
@@ -84,6 +93,11 @@ public sealed class FileSystemThumbnailStore : IThumbnailStore
         if (string.IsNullOrWhiteSpace(thumbnailName))
         {
             return true;
+        }
+
+        if (!RenditionName.IsSafeFileName(thumbnailName))
+        {
+            return false;
         }
 
         // A single & rather than &&: the preview must still be attempted when the
@@ -115,10 +129,15 @@ public sealed class FileSystemThumbnailStore : IThumbnailStore
             if (stem.EndsWith(PreviewSuffix, StringComparison.Ordinal))
             {
                 // A preview belongs to its tile rather than being a name of its own.
-                stem = stem[..^PreviewSuffix.Length];
+                continue;
             }
 
-            names.Add(stem + Extension);
+            string name = stem + Extension;
+            if (RenditionName.IsSafeFileName(name)
+                && File.Exists(ResolvePreviewPath(name)))
+            {
+                names.Add(name);
+            }
         }
 
         return names;

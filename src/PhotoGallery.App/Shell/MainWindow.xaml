@@ -1008,7 +1008,7 @@
                   <TextBlock Style="{DynamicResource FieldLabel}" Text="This album" />
                   <TextBlock Style="{DynamicResource HintText}" Margin="0,2,0,12"
                              TextWrapping="Wrap"
-                             Text="Nothing here touches the photographs themselves. They stay in your library wherever this ends up." />
+                             Text="Changing the name or rule does not touch the originals. Moving them is a separate confirmed action below." />
 
                   <TextBlock Style="{DynamicResource FieldLabel}" Text="Name" />
                   <Grid Margin="0,2,0,0">
@@ -1057,13 +1057,22 @@
                   <StackPanel Margin="0,16,0,0"
                               Visibility="{Binding Collections.SelectedIsMine,
                                            Converter={StaticResource BoolToVisibility}}">
+                    <TextBlock Style="{DynamicResource FieldLabel}" Text="Original files" />
+                    <Button Style="{DynamicResource SecondaryButton}" Margin="0,4,0,0"
+                            HorizontalAlignment="Stretch"
+                            Content="Move originals to a folder..."
+                            ToolTip="Put this album's photos and videos together inside their current photo source"
+                            IsEnabled="{Binding IsIdle}"
+                            Click="OnMoveAlbumClicked" />
+                    <TextBlock Style="{DynamicResource HintText}" TextWrapping="Wrap"
+                               Text="Choose a folder inside their current photo source. Existing files are never overwritten, and Photo Gallery updates every moved item's library location." />
+
                     <!-- Asked for before it happens, which is why this is a click
                          rather than the command: removing an album throws away
-                         a name and a rule somebody wrote, and the button sits
-                         directly under Save the rule. IsEnabled says what
+                         a name and a rule somebody wrote. IsEnabled says what
                          CanDelete would have, the panel itself being shown only
                          for an album of the user's own. -->
-                    <Button Style="{DynamicResource SecondaryButton}"
+                    <Button Style="{DynamicResource SecondaryButton}" Margin="0,16,0,0"
                             HorizontalAlignment="Stretch" Content="Remove this album"
                             ToolTip="Remove it. Your photographs stay where they are."
                             IsEnabled="{Binding Collections.IsIdle}"
@@ -1964,30 +1973,37 @@
                                        Converter={StaticResource BoolToVisibility}}"
                           Click="OnStopVideoClicked" />
 
-                  <!-- Which collection this photograph is in, and what just
-                       happened to it. A photograph belongs to one occasion, so
-                       this is a statement rather than a list. -->
+                  <!-- What just happened to this photograph's album, and only
+                       that: the button beside it already carries the name, so
+                       the steady state was printing the same word twice. What
+                       this says is what a name cannot - that it left one album
+                       to be in another. -->
                   <TextBlock VerticalAlignment="Center" Margin="0,0,10,0" FontSize="11.5"
                              MaxWidth="320" TextTrimming="CharacterEllipsis"
                              Foreground="{DynamicResource Editor.Placeholder}"
-                             Text="{Binding Gallery.CollectionCaption}"
-                             ToolTip="{Binding Gallery.CollectionCaption}"
-                             Visibility="{Binding Gallery.HasCollectionCaption,
+                             Text="{Binding Gallery.CollectionNotice}"
+                             ToolTip="{Binding Gallery.CollectionNotice}"
+                             Visibility="{Binding Gallery.HasCollectionNotice,
                                           Converter={StaticResource BoolToVisibility}}" />
 
-                  <Button Style="{DynamicResource ViewerButton}" Content="&#xE8FD;"
-                          Margin="0,0,6,0"
-                          ToolTip="Put this photograph in an album"
-                          AutomationProperties.Name="Add to an album"
-                          Command="{Binding Gallery.AddToCollectionCommand}" />
-
-                  <Button Style="{DynamicResource ViewerButton}" Content="&#xE8FB;"
-                          Margin="0,0,10,0"
-                          ToolTip="Take it out of the album it is in"
-                          AutomationProperties.Name="Take out of the album"
-                          Visibility="{Binding Gallery.IsInACollection,
-                                       Converter={StaticResource BoolToVisibility}}"
-                          Command="{Binding Gallery.TakeOutOfCollectionCommand}" />
+                  <!-- One button: where this photograph is, and the way to change
+                       it. It carries the album's glyph from the side nav, so the
+                       two say album in the same way. Taking it out lives inside
+                       the list it opens, because "none" is an answer to which
+                       album this is in. -->
+                  <Button Style="{DynamicResource ViewerButton}" Margin="0,0,10,0"
+                          MaxWidth="260" HorizontalContentAlignment="Left"
+                          ToolTip="{Binding Gallery.CollectionTip}"
+                          AutomationProperties.Name="{Binding Gallery.CollectionTip}"
+                          Command="{Binding Gallery.AddToCollectionCommand}">
+                    <StackPanel Orientation="Horizontal">
+                      <TextBlock Text="&#xE8FD;" FontSize="15" VerticalAlignment="Center" />
+                      <TextBlock Text="{Binding Gallery.CollectionLabel}" Margin="9,0,0,0"
+                                 FontFamily="{StaticResource Font.Ui}" FontSize="12.5"
+                                 VerticalAlignment="Center"
+                                 TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
+                  </Button>
 
                   <ToggleButton Style="{DynamicResource PillToggle}" MinWidth="90"
                                 Content="Names" Margin="0,0,8,0"

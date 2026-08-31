@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using PhotoGallery.Application.Ports;
 using PhotoGallery.Infrastructure.Storage;
 
@@ -77,6 +78,44 @@ public sealed class MediaFileWalkerTests : IDisposable
 
         Assert.Single(files);
         Assert.Empty(walk.UnreadableFolders);
+    }
+
+    [Fact]
+    public void Walk_DoesNotFollowAJunctionBackToAnAncestor()
+    {
+        string child = Path.Combine(_photos, "child");
+        string loop = Path.Combine(child, "back-to-photos");
+        Directory.CreateDirectory(child);
+        File.WriteAllText(Path.Combine(child, "one.jpg"), "x");
+
+        var start = new ProcessStartInfo("cmd.exe")
+        {
+            UseShellExecute = false,
+            CreateNoWindow = true,
+        };
+        start.ArgumentList.Add("/c");
+        start.ArgumentList.Add("mklink");
+        start.ArgumentList.Add("/J");
+        start.ArgumentList.Add(loop);
+        start.ArgumentList.Add(_photos);
+
+        using Process process = Process.Start(start)!;
+        process.WaitForExit();
+        Assert.Equal(0, process.ExitCode);
+
+        try
+        {
+            MediaWalk walk = _walker.Walk(_photos);
+            List<ScannedFile> files = [.. walk.Files];
+
+            Assert.Single(files);
+            Assert.Equal(Path.Combine("child", "one.jpg"), files[0].RelativePath);
+        }
+        finally
+        {
+            // Remove the junction itself before the fixture removes its target.
+            Directory.Delete(loop);
+        }
     }
 
     public void Dispose()

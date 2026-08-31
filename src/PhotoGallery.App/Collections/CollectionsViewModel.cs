@@ -19,10 +19,10 @@ namespace PhotoGallery.App.Collections;
 /// suggestion is a question - keep it or throw it away - and a rebuild may
 /// change it. Something the user made is theirs, and no pass touches it.
 ///
-/// <para>Nothing on this screen moves a file. Putting a photograph into a
-/// collection moves it out of whichever collection it was in, because a
-/// photograph belongs to one occasion, and the screen says so rather than doing
-/// it quietly.</para>
+/// <para>Putting a photograph into a collection moves it out of whichever
+/// collection it was in, because a photograph belongs to one occasion. Moving
+/// originals on disk is a separate confirmed action available only after an
+/// album is the user's own.</para>
 /// </remarks>
 public sealed partial class CollectionsViewModel : ObservableObject
 {
@@ -956,6 +956,20 @@ public sealed partial class CollectionsViewModel : ObservableObject
 
     /// <summary>Forgets a message that belongs to the last time this was open.</summary>
     public void Reopened() => Status = string.Empty;
+
+    /// <summary>Re-reads the open album after its originals changed folders.</summary>
+    public async Task SettleAfterOriginalsMovedAsync(string status)
+    {
+        IsEditing = false;
+        await ReloadAsync().ConfigureAwait(true);
+
+        if (Selected is CollectionItem album)
+        {
+            await LoadPhotosAsync(album.Id).ConfigureAwait(true);
+        }
+
+        Status = status;
+    }
 
     /// <summary>Keeps a suggestion, so no pass may change it again.</summary>
     [RelayCommand(CanExecute = nameof(CanAnswer))]

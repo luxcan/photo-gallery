@@ -1,4 +1,5 @@
 using PhotoGallery.Application.Ports;
+using PhotoGallery.Application.UseCases.Collections;
 using PhotoGallery.Domain.Library;
 
 namespace PhotoGallery.Application.UseCases.OpenLibrary;
@@ -13,17 +14,20 @@ public sealed class OpenLibraryHandler
     private readonly ILibraryIndex _index;
     private readonly IAssetRepository _assets;
     private readonly IAppConfigStore _config;
+    private readonly MoveAlbumFilesHandler? _albumMoves;
 
     public OpenLibraryHandler(
         IWorkingFolder workingFolder,
         ILibraryIndex index,
         IAssetRepository assets,
-        IAppConfigStore config)
+        IAppConfigStore config,
+        MoveAlbumFilesHandler? albumMoves = null)
     {
         _workingFolder = workingFolder;
         _index = index;
         _assets = assets;
         _config = config;
+        _albumMoves = albumMoves;
     }
 
     public async Task<OpenLibraryResult> HandleAsync(CancellationToken cancellationToken = default)
@@ -32,6 +36,14 @@ public sealed class OpenLibraryHandler
 
         _workingFolder.EnsureCreated();
         await _index.MigrateAsync(cancellationToken).ConfigureAwait(false);
+
+        // A file move and a SQLite update cannot be one transaction. The durable
+        // journal written before every move lets opening settle whichever half
+        // an interrupted process reached before the rest of the app reads paths.
+        if (_albumMoves is not null)
+        {
+            await _albumMoves.RecoverAsync(cancellationToken).ConfigureAwait(false);
+        }
 
         LibrarySettings settings = await _index.GetSettingsAsync(cancellationToken)
             .ConfigureAwait(false);

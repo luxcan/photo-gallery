@@ -1,3 +1,4 @@
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using PhotoGallery.Application.Ports;
@@ -33,13 +34,19 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddSingleton<IAppConfigStore, JsonAppConfigStore>();
         services.AddSingleton<IActivityLog, FileActivityLog>();
 
+        string connectionString = new SqliteConnectionStringBuilder
+        {
+            DataSource = workingFolder.DatabasePath,
+        }.ToString();
+
         services.AddDbContext<GalleryDbContext>(options =>
-            options.UseSqlite($"Data Source={workingFolder.DatabasePath}"));
+            options.UseSqlite(connectionString));
 
         services.AddScoped<ILibraryIndex, SqliteLibraryIndex>();
         services.AddScoped<IAssetRepository, SqliteAssetRepository>();
         services.AddScoped<IDuplicateRepository, SqliteDuplicateRepository>();
         services.AddScoped<ICollectionRepository, SqliteCollectionRepository>();
+        services.AddScoped<IAlbumFileMoveRepository, SqliteAlbumFileMoveRepository>();
         services.AddScoped<ICollectionFactsReader, SqliteCollectionFactsReader>();
         services.AddSingleton<IQuarantineStore, FileSystemQuarantine>();
         services.AddSingleton<IMediaFileWalker, MediaFileWalker>();
@@ -49,6 +56,7 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddSingleton<IRenditionTurner, WindowsRenditionTurner>();
         services.AddSingleton<IOriginalOrientation, ExifOriginalOrientation>();
         services.AddSingleton<IOriginalFile, WindowsOriginalFile>();
+        services.AddSingleton<IOriginalFileMover, WindowsOriginalFileMover>();
         services.AddSingleton<IOriginalCoordinates, ExifOriginalCoordinates>();
         services.AddSingleton<ISourceAvailability, FileSystemSourceAvailability>();
 

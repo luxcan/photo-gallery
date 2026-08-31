@@ -1689,6 +1689,18 @@
           </ItemsControl>
         </ScrollViewer>
 
+        <!-- The other answer to which album this is in, which is none of them.
+             Here rather than on the strip beside the picture: it is the same
+             question, and out there it was a second icon button wearing a tick.
+             Named after the album so it cannot be pressed by mistake, and only
+             offered when there is one to leave. -->
+        <Button Style="{DynamicResource SecondaryButton}" Margin="0,10,0,0"
+                HorizontalAlignment="Stretch"
+                Content="{Binding TakeOutLabel}"
+                ToolTip="Leave it in no album at all. The photograph itself is untouched."
+                Visibility="{Binding IsInOne, Converter={StaticResource BoolToVisibility}}"
+                Command="{Binding TakeOutCommand}" />
+
         <Button Style="{DynamicResource LinkButton}" Margin="0,10,0,0"
                 HorizontalAlignment="Center" Content="Cancel"
                 Command="{Binding CancelCommand}" />

@@ -41,9 +41,9 @@ public interface IThumbnailStore
     string ResolvePreviewPath(string thumbnailName);
 
     /// <summary>
-    /// Whether the tile is actually on disk. Takes a nullable name because the
-    /// caller is usually asking about a row's claim, which may be null or may
-    /// point at a file that no longer exists.
+    /// Whether both the tile and preview are actually on disk. Takes a nullable
+    /// name because the caller is usually asking about a row's claim, which may
+    /// be null or may point at files that no longer exist.
     /// </summary>
     bool Exists(string? thumbnailName);
 

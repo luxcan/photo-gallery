@@ -28,9 +28,15 @@ public static class FolderOverlap
     }
 
     /// <summary>True when the parent contains the child, at any depth.</summary>
-    public static bool Holds(string parent, string child) =>
-        Normalise(child).StartsWith(
-            Normalise(parent) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
+    public static bool Holds(string parent, string child)
+    {
+        string normalisedParent = Normalise(parent);
+        string prefix = Path.EndsInDirectorySeparator(normalisedParent)
+            ? normalisedParent
+            : normalisedParent + Path.DirectorySeparatorChar;
+
+        return Normalise(child).StartsWith(prefix, StringComparison.OrdinalIgnoreCase);
+    }
 
     /// <summary>
     /// The one form both sides are compared in.
@@ -42,5 +48,5 @@ public static class FolderOverlap
     /// folder they can see is inside another one.
     /// </remarks>
     public static string Normalise(string path) =>
-        Path.GetFullPath(path.Trim()).TrimEnd('\\', '/');
+        Path.TrimEndingDirectorySeparator(Path.GetFullPath(path.Trim()));
 }

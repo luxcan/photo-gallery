@@ -1,9 +1,11 @@
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using PhotoGallery.App;
 using PhotoGallery.Application.Ports;
 using PhotoGallery.Application.UseCases.Refresh;
 using PhotoGallery.Application.UseCases.Sharing;
 using PhotoGallery.Infrastructure;
+using PhotoGallery.Infrastructure.Persistence;
 
 namespace PhotoGallery.Tests.App;
 
@@ -55,6 +57,24 @@ public sealed class ContainerTests : IDisposable
         Assert.NotNull(scope.ServiceProvider.GetRequiredService<IDecisionReader>());
         Assert.NotNull(scope.ServiceProvider.GetRequiredService<IDecisionRepository>());
         Assert.NotNull(scope.ServiceProvider.GetRequiredService<IDecisionExchange>());
+    }
+
+    [Fact]
+    public void ADatabasePathWithConnectionStringPunctuationWorks()
+    {
+        string folder = Path.Combine(_folder, "library;mode=value");
+        Directory.CreateDirectory(folder);
+
+        using ServiceProvider services = new ServiceCollection()
+            .AddPhotoGalleryInfrastructure(folder)
+            .BuildServiceProvider();
+        using IServiceScope scope = services.CreateScope();
+
+        GalleryDbContext database =
+            scope.ServiceProvider.GetRequiredService<GalleryDbContext>();
+        database.Database.Migrate();
+
+        Assert.True(File.Exists(Path.Combine(folder, "index.db")));
     }
 
     /// <summary>

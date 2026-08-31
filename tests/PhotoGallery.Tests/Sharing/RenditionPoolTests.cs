@@ -231,6 +231,21 @@ public sealed class RenditionPoolTests : IDisposable
     }
 
     [Fact]
+    public async Task APathLikeRenditionNameCannotWriteOutsideThePool()
+    {
+        string sourceTile = Path.Combine(_house.SharedFolder, "source-tile.jpg");
+        string sourcePreview = Path.Combine(_house.SharedFolder, "source-preview.jpg");
+        await File.WriteAllTextAsync(sourceTile, "tile");
+        await File.WriteAllTextAsync(sourcePreview, "preview");
+
+        bool pushed = await Mum.Pool.PushAsync(
+            "..escaped.jpg", sourceTile, sourcePreview);
+
+        Assert.False(pushed);
+        Assert.False(File.Exists(Path.Combine(_house.SharedFolder, "escaped.jpg")));
+    }
+
+    [Fact]
     public async Task WithNoFolderChosenItSaysSoRatherThanFailing()
     {
         using var alone = new TwoLibraries();

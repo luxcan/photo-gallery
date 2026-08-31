@@ -168,7 +168,7 @@ public sealed class UpgradingALibraryTests : IDisposable
     }
 
     [Fact]
-    public void TheMachineNamesItselfOnFirstUseRatherThanInTheMigration()
+    public async Task TheMachineNamesItselfOnFirstUseRatherThanInTheMigration()
     {
         // Nothing in a migration knows what this computer is called, and one that
         // guessed would bake the name of whoever generated the SQL into every
@@ -180,7 +180,7 @@ public sealed class UpgradingALibraryTests : IDisposable
 
         Assert.Equal(Guid.Empty, _db.LibrarySettings.Single().MachineId);
 
-        LibrarySettings settings = new SqliteLibraryIndex(_db).GetSettingsAsync().Result;
+        LibrarySettings settings = await new SqliteLibraryIndex(_db).GetSettingsAsync();
 
         Assert.NotEqual(Guid.Empty, settings.MachineId);
         Assert.NotEmpty(settings.MachineName);

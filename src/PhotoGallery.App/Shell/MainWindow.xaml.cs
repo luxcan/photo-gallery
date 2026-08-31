@@ -1,4 +1,5 @@
-﻿using System.Diagnostics;
+﻿using System.ComponentModel;
+using System.Diagnostics;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
@@ -13,6 +14,7 @@ using PhotoGallery.App.Gallery;
 using PhotoGallery.App.People;
 using PhotoGallery.App.ViewModels;
 using PhotoGallery.Application.Ports;
+using PhotoGallery.Application.UseCases.Collections;
 using PhotoGallery.Application.UseCases.Gallery;
 
 namespace PhotoGallery.App.Shell;
@@ -82,22 +84,50 @@ public partial class MainWindow : Window
             }
         };
 
-        // Naming a face puts the focus inside the name list, and closing the
-        // list takes whatever held it out of the visual tree - which leaves the
-        // focus nowhere at all. The picture is still open and looks ready, but
-        // the arrow keys have nothing to bubble out of until something inside is
-        // clicked again. Both screens hand it back.
-        WhenNamingEnds(viewModel.Gallery.Picker, () => viewModel.Gallery.IsViewerOpen, PhotoViewer);
-        WhenNamingEnds(viewModel.People.Reassign, () => viewModel.People.IsInspecting, FaceInspector);
+        // Choosing in any of these lists puts the focus inside the list, and
+        // closing it takes whatever held the focus out of the visual tree -
+        // which leaves the focus nowhere at all. The picture is still open and
+        // looks ready, but the arrow keys have nothing to bubble out of until
+        // something inside is clicked again. Every list hands it back.
+        WhenPickingEnds(
+            viewModel.Gallery.Picker,
+            () => viewModel.Gallery.Picker.IsOpen,
+            () => viewModel.Gallery.IsViewerOpen,
+            PhotoViewer);
+
+        WhenPickingEnds(
+            viewModel.People.Reassign,
+            () => viewModel.People.Reassign.IsOpen,
+            () => viewModel.People.IsInspecting,
+            FaceInspector);
+
+        // The album list was the one that did not, and it is the one people
+        // reach for most: putting a photograph in an album left the arrows dead
+        // where naming a face in the same viewer did not.
+        WhenPickingEnds(
+            viewModel.Gallery.Collections,
+            () => viewModel.Gallery.Collections.IsOpen,
+            () => viewModel.Gallery.IsViewerOpen,
+            PhotoViewer);
     }
 
     /// <summary>
-    /// Returns the focus to the picture behind a name list once the list closes.
+    /// Returns the focus to the picture behind a list once the list closes.
     /// </summary>
-    private void WhenNamingEnds(PersonPicker picker, Func<bool> stillOpen, IInputElement behind) =>
+    /// <remarks>
+    /// The name picker and the album picker share no type - they answer about
+    /// different things, and the pair is deliberately not one class - so this
+    /// takes anything that raises changes and is told how to read it. Both spell
+    /// the property <c>IsOpen</c>, which is what the name below is naming.
+    /// </remarks>
+    private void WhenPickingEnds(
+        INotifyPropertyChanged picker,
+        Func<bool> isOpen,
+        Func<bool> stillOpen,
+        IInputElement behind) =>
         picker.PropertyChanged += (_, e) =>
         {
-            if (e.PropertyName == nameof(PersonPicker.IsOpen) && !picker.IsOpen && stillOpen())
+            if (e.PropertyName == nameof(PersonPicker.IsOpen) && !isOpen() && stillOpen())
             {
                 Dispatcher.BeginInvoke(() => behind.Focus());
             }
@@ -576,18 +606,30 @@ public partial class MainWindow : Window
     /// Arrow keys and Escape over the open picture.
     /// </summary>
     /// <remarks>
-    /// While the name list is up they belong to it instead: the arrows are
-    /// moving a caret through what is being typed, and Escape means put the
-    /// question down rather than the photograph. Taking them here would have
-    /// typing a name quietly walk the library.
+    /// While either list is up they belong to it instead: the arrows are moving
+    /// a caret through what is being typed, and Escape means put the question
+    /// down rather than the photograph. Taking them here would have typing a
+    /// name quietly walk the library.
+    ///
+    /// <para>The album list was left out of that when it was added, so typing an
+    /// album name walked the photographs underneath it - and each step closed
+    /// the list, because opening another picture closes it.</para>
     /// </remarks>
     private void OnViewerKeyDown(object sender, KeyEventArgs e)
     {
-        if (_viewModel.Gallery.Picker.IsOpen)
+        if (_viewModel.Gallery.Picker.IsOpen || _viewModel.Gallery.Collections.IsOpen)
         {
             if (e.Key == Key.Escape)
             {
-                _viewModel.Gallery.Picker.CancelCommand.Execute(null);
+                if (_viewModel.Gallery.Picker.IsOpen)
+                {
+                    _viewModel.Gallery.Picker.CancelCommand.Execute(null);
+                }
+                else
+                {
+                    _viewModel.Gallery.Collections.CancelCommand.Execute(null);
+                }
+
                 e.Handled = true;
             }
 
@@ -1493,6 +1535,106 @@ public partial class MainWindow : Window
             {
                 await _viewModel.Collections.DeleteCommand.ExecuteAsync(null);
             }
+        }
+        finally
+        {
+            _confirming = false;
+        }
+    }
+
+    /// <summary>Chooses, previews and confirms the physical move for one album.</summary>
+    private async void OnMoveAlbumClicked(object sender, RoutedEventArgs e)
+    {
+        if (_confirming
+            || !_viewModel.IsIdle
+            || _viewModel.Collections.Selected is not CollectionItem album)
+        {
+            return;
+        }
+
+        _confirming = true;
+        try
+        {
+            var dialog = new OpenFolderDialog
+            {
+                Title = "Choose where to move this album's originals",
+            };
+
+            if (dialog.ShowDialog(this) != true)
+            {
+                return;
+            }
+
+            AlbumMovePlan plan = await _viewModel
+                .PlanAlbumMoveAsync(album.Id, dialog.FolderName);
+
+            if (plan.Moving == 0)
+            {
+                AppDialog.Tell(
+                    this,
+                    "Everything is already there",
+                    $"All {plan.AlreadyThere:N0} originals in \"{album.Name}\" are already in:\n\n"
+                    + plan.DestinationFolder,
+                    DialogTone.Information);
+                return;
+            }
+
+            string counted = plan.Moving == 1
+                ? "Move 1 original"
+                : $"Move {plan.Moving:N0} originals";
+            string conflicts = plan.Renamed == 0
+                ? "No destination names conflict."
+                : plan.Renamed == 1
+                    ? "1 file will receive a numbered name because that name already exists."
+                    : $"{plan.Renamed:N0} files will receive numbered names because those names already exist.";
+            string already = plan.AlreadyThere == 0
+                ? string.Empty
+                : $"\n\n{plan.AlreadyThere:N0} originals already in that folder will stay there.";
+
+            bool answer = AppDialog.Confirm(
+                this,
+                $"Move originals from \"{album.Name}\"?",
+                $"{counted} ({FileSize.Rounded(plan.TotalBytes)}) into:\n\n"
+                + $"{plan.DestinationFolder}\n\n{conflicts}{already}\n\n"
+                + "Existing files are never overwritten. Each moved photo keeps its album, "
+                + "faces, metadata, and other library information. This cannot be undone as "
+                + "one action.",
+                confirm: "Move originals",
+                tone: DialogTone.Caution);
+
+            if (!answer)
+            {
+                return;
+            }
+
+            AlbumMoveResult result = await _viewModel.MoveAlbumAsync(plan);
+            if (result.Failed > 0 || result.WasCancelled)
+            {
+                string firstErrors = result.Errors.Count == 0
+                    ? string.Empty
+                    : "\n\n" + string.Join("\n", result.Errors.Take(5));
+                AppDialog.Tell(
+                    this,
+                    result.WasCancelled ? "The move was stopped" : "Some originals stayed put",
+                    result.Summary + firstErrors,
+                    DialogTone.Caution);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // The overlay already said it was stopping and no unstarted file was changed.
+        }
+        catch (Exception ex) when (ex is IOException
+                                       or UnauthorizedAccessException
+                                       or InvalidOperationException
+                                       or ArgumentException
+                                       or NotSupportedException)
+        {
+            AppDialog.Tell(
+                this,
+                "The originals were not moved",
+                ex.Message,
+                DialogTone.Caution);
         }
         finally
         {

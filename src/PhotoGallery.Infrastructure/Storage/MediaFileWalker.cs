@@ -30,7 +30,7 @@ public sealed class MediaFileWalker : IMediaFileWalker
         // files still deserves to be told its argument was blank.
         ArgumentException.ThrowIfNullOrWhiteSpace(root);
 
-        string normalisedRoot = Path.GetFullPath(root).TrimEnd('\\', '/');
+        string normalisedRoot = Path.TrimEndingDirectorySeparator(Path.GetFullPath(root));
 
         // The root is listed here rather than inside the loop. An offline share
         // and an empty folder both produce no files, and this is the only call
@@ -70,7 +70,9 @@ public sealed class MediaFileWalker : IMediaFileWalker
                 // are choices rather than failures, so they are not recorded as
                 // unreadable - doing so would protect stale rows under them from
                 // ever being cleaned up.
-                if (_workingFolder.IsAppOwned(child) || IsSystemFolder(child))
+                if (_workingFolder.IsAppOwned(child)
+                    || IsSystemFolder(child)
+                    || IsDirectoryLink(child))
                 {
                     continue;
                 }
@@ -141,6 +143,24 @@ public sealed class MediaFileWalker : IMediaFileWalker
         return name.Equals("System Volume Information", StringComparison.OrdinalIgnoreCase)
             || name.Equals("$RECYCLE.BIN", StringComparison.OrdinalIgnoreCase)
             || name.Equals("@eaDir", StringComparison.OrdinalIgnoreCase); // NAS thumbnail cache
+    }
+
+    /// <summary>
+    /// Directory links and junctions are aliases, not children to traverse.
+    /// Skipping them prevents a link back to an ancestor from making the walk
+    /// cycle forever and avoids indexing the same tree through several names.
+    /// </summary>
+    private static bool IsDirectoryLink(string path)
+    {
+        try
+        {
+            return new DirectoryInfo(path).LinkTarget is not null;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // TryList below records it as unreadable if it still cannot be read.
+            return false;
+        }
     }
 
     /// <summary>

@@ -21,6 +21,7 @@ namespace PhotoGallery.App.Collections;
 public sealed partial class CollectionPicker : ObservableObject
 {
     private readonly Func<string, Task> _chosen;
+    private readonly Func<Task>? _removed;
     private readonly Action? _closed;
 
     private IReadOnlyList<CollectionSummary> _all = [];
@@ -28,6 +29,17 @@ public sealed partial class CollectionPicker : ObservableObject
 
     [ObservableProperty]
     private bool _isOpen;
+
+    /// <summary>The album the photograph is in, or empty while it is in none.</summary>
+    /// <remarks>
+    /// Held as a name rather than read off the marked choice, because the way
+    /// out has to be offered whatever has been typed - and typing three letters
+    /// that the album's name does not contain takes it out of the list.
+    /// </remarks>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsInOne), nameof(TakeOutLabel))]
+    [NotifyCanExecuteChangedFor(nameof(TakeOutCommand))]
+    private string _currentName = string.Empty;
 
     [ObservableProperty]
     private string _typed = string.Empty;
@@ -42,13 +54,21 @@ public sealed partial class CollectionPicker : ObservableObject
     /// Told the name that was picked or typed. A name rather than an id, because
     /// a collection typed in does not exist yet.
     /// </param>
+    /// <param name="removed">
+    /// Told to take the photograph out of the album it is in. Here rather than
+    /// beside the picture because "no album" is one of the answers to "which
+    /// album is this in", and a second button on the strip for it was a tick -
+    /// which means confirm everywhere else in this app.
+    /// </param>
     /// <param name="closed">
     /// Told whenever the list goes away, however it goes away, so one place
     /// forgets what was being asked rather than one per exit.
     /// </param>
-    public CollectionPicker(Func<string, Task> chosen, Action? closed = null)
+    public CollectionPicker(
+        Func<string, Task> chosen, Func<Task>? removed = null, Action? closed = null)
     {
         _chosen = chosen;
+        _removed = removed;
         _closed = closed;
     }
 
@@ -75,6 +95,12 @@ public sealed partial class CollectionPicker : ObservableObject
     /// <summary>Whether there is a count to show.</summary>
     public bool IsNarrowed => Narrowed.Length > 0;
 
+    /// <summary>Whether there is an album to be taken out of.</summary>
+    public bool IsInOne => CurrentName.Length > 0;
+
+    /// <summary>Named, so the way out cannot be pressed without reading which.</summary>
+    public string TakeOutLabel => $"Take it out of {CurrentName}";
+
     /// <param name="current">
     /// The collection this photograph is already in, so the list can mark it -
     /// putting it somewhere else moves it, and the user should be able to see
@@ -86,6 +112,9 @@ public sealed partial class CollectionPicker : ObservableObject
         _current = current;
         Prompt = prompt;
         Hint = hint;
+
+        CurrentName = _all.FirstOrDefault(collection => collection.Id == current)?.Name
+            ?? string.Empty;
 
         Typed = string.Empty;
         Narrow();
@@ -131,6 +160,10 @@ public sealed partial class CollectionPicker : ObservableObject
     [RelayCommand]
     private Task AddAsync() =>
         string.IsNullOrWhiteSpace(Typed) ? Task.CompletedTask : _chosen(Typed.Trim());
+
+    /// <summary>Answers "none of them" - the photograph belongs in no album.</summary>
+    [RelayCommand(CanExecute = nameof(IsInOne))]
+    private Task TakeOutAsync() => _removed?.Invoke() ?? Task.CompletedTask;
 
     [RelayCommand]
     private void Cancel() => Close();

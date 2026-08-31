@@ -88,6 +88,9 @@ public sealed partial class GalleryViewModel : ObservableObject
     /// </summary>
     private bool _fillingSearch;
 
+    /// <summary>The latest suggestion request; older keystrokes may finish later.</summary>
+    private long _searchVersion;
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsViewerOpen), nameof(OpenPhotoWhen), nameof(CanOfferPlay))]
     [NotifyCanExecuteChangedFor(nameof(NextPhotoCommand), nameof(PreviousPhotoCommand))]
@@ -123,7 +126,7 @@ public sealed partial class GalleryViewModel : ObservableObject
             "Nobody — stop asking",
             closed: () => FacingBeingNamed = null);
 
-        Collections = new CollectionPicker(PutInCollectionAsync);
+        Collections = new CollectionPicker(PutInCollectionAsync, TakeOutOfCollectionAsync);
     }
 
     /// <summary>
@@ -174,25 +177,44 @@ public sealed partial class GalleryViewModel : ObservableObject
     /// are making rather than a rule they discover afterwards.
     /// </remarks>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(CollectionCaption), nameof(IsInACollection))]
-    [NotifyCanExecuteChangedFor(nameof(TakeOutOfCollectionCommand))]
+    [NotifyPropertyChangedFor(nameof(CollectionLabel), nameof(CollectionTip),
+        nameof(IsInACollection))]
     private CollectionSummary? _openPhotoCollection;
 
     /// <summary>What just happened to this photograph's collection, said once.</summary>
+    /// <remarks>
+    /// Only what the button beside it cannot say. The button carries the album's
+    /// name, so "In Taiwan" printed next to a button reading Taiwan was the same
+    /// sentence twice; what is worth saying out loud is that the photograph left
+    /// somewhere to get there, which no label showing one album can express.
+    /// </remarks>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(CollectionCaption))]
+    [NotifyPropertyChangedFor(nameof(HasCollectionNotice))]
     private string _collectionNotice = string.Empty;
 
     public bool IsInACollection => OpenPhotoCollection is not null;
 
-    /// <summary>What the strip says about this photograph's collection.</summary>
-    public string CollectionCaption => CollectionNotice.Length > 0
-        ? CollectionNotice
-        : OpenPhotoCollection is CollectionSummary collection
-            ? $"In {collection.Name}"
-            : string.Empty;
+    public bool HasCollectionNotice => CollectionNotice.Length > 0;
 
-    public bool HasCollectionCaption => CollectionCaption.Length > 0;
+    /// <summary>
+    /// What the one album button says: where the photograph is, or the offer to
+    /// put it somewhere.
+    /// </summary>
+    /// <remarks>
+    /// One control rather than a caption and two icons. A photograph belongs to
+    /// one album, so where it is fits on a button - and the button that says so
+    /// is the button that changes it, which is one fewer thing to find. The pair
+    /// it replaced was a list glyph and a tick, and the tick meant "take it
+    /// out": a tick means confirm in every other corner of this app.
+    /// </remarks>
+    public string CollectionLabel => OpenPhotoCollection is CollectionSummary collection
+        ? collection.Name
+        : "Add to an album";
+
+    /// <summary>What that button promises before it is pressed.</summary>
+    public string CollectionTip => OpenPhotoCollection is CollectionSummary collection
+        ? $"In {collection.Name}. Choose another album to move it, or take it out."
+        : "Put this photograph in an album";
 
     /// <summary>Choosing which collection this photograph belongs in.</summary>
     public CollectionPicker Collections { get; }
@@ -671,19 +693,15 @@ public sealed partial class GalleryViewModel : ObservableObject
         }
 
 
-        if (!ShowFaceNames)
-        {
-            return;
-        }
+        OpenFaces.Clear();
+        FacingBeingNamed = null;
+        OnPropertyChanged(nameof(OpenFaceCount));
+        OnPropertyChanged(nameof(FaceSummary));
 
-        if (value is null)
+        if (ShowFaceNames && value is not null)
         {
-            OpenFaces.Clear();
-            FacingBeingNamed = null;
-            return;
+            _ = LoadOpenFacesAsync(value.Item.Id);
         }
-
-        _ = LoadOpenFacesAsync();
     }
 
     /// <summary>Reads which collection the open photograph is in.</summary>
@@ -800,8 +818,11 @@ public sealed partial class GalleryViewModel : ObservableObject
     /// Out of something the app suggested, this is a rejection and is
     /// remembered: that photograph is never offered for those days again. Out of
     /// a collection the user made, it is only a rearrangement.
+    ///
+    /// <para>Answered from inside the album list rather than by a button of its
+    /// own, so it closes the list the way choosing an album does. It is the same
+    /// question - which album is this in - and "none" is one of the answers.</para>
     /// </remarks>
-    [RelayCommand(CanExecute = nameof(IsInACollection))]
     private async Task TakeOutOfCollectionAsync()
     {
         if (OpenTile is not GalleryTile tile
@@ -809,6 +830,8 @@ public sealed partial class GalleryViewModel : ObservableObject
         {
             return;
         }
+
+        Collections.Close();
 
         try
         {
@@ -878,12 +901,13 @@ public sealed partial class GalleryViewModel : ObservableObject
 
     partial void OnShowFaceNamesChanged(bool value)
     {
-        if (value)
+        if (value && OpenTile is GalleryTile tile)
         {
-            _ = LoadOpenFacesAsync();
+            _ = LoadOpenFacesAsync(tile.Item.Id);
         }
         else
         {
+            Interlocked.Increment(ref _faceLoadVersion);
             OpenFaces.Clear();
             FacingBeingNamed = null;
             OnPropertyChanged(nameof(OpenFaceCount));
@@ -892,46 +916,94 @@ public sealed partial class GalleryViewModel : ObservableObject
     }
 
     /// <summary>Reads the faces in the open picture and who they are said to be.</summary>
-    private async Task LoadOpenFacesAsync()
-    {
-        OpenFaces.Clear();
-        FacingBeingNamed = null;
+    private long _faceLoadVersion;
 
-        if (OpenTile is null)
+    private async Task LoadOpenFacesAsync(int assetId)
+    {
+        long request = Interlocked.Increment(ref _faceLoadVersion);
+
+        // Which face the user is being asked about, if any, so that this can put
+        // the question back afterwards.
+        //
+        // This runs at the end of every confirmation, to settle the boxes that
+        // naming one face may have changed. Confirming re-proposes that person
+        // across the whole library, which takes seconds - and by the time it
+        // returns the user has usually clicked the second face in the same
+        // picture, because two people in one photograph is the ordinary case.
+        // Clearing it here threw that away: the list was up, the name they
+        // chose hit the guard at the top of the assignment and did nothing, and
+        // nothing on screen said why. It read as the app ignoring the click.
+        int? asking = Picker.IsOpen ? FacingBeingNamed?.FaceId : null;
+
+        OpenFaces.Clear();
+
+        if (asking is null)
         {
-            return;
+            FacingBeingNamed = null;
         }
+
+        IReadOnlyList<FaceOnPhoto> faces;
+        IReadOnlyList<PersonDirectoryEntry> everyone;
 
         try
         {
             using IServiceScope scope = _scopeFactory.CreateScope();
             IPeopleReader reader = scope.ServiceProvider.GetRequiredService<IPeopleReader>();
 
-            foreach (FaceOnPhoto face in await reader.GetFacesOnAsync(OpenTile.Item.Id)
-                         .ConfigureAwait(true))
-            {
-                OpenFaces.Add(new PhotoFaceItem(face));
-            }
+            faces = await reader.GetFacesOnAsync(assetId).ConfigureAwait(true);
 
             // Everyone, not the search box's shortlist. Searching narrows a list
             // as you type and can fairly stop at the best few; being asked who
             // somebody is and offered eight of your eleven names is a dead end,
             // because the one you want may simply not be there.
-            _everyone.Clear();
-            _everyone.AddRange((await reader.GetDirectoryAsync().ConfigureAwait(true))
+            everyone = [.. (await reader.GetDirectoryAsync().ConfigureAwait(true))
                 .OrderByDescending(person => person.Photos)
-                .ThenBy(person => person.DisplayName, StringComparer.CurrentCultureIgnoreCase));
+                .ThenBy(person => person.DisplayName, StringComparer.CurrentCultureIgnoreCase)];
         }
         catch (Exception ex) when (ex is IOException or InvalidOperationException)
         {
             // A picture whose faces cannot be read still shows the picture.
-            OpenFaces.Clear();
+            if (IsCurrentFaceLoad(assetId, request))
+            {
+                OpenFaces.Clear();
+                OnPropertyChanged(nameof(OpenFaceCount));
+                OnPropertyChanged(nameof(FaceSummary));
+            }
+
+            return;
         }
+
+        if (!IsCurrentFaceLoad(assetId, request))
+        {
+            return;
+        }
+
+        foreach (FaceOnPhoto face in faces)
+        {
+            OpenFaces.Add(new PhotoFaceItem(face));
+        }
+
+        // Back onto the rebuilt box for the same face, rather than the one that
+        // was just thrown away: the question is still on screen and its answer
+        // has to land on something the screen is showing.
+        if (asking is int faceId)
+        {
+            FacingBeingNamed =
+                OpenFaces.FirstOrDefault(item => item.FaceId == faceId) ?? FacingBeingNamed;
+        }
+
+        _everyone.Clear();
+        _everyone.AddRange(everyone);
 
         OnPropertyChanged(nameof(OpenFaceCount));
         OnPropertyChanged(nameof(FaceSummary));
         LayoutFaces(_faceAreaWidth, _faceAreaHeight);
     }
+
+    private bool IsCurrentFaceLoad(int assetId, long request) =>
+        request == Volatile.Read(ref _faceLoadVersion)
+        && ShowFaceNames
+        && OpenTile?.Item.Id == assetId;
 
     private double _faceAreaWidth;
     private double _faceAreaHeight;
@@ -1004,6 +1076,8 @@ public sealed partial class GalleryViewModel : ObservableObject
             return;
         }
 
+        int? assetId = OpenTile?.Item.Id;
+
         try
         {
             using IServiceScope scope = _scopeFactory.CreateScope();
@@ -1019,7 +1093,10 @@ public sealed partial class GalleryViewModel : ObservableObject
         }
 
         CancelNamingFace();
-        await LoadOpenFacesAsync().ConfigureAwait(true);
+        if (assetId is int id)
+        {
+            await LoadOpenFacesAsync(id).ConfigureAwait(true);
+        }
     }
 
     /// <summary>
@@ -1035,6 +1112,8 @@ public sealed partial class GalleryViewModel : ObservableObject
         {
             return;
         }
+
+        int? assetId = OpenTile?.Item.Id;
 
         // The screen first, the database after. Naming a face is not a small
         // write - it confirms this face and then offers the same person to
@@ -1111,7 +1190,10 @@ public sealed partial class GalleryViewModel : ObservableObject
         // what is proposed on the others in this same picture. The boxes are
         // already right about the one that was just named, so this settles the
         // rest without anybody waiting on it.
-        await LoadOpenFacesAsync().ConfigureAwait(true);
+        if (assetId is int id)
+        {
+            await LoadOpenFacesAsync(id).ConfigureAwait(true);
+        }
     }
 
     /// <summary>
@@ -1144,9 +1226,10 @@ public sealed partial class GalleryViewModel : ObservableObject
 
     partial void OnSearchTextChanged(string value)
     {
+        long request = Interlocked.Increment(ref _searchVersion);
         if (!_fillingSearch)
         {
-            _ = SearchAsync();
+            _ = SearchAsync(value, request);
         }
     }
 
@@ -1159,11 +1242,16 @@ public sealed partial class GalleryViewModel : ObservableObject
     /// over a handful of rows - a library has people, not millions of them - and
     /// a search box that lags behind what has been typed feels broken.
     /// </remarks>
-    private async Task SearchAsync()
+    private async Task SearchAsync(string searchText, long request)
     {
-        if (!HasSearchText && (IsPersonFiltered || IsPlaceFiltered))
+        if (searchText.Length == 0 && (IsPersonFiltered || IsPlaceFiltered))
         {
             await ShowEverythingAsync().ConfigureAwait(true);
+
+            if (request != Volatile.Read(ref _searchVersion))
+            {
+                return;
+            }
         }
 
         IReadOnlyList<PersonDirectoryEntry> people;
@@ -1173,20 +1261,29 @@ public sealed partial class GalleryViewModel : ObservableObject
             using IServiceScope scope = _scopeFactory.CreateScope();
             people = await scope.ServiceProvider
                 .GetRequiredService<FindPeopleHandler>()
-                .HandleAsync(SearchText)
+                .HandleAsync(searchText)
                 .ConfigureAwait(true);
 
             places = await scope.ServiceProvider
                 .GetRequiredService<FindPlacesHandler>()
-                .HandleAsync(SearchText)
+                .HandleAsync(searchText)
                 .ConfigureAwait(true);
         }
         catch (Exception ex) when (ex is IOException or InvalidOperationException)
         {
             // A search that cannot be answered offers nothing rather than
             // interrupting whatever the user is doing.
-            SearchMatches.Clear();
-            IsSearchOpen = false;
+            if (request == Volatile.Read(ref _searchVersion))
+            {
+                SearchMatches.Clear();
+                IsSearchOpen = false;
+            }
+
+            return;
+        }
+
+        if (request != Volatile.Read(ref _searchVersion))
+        {
             return;
         }
 
@@ -1231,7 +1328,8 @@ public sealed partial class GalleryViewModel : ObservableObject
 
     /// <summary>Offers every name, which is what clicking into an empty box should do.</summary>
     [RelayCommand]
-    private Task OpenSearchAsync() => SearchAsync();
+    private Task OpenSearchAsync() => SearchAsync(
+        SearchText, Interlocked.Increment(ref _searchVersion));
 
     [RelayCommand]
     private async Task ShowMatchAsync(SearchSuggestion? match)
@@ -1885,7 +1983,7 @@ public sealed partial class GalleryViewModel : ObservableObject
         // The boxes have moved on record; this is what re-reads them.
         if (ShowFaceNames)
         {
-            await LoadOpenFacesAsync().ConfigureAwait(true);
+            await LoadOpenFacesAsync(tile.Item.Id).ConfigureAwait(true);
         }
     }
 

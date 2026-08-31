@@ -124,6 +124,19 @@ public sealed class RenditionMatchingTests
     }
 
     [Fact]
+    public void AManifestCannotTurnARenditionNameIntoAPath()
+    {
+        PoolPlan plan = RenditionMatching.Match(
+            [Waiting("a.jpg", 1024, Monday)],
+            [Set(Fact("a.jpg", 1024, Monday, @"..\..\outside"))],
+            []);
+
+        Assert.Empty(plan.FillIn);
+        Assert.Empty(plan.Wanted);
+        Assert.Equal(1, plan.Mismatched);
+    }
+
+    [Fact]
     public void TheLaterManifestWinsWhereTwoMachinesDisagree()
     {
         PoolPlan plan = RenditionMatching.Match(

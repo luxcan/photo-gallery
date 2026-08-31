@@ -15,6 +15,7 @@ using PhotoGallery.App.People;
 using PhotoGallery.App.Shell;
 using PhotoGallery.App.Theme;
 using PhotoGallery.Application.Ports;
+using PhotoGallery.Application.UseCases.Collections;
 using PhotoGallery.Application.UseCases.Gallery;
 using PhotoGallery.Application.UseCases.OpenLibrary;
 using PhotoGallery.Application.UseCases.People;
@@ -139,6 +140,14 @@ public sealed partial class MainViewModel : ObservableObject
         nameof(RecheckPeopleCommand))]
     private bool _isDeleting;
 
+    /// <summary>True while an album's originals are being checked or moved.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsIdle), nameof(IsOverlayVisible), nameof(CanStopPass))]
+    [NotifyCanExecuteChangedFor(nameof(ScanAllCommand), nameof(ScanSourceCommand),
+        nameof(AddSourceCommand), nameof(RemoveSourceCommand), nameof(CancelPassCommand),
+        nameof(RecheckPeopleCommand))]
+    private bool _isMovingAlbum;
+
     /// <summary>What the overlay is doing, e.g. "Indexing" or "Detaching folder".</summary>
     [ObservableProperty]
     private string _overlayTitle = string.Empty;
@@ -192,6 +201,10 @@ public sealed partial class MainViewModel : ObservableObject
     private const string DeletingHint =
         "Stopping is safe, but it does not undo. Photographs already deleted stay "
         + "deleted; the ones not yet reached are left exactly as they are.";
+
+    private const string MovingAlbumHint =
+        "Stopping is safe, but it does not undo. Originals already moved stay in the "
+        + "new folder and their library locations are updated; the rest stay where they are.";
 
     /// <summary>
     /// Shown once the files have gone and only the index is catching up.
@@ -250,6 +263,8 @@ public sealed partial class MainViewModel : ObservableObject
     private CancellationTokenSource? _detectCancellation;
 
     private CancellationTokenSource? _deleteCancellation;
+
+    private CancellationTokenSource? _albumMoveCancellation;
 
     public MainViewModel(
         IServiceScopeFactory scopeFactory,
@@ -564,14 +579,16 @@ public sealed partial class MainViewModel : ObservableObject
 
     /// <summary>No long pass is running, so the library may be changed.</summary>
     public bool IsIdle =>
-        !IsRefreshing && !IsDetaching && !IsDetecting && !IsDeleting && !IsTidying;
+        !IsRefreshing && !IsDetaching && !IsDetecting && !IsDeleting
+        && !IsMovingAlbum && !IsTidying;
 
     /// <summary>
     /// Whether the window is covered. Both passes rewrite the library's shape and
     /// neither may be raced by the other, so both take the shade.
     /// </summary>
     public bool IsOverlayVisible =>
-        IsRefreshing || IsDetaching || IsDetecting || IsDeleting || IsTidying;
+        IsRefreshing || IsDetaching || IsDetecting || IsDeleting
+        || IsMovingAlbum || IsTidying;
 
     public bool ShowSources => SelectedSection.Key == ActivitySection.SourcesKey;
 
@@ -1067,6 +1084,141 @@ public sealed partial class MainViewModel : ObservableObject
         }
     }
 
+    /// <summary>Checks an album move and chooses every final file name.</summary>
+    public async Task<AlbumMovePlan> PlanAlbumMoveAsync(
+        int collectionId, string destinationFolder)
+    {
+        if (!IsIdle)
+        {
+            throw new InvalidOperationException("Wait for the current library operation to finish.");
+        }
+
+        IsMovingAlbum = true;
+        _albumMoveCancellation = new CancellationTokenSource();
+        OverlayTitle = "Checking the album";
+        OverlayTarget = destinationFolder;
+        OverlayStatus = "checking originals and destination names...";
+        OverlayPercent = 0;
+        OverlayIsIndeterminate = true;
+        OverlayPicture = null;
+        OverlayHint = MovingAlbumHint;
+
+        try
+        {
+            using IServiceScope scope = _scopeFactory.CreateScope();
+            MoveAlbumFilesHandler handler = scope.ServiceProvider
+                .GetRequiredService<MoveAlbumFilesHandler>();
+            CancellationToken token = _albumMoveCancellation.Token;
+
+            return await Task.Run(
+                () => handler.PlanAsync(collectionId, destinationFolder, token),
+                CancellationToken.None);
+        }
+        finally
+        {
+            IsMovingAlbum = false;
+            ClearOverlay();
+            _albumMoveCancellation.Dispose();
+            _albumMoveCancellation = null;
+        }
+    }
+
+    /// <summary>Runs a confirmed album move and refreshes every path-based view.</summary>
+    public async Task<AlbumMoveResult> MoveAlbumAsync(AlbumMovePlan plan)
+    {
+        ArgumentNullException.ThrowIfNull(plan);
+
+        if (!IsIdle)
+        {
+            throw new InvalidOperationException("Wait for the current library operation to finish.");
+        }
+
+        if (plan.Items.Count == 0)
+        {
+            AlbumMoveResult nothing = AlbumMoveResult.Nothing(plan.AlreadyThere);
+            await Collections.SettleAfterOriginalsMovedAsync(nothing.Summary);
+            return nothing;
+        }
+
+        IsMovingAlbum = true;
+        _albumMoveCancellation = new CancellationTokenSource();
+        OverlayTitle = plan.Items.Count == 1
+            ? "Moving 1 original"
+            : $"Moving {plan.Items.Count:N0} originals";
+        OverlayTarget = plan.DestinationFolder;
+        OverlayStatus = "starting...";
+        OverlayPercent = 0;
+        OverlayIsIndeterminate = false;
+        OverlayPicture = null;
+        OverlayHint = MovingAlbumHint;
+        Append($"moving album \"{plan.AlbumName}\" to {plan.DestinationFolder}");
+
+        try
+        {
+            var progress = new Progress<AlbumMoveProgress>(p =>
+            {
+                OverlayTarget = p.FileName;
+                OverlayStatus = $"{p.Done:N0} of {p.Total:N0}";
+                OverlayPercent = p.Fraction * 100d;
+            });
+
+            using IServiceScope scope = _scopeFactory.CreateScope();
+            MoveAlbumFilesHandler handler = scope.ServiceProvider
+                .GetRequiredService<MoveAlbumFilesHandler>();
+            CancellationToken token = _albumMoveCancellation.Token;
+
+            AlbumMoveResult result = await Task.Run(
+                () => handler.HandleAsync(plan, progress, token),
+                CancellationToken.None);
+
+            Append($"  {result.Summary}");
+            foreach (string error in result.Errors.Take(10))
+            {
+                Append($"  {error}");
+            }
+
+            IsSettling = true;
+            OverlayTitle = "Updating the library";
+            OverlayTarget = string.Empty;
+            OverlayStatus = "putting folders and albums back together...";
+            OverlayIsIndeterminate = true;
+            OverlayPercent = 0;
+            OverlayHint = SettlingHint;
+
+            try
+            {
+                await Collections.SettleAfterOriginalsMovedAsync(result.Summary);
+                if (_galleryLoaded)
+                {
+                    await Gallery.LoadFoldersAsync();
+                    await Gallery.LoadAsync();
+                }
+            }
+            catch (Exception ex) when (ex is IOException
+                                           or InvalidOperationException
+                                           or UnauthorizedAccessException)
+            {
+                // The originals and their database paths are already settled.
+                // A view failing to re-read must not be reported as a failed
+                // move, which would encourage somebody to try the files again.
+                Append($"  the screens could not be brought up to date: {ex.Message}");
+                DiagnosticLog.Write("could not settle after moving album originals", ex);
+                Collections.Status = result.Summary
+                    + " Reopen the album if the old folders are still shown.";
+            }
+
+            return result;
+        }
+        finally
+        {
+            IsSettling = false;
+            IsMovingAlbum = false;
+            ClearOverlay();
+            _albumMoveCancellation.Dispose();
+            _albumMoveCancellation = null;
+        }
+    }
+
     /// <summary>
     /// Runs a screen's own slow work under the shared overlay.
     /// </summary>
@@ -1133,6 +1285,7 @@ public sealed partial class MainViewModel : ObservableObject
         _refreshCancellation?.Cancel();
         _detectCancellation?.Cancel();
         _deleteCancellation?.Cancel();
+        _albumMoveCancellation?.Cancel();
         OverlayStatus = "stopping...";
     }
 

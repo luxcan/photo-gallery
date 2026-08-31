@@ -88,6 +88,32 @@ public sealed class FileSystemThumbnailStoreTests : IDisposable
     }
 
     [Fact]
+    public async Task Exists_IsFalseWhenThePreviewHasGone()
+    {
+        string name = await _store.SaveAsync(Thumbnail(43));
+        Assert.True(_store.Exists(name));
+
+        File.Delete(_store.ResolvePreviewPath(name));
+
+        Assert.False(_store.Exists(name));
+        Assert.DoesNotContain(name, _store.ListStoredNames());
+    }
+
+    [Theory]
+    [InlineData(@"..\..\outside.jpg")]
+    [InlineData("../outside.jpg")]
+    [InlineData(@"C:\outside.jpg")]
+    [InlineData("safe.jpg:stream")]
+    [InlineData("..outside.jpg")]
+    public void Paths_RejectNamesThatCanEscapeTheStore(string name)
+    {
+        Assert.False(_store.Exists(name));
+        Assert.False(_store.TryDelete(name));
+        Assert.Throws<ArgumentException>(() => _store.ResolveTilePath(name));
+        Assert.Throws<ArgumentException>(() => _store.ResolvePreviewPath(name));
+    }
+
+    [Fact]
     public async Task TryDelete_RemovesBothRenditionsAndSaysSo()
     {
         string name = await _store.SaveAsync(Thumbnail(9));
