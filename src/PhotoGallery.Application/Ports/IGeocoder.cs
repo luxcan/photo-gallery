@@ -7,7 +7,7 @@ namespace PhotoGallery.Application.Ports;
 /// Offline by design rather than by circumstance. This is where a family has
 /// been for twelve years, and looking each one up would send that history to
 /// somebody else's server a coordinate at a time - for an answer no better than
-/// a local file gives, since a collection needs the district and not the street.
+/// a local file gives, since an album needs the district and not the street.
 /// </remarks>
 public interface IGeocoder
 {

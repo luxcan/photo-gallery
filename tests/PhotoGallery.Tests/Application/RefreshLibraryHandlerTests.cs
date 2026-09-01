@@ -1,6 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using PhotoGallery.Application.Ports;
-using PhotoGallery.Application.UseCases.Collections;
+using PhotoGallery.Application.UseCases.Albums;
 using PhotoGallery.Application.UseCases.Faces;
 using PhotoGallery.Application.UseCases.Places;
 using PhotoGallery.Application.UseCases.Refresh;
@@ -11,7 +11,7 @@ using PhotoGallery.Application.UseCases.Sources;
 using PhotoGallery.Application.UseCases.Thumbnails;
 using PhotoGallery.Application.UseCases.Videos;
 using PhotoGallery.Domain.Assets;
-using PhotoGallery.Domain.Collections;
+using PhotoGallery.Domain.Albums;
 using PhotoGallery.Domain.Library;
 using PhotoGallery.Domain.Search;
 using PhotoGallery.Domain.Sharing;
@@ -475,7 +475,7 @@ public sealed class RefreshLibraryHandlerTests : IDisposable
         WriteMedia("a.jpg");
         PhotoSource source = await AddSourceAsync();
 
-        var waiting = new AlbumRejection(
+        var waiting = new SharedAlbumRejection(
             new AssetKey(source.SharedId, "a.jpg"),
             "2020-01",
             new DateTime(2026, 3, 2, 9, 0, 0, DateTimeKind.Utc),
@@ -498,7 +498,7 @@ public sealed class RefreshLibraryHandlerTests : IDisposable
         Assert.Contains("1 answers applied", result.Summary);
 
         _db.ChangeTracker.Clear();
-        CollectionRejection landed = _db.CollectionRejections.Single();
+        AlbumRejection landed = _db.AlbumRejections.Single();
         Assert.Equal("2020-01", landed.ProposalKey);
         Assert.Empty(_db.HeldDecisions);
     }
@@ -512,7 +512,7 @@ public sealed class RefreshLibraryHandlerTests : IDisposable
         WriteMedia("a.jpg");
         PhotoSource source = await AddSourceAsync();
 
-        var waiting = new AlbumRejection(
+        var waiting = new SharedAlbumRejection(
             new AssetKey(source.SharedId, @"only on her laptop.jpg"),
             "2020-01",
             new DateTime(2026, 3, 2, 9, 0, 0, DateTimeKind.Utc),
@@ -567,8 +567,8 @@ public sealed class RefreshLibraryHandlerTests : IDisposable
                 _reader, _store, new NeverScanned(), new SqliteFaceRepository(_db),
                 models ?? new NoModels()),
             Waiting(),
-            new BuildCollectionsHandler(
-                new SqliteCollectionRepository(_db), new SqliteCollectionFactsReader(_db)));
+            new BuildAlbumsHandler(
+                new SqliteAlbumRepository(_db), new SqliteAlbumFactsReader(_db)));
 
     /// <summary>
     /// The real sweep over held answers, not a stub.

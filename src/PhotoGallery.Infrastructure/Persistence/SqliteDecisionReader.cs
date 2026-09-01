@@ -2,7 +2,7 @@ using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using PhotoGallery.Application.Ports;
 using PhotoGallery.Domain.Assets;
-using PhotoGallery.Domain.Collections;
+using PhotoGallery.Domain.Albums;
 using PhotoGallery.Domain.Faces;
 using PhotoGallery.Domain.Library;
 using PhotoGallery.Domain.People;
@@ -324,7 +324,7 @@ public sealed class SqliteDecisionReader : IDecisionReader
 
     /// <summary>Albums, tombstones included, and proposals that carry a decision.</summary>
     private async Task<IReadOnlyList<SharedAlbum>> AlbumsAsync(CancellationToken cancellationToken) =>
-        await _db.Collections
+        await _db.Albums
             .IgnoreQueryFilters()
             .Select(album => new SharedAlbum(
                 album.PublicId,
@@ -346,19 +346,19 @@ public sealed class SqliteDecisionReader : IDecisionReader
     /// confirmations that came with this. Publishing them would put this
     /// library's guesses up against that machine's own rebuild, every time.
     /// </remarks>
-    private async Task<IReadOnlyList<AlbumMembership>> MembershipsAsync(
+    private async Task<IReadOnlyList<SharedAlbumMembership>> MembershipsAsync(
         MachineIdentity machine,
         Dictionary<int, AssetKey> photographs,
         CancellationToken cancellationToken)
     {
-        var rows = await _db.CollectionMembers
+        var rows = await _db.AlbumMembers
             .IgnoreQueryFilters()
-            .Where(member => member.Collection!.Origin != CollectionOrigin.Proposed
-                          && member.Collection.DeletedUtc == null)
+            .Where(member => member.Album!.Origin != AlbumOrigin.Proposed
+                          && member.Album.DeletedUtc == null)
             .Select(member => new
             {
                 member.AssetId,
-                member.Collection!.PublicId,
+                member.Album!.PublicId,
                 member.AddedUtc,
                 member.AddedBy,
             })
@@ -369,7 +369,7 @@ public sealed class SqliteDecisionReader : IDecisionReader
         [
             .. rows
                 .Where(row => photographs.ContainsKey(row.AssetId))
-                .Select(row => new AlbumMembership(
+                .Select(row => new SharedAlbumMembership(
                     photographs[row.AssetId],
                     row.PublicId,
                     row.AddedUtc,
@@ -377,12 +377,12 @@ public sealed class SqliteDecisionReader : IDecisionReader
         ];
     }
 
-    private async Task<IReadOnlyList<AlbumRejection>> RejectionsAsync(
+    private async Task<IReadOnlyList<SharedAlbumRejection>> RejectionsAsync(
         MachineIdentity machine,
         Dictionary<int, AssetKey> photographs,
         CancellationToken cancellationToken)
     {
-        var rows = await _db.CollectionRejections
+        var rows = await _db.AlbumRejections
             .Select(r => new { r.AssetId, r.ProposalKey, r.RejectedUtc, r.RejectedBy })
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
@@ -391,7 +391,7 @@ public sealed class SqliteDecisionReader : IDecisionReader
         [
             .. rows
                 .Where(row => photographs.ContainsKey(row.AssetId))
-                .Select(row => new AlbumRejection(
+                .Select(row => new SharedAlbumRejection(
                     photographs[row.AssetId],
                     row.ProposalKey,
                     row.RejectedUtc,
@@ -702,8 +702,8 @@ public sealed class SqliteDecisionReader : IDecisionReader
         List<FaceAnswer> answers = [];
         List<StrangerFace> strangers = [];
         List<PhotoTurn> turns = [];
-        List<AlbumMembership> memberships = [];
-        List<AlbumRejection> rejections = [];
+        List<SharedAlbumMembership> memberships = [];
+        List<SharedAlbumRejection> rejections = [];
 
         foreach (HeldDecision row in rows)
         {
@@ -727,11 +727,11 @@ public sealed class SqliteDecisionReader : IDecisionReader
                     Add(turns, row.Payload);
                     break;
 
-                case HeldDecisionKind.AlbumMembership:
+                case HeldDecisionKind.SharedAlbumMembership:
                     Add(memberships, row.Payload);
                     break;
 
-                case HeldDecisionKind.AlbumRejection:
+                case HeldDecisionKind.SharedAlbumRejection:
                     Add(rejections, row.Payload);
                     break;
             }

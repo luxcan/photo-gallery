@@ -1,7 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using PhotoGallery.Application.UseCases.Sharing;
 using PhotoGallery.Domain.Assets;
-using PhotoGallery.Domain.Collections;
+using PhotoGallery.Domain.Albums;
 using PhotoGallery.Domain.Faces;
 using PhotoGallery.Domain.People;
 using PhotoGallery.Domain.Sharing;
@@ -73,10 +73,10 @@ public sealed class QuarantineTests : IDisposable
         // Not only names. Everything keyed on the photograph is parked, which is
         // what makes a folder moved and moved back cost nothing.
         Asset photo = Dad.Photo(@"2019\a.jpg");
-        Collection album = Dad.Album("Bali", Monday);
-        Dad.Db.CollectionMembers.Add(new CollectionMember
+        Album album = Dad.Album("Bali", Monday);
+        Dad.Db.AlbumMembers.Add(new AlbumMember
         {
-            CollectionId = album.Id,
+            AlbumId = album.Id,
             AssetId = photo.Id,
             AddedUtc = Monday,
         });
@@ -85,7 +85,7 @@ public sealed class QuarantineTests : IDisposable
         await VanishesAsync();
 
         HeldDecision waiting = Assert.Single(Dad.Db.HeldDecisions);
-        Assert.Equal(HeldDecisionKind.AlbumMembership, waiting.Kind);
+        Assert.Equal(HeldDecisionKind.SharedAlbumMembership, waiting.Kind);
     }
 
     [Fact]

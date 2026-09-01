@@ -5,7 +5,7 @@ namespace PhotoGallery.Domain.Places;
 /// </summary>
 /// <remarks>
 /// Lifted out of the gazetteer, which had it private, when a second caller
-/// appeared: collections need to know whether a group of photographs sits far
+/// appeared: albums need to know whether a group of photographs sits far
 /// enough from home to be called a trip. Two copies of a distance function is
 /// how two answers to one question start.
 /// </remarks>

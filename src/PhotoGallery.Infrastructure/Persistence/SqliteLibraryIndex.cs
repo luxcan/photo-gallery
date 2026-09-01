@@ -171,13 +171,13 @@ public sealed class SqliteLibraryIndex : ILibraryIndex
                 cancellationToken)
             .ConfigureAwait(false);
 
-        int collections = await _db.Collections
+        int albums = await _db.Albums
             .CountAsync(cancellationToken).ConfigureAwait(false);
 
         return new LibraryCounts(
             photos, videos, videosPrepared, videosUnreadable,
             thumbnails, faces, people, duplicateSets,
-            awaitingFaces, awaitingDescription, collections);
+            awaitingFaces, awaitingDescription, albums);
     }
 
     /// <summary>

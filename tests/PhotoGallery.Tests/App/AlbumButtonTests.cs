@@ -1,8 +1,8 @@
 using Microsoft.Extensions.DependencyInjection;
-using PhotoGallery.App.Collections;
+using PhotoGallery.App.Albums;
 using PhotoGallery.App.Gallery;
 using PhotoGallery.Application.Ports;
-using PhotoGallery.Domain.Collections;
+using PhotoGallery.Domain.Albums;
 using PhotoGallery.Infrastructure.Storage;
 
 namespace PhotoGallery.Tests.App;
@@ -44,8 +44,8 @@ public sealed class AlbumButtonTests : IDisposable
     [Fact]
     public void WithNoAlbum_TheButtonOffersOne()
     {
-        Assert.Equal("Add to an album", _gallery.CollectionLabel);
-        Assert.False(_gallery.IsInACollection);
+        Assert.Equal("Add to an album", _gallery.AlbumLabel);
+        Assert.False(_gallery.IsInAnAlbum);
     }
 
     /// <summary>In one, the button is its name and nothing else.</summary>
@@ -57,10 +57,10 @@ public sealed class AlbumButtonTests : IDisposable
     [Fact]
     public void InAnAlbum_TheButtonIsItsName()
     {
-        _gallery.OpenPhotoCollection = Album(7, "Taiwan");
+        _gallery.OpenPhotoAlbum = Album(7, "Taiwan");
 
-        Assert.Equal("Taiwan", _gallery.CollectionLabel);
-        Assert.Contains("Taiwan", _gallery.CollectionTip, StringComparison.Ordinal);
+        Assert.Equal("Taiwan", _gallery.AlbumLabel);
+        Assert.Contains("Taiwan", _gallery.AlbumTip, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -74,20 +74,20 @@ public sealed class AlbumButtonTests : IDisposable
     [Fact]
     public void TheNoticeIsSilentUntilSomethingHappens()
     {
-        _gallery.OpenPhotoCollection = Album(7, "Taiwan");
+        _gallery.OpenPhotoAlbum = Album(7, "Taiwan");
 
-        Assert.False(_gallery.HasCollectionNotice);
+        Assert.False(_gallery.HasAlbumNotice);
 
-        _gallery.CollectionNotice = "Moved into Taiwan, out of Genting";
+        _gallery.AlbumNotice = "Moved into Taiwan, out of Genting";
 
-        Assert.True(_gallery.HasCollectionNotice);
+        Assert.True(_gallery.HasAlbumNotice);
     }
 
     /// <summary>The way out is offered by the list, named after the album.</summary>
     [Fact]
     public void TheListOffersTheWayOutOfTheAlbumItIsIn()
     {
-        CollectionPicker picker = Open(current: 7);
+        AlbumPicker picker = Open(current: 7);
 
         Assert.True(picker.IsInOne);
         Assert.Equal("Take it out of Taiwan", picker.TakeOutLabel);
@@ -98,7 +98,7 @@ public sealed class AlbumButtonTests : IDisposable
     [Fact]
     public void APhotographInNoAlbumIsOfferedNoWayOut()
     {
-        CollectionPicker picker = Open(current: 0);
+        AlbumPicker picker = Open(current: 0);
 
         Assert.False(picker.IsInOne);
         Assert.False(picker.TakeOutCommand.CanExecute(null));
@@ -115,7 +115,7 @@ public sealed class AlbumButtonTests : IDisposable
     [Fact]
     public void TypingDoesNotTakeTheWayOutWithIt()
     {
-        CollectionPicker picker = Open(current: 7);
+        AlbumPicker picker = Open(current: 7);
 
         picker.Typed = "zzz";
 
@@ -130,7 +130,7 @@ public sealed class AlbumButtonTests : IDisposable
     {
         bool asked = false;
 
-        var picker = new CollectionPicker(
+        var picker = new AlbumPicker(
             _ => Task.CompletedTask,
             () =>
             {
@@ -148,7 +148,7 @@ public sealed class AlbumButtonTests : IDisposable
     [Fact]
     public void TheWayOutIsReReadEachTimeTheListOpens()
     {
-        CollectionPicker picker = Open(current: 7);
+        AlbumPicker picker = Open(current: 7);
         picker.Close();
 
         picker.Open([Album(7, "Taiwan")], current: 0, "Which album", "Pick one");
@@ -169,13 +169,13 @@ public sealed class AlbumButtonTests : IDisposable
     {
         string window = File.ReadAllText(AppMarkup.PathTo("Shell", "MainWindow.xaml"));
 
-        Assert.Contains("Gallery.CollectionLabel", window, StringComparison.Ordinal);
-        Assert.Contains("Gallery.CollectionTip", window, StringComparison.Ordinal);
-        Assert.Equal(1, Occurrences(window, "Gallery.AddToCollectionCommand"));
+        Assert.Contains("Gallery.AlbumLabel", window, StringComparison.Ordinal);
+        Assert.Contains("Gallery.AlbumTip", window, StringComparison.Ordinal);
+        Assert.Equal(1, Occurrences(window, "Gallery.AddToAlbumCommand"));
 
         // The tick and the caption that said the name a second time.
-        Assert.DoesNotContain("TakeOutOfCollectionCommand", window, StringComparison.Ordinal);
-        Assert.DoesNotContain("Gallery.CollectionCaption", window, StringComparison.Ordinal);
+        Assert.DoesNotContain("TakeOutOfAlbumCommand", window, StringComparison.Ordinal);
+        Assert.DoesNotContain("Gallery.AlbumCaption", window, StringComparison.Ordinal);
     }
 
     /// <summary>And the way out is in the list the button opens.</summary>
@@ -202,16 +202,16 @@ public sealed class AlbumButtonTests : IDisposable
         }
     }
 
-    private static CollectionPicker Open(int current)
+    private static AlbumPicker Open(int current)
     {
-        var picker = new CollectionPicker(_ => Task.CompletedTask, () => Task.CompletedTask);
+        var picker = new AlbumPicker(_ => Task.CompletedTask, () => Task.CompletedTask);
         picker.Open([Album(7, "Taiwan"), Album(8, "Genting")], current, "Which album", "Pick one");
         return picker;
     }
 
-    private static CollectionSummary Album(int id, string name) =>
+    private static AlbumSummary Album(int id, string name) =>
         new(id, name, DateTime.UnixEpoch, DateTime.UnixEpoch,
-            CollectionKind.Event, CollectionOrigin.Made, 0, CoverThumbnailName: null);
+            AlbumKind.Event, AlbumOrigin.Made, 0, CoverThumbnailName: null);
 
     private static int Occurrences(string text, string value)
     {

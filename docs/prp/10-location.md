@@ -38,9 +38,9 @@ feature was planned around**: location can describe about **one photograph in si
 on this library, not four in ten. Everything built on it has to be useful when it
 is absent — not merely not crash.
 
-[11](11-collections.md) inherits this, though not one-for-one. A collection is
+[11](11-albums.md) inherits this, though not one-for-one. An album is
 placeable when **any one** of its photographs carries coordinates, and a
-collection is at least eight photographs, so the rate that matters there is better
+album is at least eight photographs, so the rate that matters there is better
 than one in six — but it is not measured, and the name ladder has to carry the
 weight either way.
 
@@ -75,7 +75,7 @@ Coordinates are `3.4239, 101.7930`. A person says "Genting".
 
 **Choose the offline gazetteer.** This app works with no internet by design, the
 data is a photo library's whereabouts for twelve years, and district-level
-accuracy is all a collection name needs.
+accuracy is all an album name needs.
 
 > **As built, it does not install at all.** The plan above was to treat a places
 > dataset as a model — size, licence, verification — and put it through

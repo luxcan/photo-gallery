@@ -1,6 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using PhotoGallery.Domain.Assets;
-using PhotoGallery.Domain.Collections;
+using PhotoGallery.Domain.Albums;
 using PhotoGallery.Domain.Faces;
 using PhotoGallery.Domain.Library;
 using PhotoGallery.Domain.People;
@@ -98,24 +98,24 @@ public sealed class SharingSchemaTests : IDisposable
         // A tombstone holding photographs against the one-album rule would be the
         // hostage the dismissal path already refuses to take.
         Asset photo = Mum.Photo(@"2019\a.jpg");
-        Collection album = Mum.Album("Genting", Morning);
-        Mum.Db.CollectionMembers.Add(new CollectionMember
+        Album album = Mum.Album("Genting", Morning);
+        Mum.Db.AlbumMembers.Add(new AlbumMember
         {
             AssetId = photo.Id,
-            CollectionId = album.Id,
+            AlbumId = album.Id,
             AddedUtc = Morning,
         });
         Mum.Db.SaveChanges();
 
-        Collection open = Mum.Db.Collections.Include(c => c.Members).Single();
+        Album open = Mum.Db.Albums.Include(c => c.Members).Single();
         open.Members.Clear();
         open.DeletedUtc = Morning.AddHours(1);
         Mum.Db.SaveChanges();
         Mum.Db.ChangeTracker.Clear();
 
-        Assert.Empty(Mum.Db.Collections);
-        Assert.Empty(Mum.Db.CollectionMembers);
-        Assert.NotNull(Mum.Db.Collections.IgnoreQueryFilters().Single().DeletedUtc);
+        Assert.Empty(Mum.Db.Albums);
+        Assert.Empty(Mum.Db.AlbumMembers);
+        Assert.NotNull(Mum.Db.Albums.IgnoreQueryFilters().Single().DeletedUtc);
     }
 
     [Fact]

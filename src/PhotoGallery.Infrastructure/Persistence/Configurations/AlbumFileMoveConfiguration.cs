@@ -1,6 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
-using PhotoGallery.Domain.Collections;
+using PhotoGallery.Domain.Albums;
 
 namespace PhotoGallery.Infrastructure.Persistence.Configurations;
 

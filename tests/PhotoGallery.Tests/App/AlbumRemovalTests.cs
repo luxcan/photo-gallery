@@ -36,7 +36,7 @@ public sealed class AlbumRemovalTests
     [Fact]
     public void NothingInTheMarkupRemovesAnAlbumWithoutAsking()
     {
-        Assert.DoesNotContain("Collections.DeleteCommand", Window(), StringComparison.Ordinal);
+        Assert.DoesNotContain("Albums.DeleteCommand", Window(), StringComparison.Ordinal);
     }
 
     /// <summary>

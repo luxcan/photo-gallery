@@ -45,9 +45,9 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddScoped<ILibraryIndex, SqliteLibraryIndex>();
         services.AddScoped<IAssetRepository, SqliteAssetRepository>();
         services.AddScoped<IDuplicateRepository, SqliteDuplicateRepository>();
-        services.AddScoped<ICollectionRepository, SqliteCollectionRepository>();
+        services.AddScoped<IAlbumRepository, SqliteAlbumRepository>();
         services.AddScoped<IAlbumFileMoveRepository, SqliteAlbumFileMoveRepository>();
-        services.AddScoped<ICollectionFactsReader, SqliteCollectionFactsReader>();
+        services.AddScoped<IAlbumFactsReader, SqliteAlbumFactsReader>();
         services.AddSingleton<IQuarantineStore, FileSystemQuarantine>();
         services.AddSingleton<IMediaFileWalker, MediaFileWalker>();
         services.AddSingleton<IThumbnailStore, FileSystemThumbnailStore>();

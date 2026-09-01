@@ -45,8 +45,8 @@ public sealed record DecisionSet(
     IReadOnlyList<StrangerFace> Strangers,
     IReadOnlyList<PhotoTurn> Turns,
     IReadOnlyList<SharedAlbum> Albums,
-    IReadOnlyList<AlbumMembership> Memberships,
-    IReadOnlyList<AlbumRejection> Rejections,
+    IReadOnlyList<SharedAlbumMembership> Memberships,
+    IReadOnlyList<SharedAlbumRejection> Rejections,
     IReadOnlyList<SharedEra> Eras,
     IReadOnlyList<SourceLink> Links)
 {

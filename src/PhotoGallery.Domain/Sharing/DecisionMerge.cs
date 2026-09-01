@@ -1,4 +1,4 @@
-using PhotoGallery.Domain.Collections;
+using PhotoGallery.Domain.Albums;
 using PhotoGallery.Domain.Faces;
 using PhotoGallery.Domain.People;
 
@@ -124,9 +124,9 @@ public static class DecisionMerge
         Faces faces = SettleFaces(mine, accepted, here);
         (List<PhotoTurn> turns, List<PhotoTurn> heldTurns) = SettleTurns(mine, accepted, here);
         List<SharedAlbum> albums = SettleAlbums(mine, accepted);
-        (List<AlbumMove> moves, List<AlbumMembership> heldMoves) =
+        (List<SharedAlbumMove> moves, List<SharedAlbumMembership> heldMoves) =
             SettleMemberships(mine, accepted, here);
-        (List<AlbumRejection> rejections, List<AlbumRejection> heldRejections) =
+        (List<SharedAlbumRejection> rejections, List<SharedAlbumRejection> heldRejections) =
             SettleRejections(mine, accepted, here);
 
         return new MergePlan(
@@ -210,9 +210,9 @@ public static class DecisionMerge
 
         Faces faces = SettleFaces(mine, parked, here);
         (List<PhotoTurn> turns, List<PhotoTurn> heldTurns) = SettleTurns(mine, parked, here);
-        (List<AlbumMove> moves, List<AlbumMembership> heldMoves) =
+        (List<SharedAlbumMove> moves, List<SharedAlbumMembership> heldMoves) =
             SettleMemberships(mine, parked, here);
-        (List<AlbumRejection> rejections, List<AlbumRejection> heldRejections) =
+        (List<SharedAlbumRejection> rejections, List<SharedAlbumRejection> heldRejections) =
             SettleRejections(mine, parked, here);
 
         // No people, albums or eras. Those are not about a photograph, so they
@@ -756,7 +756,7 @@ public static class DecisionMerge
             // A proposal nobody has renamed or thrown away carries no decision at
             // all. The other machine makes its own from the same photographs, and
             // better ones once it has the confirmations that came with this.
-            if (album.Origin == CollectionOrigin.Proposed
+            if (album.Origin == AlbumOrigin.Proposed
                 && album.NamedUtc is null
                 && album.DeletedUtc is null)
             {
@@ -801,14 +801,14 @@ public static class DecisionMerge
         return named with { DeletedUtc = Earliest(mine.DeletedUtc, theirs.DeletedUtc) };
     }
 
-    private static (List<AlbumMove> Moves, List<AlbumMembership> Held) SettleMemberships(
+    private static (List<SharedAlbumMove> Moves, List<SharedAlbumMembership> Held) SettleMemberships(
         DecisionSet mine, List<DecisionSet> accepted, LibraryContents here)
     {
-        Dictionary<AssetKey, AlbumMembership> ours = mine.Memberships.ToDictionary(m => m.Photo);
-        Dictionary<AssetKey, AlbumMembership> winners = new(ours);
-        List<AlbumMembership> held = [];
+        Dictionary<AssetKey, SharedAlbumMembership> ours = mine.Memberships.ToDictionary(m => m.Photo);
+        Dictionary<AssetKey, SharedAlbumMembership> winners = new(ours);
+        List<SharedAlbumMembership> held = [];
 
-        foreach (AlbumMembership membership in accepted.SelectMany(them => them.Memberships))
+        foreach (SharedAlbumMembership membership in accepted.SelectMany(them => them.Memberships))
         {
             if (!here.Photographs.Contains(membership.Photo))
             {
@@ -817,7 +817,7 @@ public static class DecisionMerge
             }
 
             winners[membership.Photo] =
-                winners.TryGetValue(membership.Photo, out AlbumMembership? standing)
+                winners.TryGetValue(membership.Photo, out SharedAlbumMembership? standing)
                 && Wins(standing.AddedUtc, standing.DecidedBy, membership.AddedUtc, membership.DecidedBy)
                     ? standing
                     : membership;
@@ -829,10 +829,10 @@ public static class DecisionMerge
                     .Select(winner => new
                     {
                         Winner = winner,
-                        Was = ours.TryGetValue(winner.Photo, out AlbumMembership? was) ? was : null,
+                        Was = ours.TryGetValue(winner.Photo, out SharedAlbumMembership? was) ? was : null,
                     })
                     .Where(move => move.Was?.Album != move.Winner.Album)
-                    .Select(move => new AlbumMove(
+                    .Select(move => new SharedAlbumMove(
                         move.Winner.Photo,
                         move.Was?.Album,
                         move.Winner.Album,
@@ -842,19 +842,19 @@ public static class DecisionMerge
             held);
     }
 
-    private static (List<AlbumRejection> Applied, List<AlbumRejection> Held) SettleRejections(
+    private static (List<SharedAlbumRejection> Applied, List<SharedAlbumRejection> Held) SettleRejections(
         DecisionSet mine, List<DecisionSet> accepted, LibraryContents here)
     {
         HashSet<(AssetKey Photo, string Key)> ours =
             [.. mine.Rejections.Select(r => (r.Photo, r.ProposalKey))];
 
-        List<AlbumRejection> applied = [];
-        List<AlbumRejection> held = [];
+        List<SharedAlbumRejection> applied = [];
+        List<SharedAlbumRejection> held = [];
         HashSet<(AssetKey, string)> seen = [];
 
         // Rejections only ever accumulate, so two machines never disagree about
         // one: the merge is a union rather than a contest.
-        foreach (AlbumRejection rejection in accepted.SelectMany(them => them.Rejections))
+        foreach (SharedAlbumRejection rejection in accepted.SelectMany(them => them.Rejections))
         {
             (AssetKey Photo, string ProposalKey) key = (rejection.Photo, rejection.ProposalKey);
 

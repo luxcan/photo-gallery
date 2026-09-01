@@ -1,6 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
-using PhotoGallery.App.Collections;
+using PhotoGallery.App.Albums;
 using PhotoGallery.Application.Ports;
 using PhotoGallery.Infrastructure.Persistence;
 using PhotoGallery.Infrastructure.Storage;
@@ -30,8 +30,8 @@ public sealed class AlbumTabsTests : IDisposable
     private readonly string _root;
     private readonly GalleryDbContext _db;
     private readonly ServiceProvider _services;
-    private readonly ICollectionRepository _collections;
-    private readonly CollectionsViewModel _albums;
+    private readonly IAlbumRepository _repository;
+    private readonly AlbumsViewModel _albums;
 
     public AlbumTabsTests()
     {
@@ -47,13 +47,13 @@ public sealed class AlbumTabsTests : IDisposable
         var workingFolder = new WorkingFolder(_root);
         workingFolder.EnsureCreated();
 
-        _collections = new SqliteCollectionRepository(_db);
+        _repository = new SqliteAlbumRepository(_db);
 
         _services = new ServiceCollection()
-            .AddSingleton(_collections)
+            .AddSingleton(_repository)
             .BuildServiceProvider();
 
-        _albums = new CollectionsViewModel(
+        _albums = new AlbumsViewModel(
             _services.GetRequiredService<IServiceScopeFactory>(),
             new FileSystemThumbnailStore(workingFolder));
     }
@@ -94,7 +94,7 @@ public sealed class AlbumTabsTests : IDisposable
     [Fact]
     public async Task ChangingTab_ShowsThatWall_RatherThanOpeningTheFirstAlbumOnIt()
     {
-        await _collections.CreateAsync("Genting");
+        await _repository.CreateAsync("Genting");
         await _albums.ReloadAsync();
 
         _albums.IsShowingSuggested = true;

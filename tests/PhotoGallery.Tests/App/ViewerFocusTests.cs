@@ -1,5 +1,5 @@
 using System.Reflection;
-using PhotoGallery.App.Collections;
+using PhotoGallery.App.Albums;
 using PhotoGallery.App.Duplicates;
 using PhotoGallery.App.Gallery;
 using PhotoGallery.App.People;
@@ -52,7 +52,7 @@ public sealed class ViewerFocusTests
         ("viewModel.Gallery", typeof(GalleryViewModel)),
         ("viewModel.People", typeof(PeopleViewModel)),
         ("viewModel.Duplicates", typeof(DuplicatesViewModel)),
-        ("viewModel.Collections", typeof(CollectionsViewModel)),
+        ("viewModel.Albums", typeof(AlbumsViewModel)),
     ];
 
     /// <summary>

@@ -1,8 +1,8 @@
 using Microsoft.EntityFrameworkCore;
 using PhotoGallery.Application.Ports;
-using PhotoGallery.Application.UseCases.Collections;
+using PhotoGallery.Application.UseCases.Albums;
 using PhotoGallery.Domain.Assets;
-using PhotoGallery.Domain.Collections;
+using PhotoGallery.Domain.Albums;
 using PhotoGallery.Domain.Library;
 using PhotoGallery.Infrastructure.Persistence;
 using PhotoGallery.Infrastructure.Storage;
@@ -49,7 +49,7 @@ public sealed class MoveAlbumFilesHandlerTests : IDisposable
     [Fact]
     public async Task Handle_MovesOriginalsAndChangesPathsWithoutChangingTheirIdentity()
     {
-        int albumId = AddAlbum(CollectionOrigin.Accepted);
+        int albumId = AddAlbum(AlbumOrigin.Accepted);
         int photo = AddFile(albumId, Path.Combine("Old", "same.jpg"), "first");
         int video = AddFile(albumId, Path.Combine("Elsewhere", "clip.mp4"), "second");
 
@@ -78,8 +78,8 @@ public sealed class MoveAlbumFilesHandlerTests : IDisposable
             (await _db.Assets.SingleAsync(asset => asset.Id == photo)).RelativePath);
         Assert.Equal(@"Together\clip.mp4",
             (await _db.Assets.SingleAsync(asset => asset.Id == video)).RelativePath);
-        Assert.Equal([photo, video], await _db.CollectionMembers
-            .Where(member => member.CollectionId == albumId)
+        Assert.Equal([photo, video], await _db.AlbumMembers
+            .Where(member => member.AlbumId == albumId)
             .OrderBy(member => member.AssetId)
             .Select(member => member.AssetId)
             .ToListAsync());
@@ -90,14 +90,14 @@ public sealed class MoveAlbumFilesHandlerTests : IDisposable
     [Fact]
     public async Task Recover_UsesTheDestinationAsReceiptWhenTheProcessStoppedAfterFileMove()
     {
-        int albumId = AddAlbum(CollectionOrigin.Made);
+        int albumId = AddAlbum(AlbumOrigin.Made);
         int assetId = AddFile(albumId, Path.Combine("Old", "one.jpg"), "original");
         AlbumMovePlan plan = await _handler.PlanAsync(albumId, _destination);
         AlbumMovePlanItem item = Assert.Single(plan.Items);
 
         await _repository.BeginAsync(
             plan.OperationId,
-            plan.CollectionId,
+            plan.AlbumId,
             [new AlbumMoveJournalPlan(
                 item.AssetId,
                 plan.PhotoSourceId,
@@ -124,7 +124,7 @@ public sealed class MoveAlbumFilesHandlerTests : IDisposable
     [Fact]
     public async Task Plan_RefusesAnAlbumWhoseOriginalsSpanPhotoSources()
     {
-        int albumId = AddAlbum(CollectionOrigin.Made);
+        int albumId = AddAlbum(AlbumOrigin.Made);
         AddFile(albumId, Path.Combine("Old", "one.jpg"), "one");
 
         string secondRoot = Path.Combine(_root, "more-photos");
@@ -148,7 +148,7 @@ public sealed class MoveAlbumFilesHandlerTests : IDisposable
     [Fact]
     public async Task Plan_RequiresASuggestedAlbumToBeKeptFirst()
     {
-        int albumId = AddAlbum(CollectionOrigin.Proposed);
+        int albumId = AddAlbum(AlbumOrigin.Proposed);
         AddFile(albumId, Path.Combine("Old", "one.jpg"), "one");
 
         InvalidOperationException error = await Assert.ThrowsAsync<InvalidOperationException>(
@@ -157,20 +157,20 @@ public sealed class MoveAlbumFilesHandlerTests : IDisposable
         Assert.Contains("Keep the suggested album", error.Message);
     }
 
-    private int AddAlbum(CollectionOrigin origin)
+    private int AddAlbum(AlbumOrigin origin)
     {
-        var album = new Collection
+        var album = new Album
         {
             Name = "A day out",
             StartUtc = DateTime.UtcNow,
             EndUtc = DateTime.UtcNow,
-            Kind = CollectionKind.Period,
+            Kind = AlbumKind.Period,
             Origin = origin,
-            ProposalKey = origin == CollectionOrigin.Proposed ? $"test-{Guid.NewGuid():N}"[..24] : null,
+            ProposalKey = origin == AlbumOrigin.Proposed ? $"test-{Guid.NewGuid():N}"[..24] : null,
             BuiltUtc = DateTime.UtcNow,
         };
 
-        _db.Collections.Add(album);
+        _db.Albums.Add(album);
         _db.SaveChanges();
         return album.Id;
     }
@@ -204,9 +204,9 @@ public sealed class MoveAlbumFilesHandlerTests : IDisposable
 
         _db.Assets.Add(asset);
         _db.SaveChanges();
-        _db.CollectionMembers.Add(new CollectionMember
+        _db.AlbumMembers.Add(new AlbumMember
         {
-            CollectionId = albumId,
+            AlbumId = albumId,
             AssetId = asset.Id,
             AddedUtc = DateTime.UtcNow,
         });

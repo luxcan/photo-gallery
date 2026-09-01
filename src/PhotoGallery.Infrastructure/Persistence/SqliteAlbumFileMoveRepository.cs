@@ -1,6 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using PhotoGallery.Application.Ports;
-using PhotoGallery.Domain.Collections;
+using PhotoGallery.Domain.Albums;
 
 namespace PhotoGallery.Infrastructure.Persistence;
 
@@ -12,23 +12,23 @@ public sealed class SqliteAlbumFileMoveRepository : IAlbumFileMoveRepository
     public SqliteAlbumFileMoveRepository(GalleryDbContext db) => _db = db;
 
     public Task<AlbumMoveAlbum?> FindAlbumAsync(
-        int collectionId, CancellationToken cancellationToken = default) =>
-        _db.Collections
+        int albumId, CancellationToken cancellationToken = default) =>
+        _db.Albums
             .AsNoTracking()
-            .Where(collection => collection.Id == collectionId)
-            .Select(collection => new AlbumMoveAlbum(
-                collection.Id,
-                collection.Name,
-                collection.Origin,
-                collection.Members.Count))
+            .Where(album => album.Id == albumId)
+            .Select(album => new AlbumMoveAlbum(
+                album.Id,
+                album.Name,
+                album.Origin,
+                album.Members.Count))
             .FirstOrDefaultAsync(cancellationToken);
 
     public async Task<IReadOnlyList<AlbumMoveAsset>> GetAlbumAssetsAsync(
-        int collectionId, CancellationToken cancellationToken = default)
+        int albumId, CancellationToken cancellationToken = default)
     {
-        return await _db.CollectionMembers
+        return await _db.AlbumMembers
             .AsNoTracking()
-            .Where(member => member.CollectionId == collectionId)
+            .Where(member => member.AlbumId == albumId)
             .Join(
                 _db.Assets.AsNoTracking(),
                 member => member.AssetId,
@@ -54,7 +54,7 @@ public sealed class SqliteAlbumFileMoveRepository : IAlbumFileMoveRepository
 
     public async Task BeginAsync(
         Guid operationId,
-        int collectionId,
+        int albumId,
         IReadOnlyList<AlbumMoveJournalPlan> files,
         CancellationToken cancellationToken = default)
     {
@@ -70,12 +70,12 @@ public sealed class SqliteAlbumFileMoveRepository : IAlbumFileMoveRepository
             return; // idempotent retry of the same confirmed plan
         }
 
-        Collection? album = await _db.Collections
+        Album? album = await _db.Albums
             .AsNoTracking()
-            .FirstOrDefaultAsync(row => row.Id == collectionId, cancellationToken)
+            .FirstOrDefaultAsync(row => row.Id == albumId, cancellationToken)
             .ConfigureAwait(false);
 
-        if (album is null || album.Origin == CollectionOrigin.Proposed)
+        if (album is null || album.Origin == AlbumOrigin.Proposed)
         {
             throw new InvalidOperationException(
                 "The album is no longer available for moving originals.");
@@ -87,9 +87,9 @@ public sealed class SqliteAlbumFileMoveRepository : IAlbumFileMoveRepository
             throw new InvalidOperationException("The move plan contains the same asset twice.");
         }
 
-        int members = await _db.CollectionMembers
+        int members = await _db.AlbumMembers
             .CountAsync(
-                member => member.CollectionId == collectionId
+                member => member.AlbumId == albumId
                           && assetIds.Contains(member.AssetId),
                 cancellationToken)
             .ConfigureAwait(false);
@@ -153,7 +153,7 @@ public sealed class SqliteAlbumFileMoveRepository : IAlbumFileMoveRepository
         _db.AlbumFileMoves.AddRange(files.Select(file => new AlbumFileMove
         {
             OperationId = operationId,
-            CollectionId = collectionId,
+            AlbumId = albumId,
             AssetId = file.AssetId,
             PhotoSourceId = file.PhotoSourceId,
             SourceRelativePath = file.SourceRelativePath,
@@ -195,7 +195,7 @@ public sealed class SqliteAlbumFileMoveRepository : IAlbumFileMoveRepository
                 (move, source) => new AlbumMoveJournalEntry(
                     move.Id,
                     move.OperationId,
-                    move.CollectionId,
+                    move.AlbumId,
                     move.AssetId,
                     move.PhotoSourceId,
                     source.Path,

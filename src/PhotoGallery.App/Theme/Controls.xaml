@@ -1,6 +1,6 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-                    xmlns:collections="clr-namespace:PhotoGallery.App.Collections"
+                    xmlns:albums="clr-namespace:PhotoGallery.App.Albums"
                     xmlns:people="clr-namespace:PhotoGallery.App.People"
                     xmlns:primitives="clr-namespace:System.Windows.Controls.Primitives;assembly=PresentationFramework"
                     xmlns:shell="clr-namespace:PhotoGallery.App.Shell"
@@ -1076,14 +1076,14 @@
   </Style>
 
   <!--
-    One album on the collections wall: a cover, a name and what is in it. The
+    One album on the albums wall: a cover, a name and what is in it. The
     whole card is the button - half a card that opens and half that does not is
     a coin toss - and the picture is clipped to the card's own corners so a
     landscape cover does not square off a rounded tile.
   -->
   <!--
     A row that is on or off: a tick box and a label, in a list. The app had no
-    checkbox anywhere until a collection needed a rule built out of people and
+    checkbox anywhere until an album needed a rule built out of people and
     places, and one drawn from the same glyph set as the rest of the app is
     cheaper than teaching the Windows default about the theme.
   -->
@@ -1612,11 +1612,11 @@
   </DataTemplate>
 
   <!--
-    Saying which collection a photograph belongs in. The same shape as the name
+    Saying which album a photograph belongs in. The same shape as the name
     picker below, because it is the same question in a different subject: one box
     that narrows the list and, when nothing is left, becomes the new name.
   -->
-  <DataTemplate DataType="{x:Type collections:CollectionPicker}">
+  <DataTemplate DataType="{x:Type albums:AlbumPicker}">
     <!-- ModalSurface, like every other thing that floats over the app. Only the
          padding is its own: a dialog's 24 around a panel this narrow reads as a
          box with a small question lost in the middle of it. -->
@@ -1715,7 +1715,7 @@
     itself, so the two screens cannot drift apart.
   -->
   <DataTemplate DataType="{x:Type people:PersonPicker}">
-    <!-- The same surface and the same narrower padding as the collection
+    <!-- The same surface and the same narrower padding as the album
          picker above, for the same reasons. -->
     <Border Style="{DynamicResource ModalSurface}" Padding="16,14"
             MaxWidth="320" HorizontalAlignment="Center" VerticalAlignment="Center">

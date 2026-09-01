@@ -35,14 +35,14 @@ public sealed class SuggestionReviewTests
     /// </summary>
     /// <remarks>
     /// The arrows in the viewer walk one list. Opened through
-    /// OpenCollectionPhotoCommand, a proposal would step into the photographs
+    /// OpenAlbumPhotoCommand, a proposal would step into the photographs
     /// already in the album - a different set, and never the one being reviewed.
     /// </remarks>
     [Fact]
     public void ProposalsAreSteppedThroughSeparatelyFromTheAlbum()
     {
         Assert.DoesNotContain(
-            "OpenCollectionPhotoCommand", SuggestionStrip(), StringComparison.Ordinal);
+            "OpenAlbumPhotoCommand", SuggestionStrip(), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -77,7 +77,7 @@ public sealed class SuggestionReviewTests
     public void AnsweringTakesTheProposalOutOfTheList()
     {
         string source = File.ReadAllText(
-            AppMarkup.PathTo("Collections", "CollectionsViewModel.cs"));
+            AppMarkup.PathTo("Albums", "AlbumsViewModel.cs"));
 
         Assert.Contains("Suggestions.Remove(tile)", source, StringComparison.Ordinal);
     }
@@ -99,9 +99,9 @@ public sealed class SuggestionReviewTests
     [InlineData(typeof(PhotoGallery.App.ViewModels.MainViewModel), "RefuseSuggestedPhotoCommand")]
     [InlineData(typeof(PhotoGallery.App.Gallery.GalleryTile), "IsVideo")]
     [InlineData(typeof(PhotoGallery.App.Gallery.GalleryTile), "IsChosen")]
-    [InlineData(typeof(PhotoGallery.App.Collections.CollectionsViewModel), "SuggestionGrid")]
-    [InlineData(typeof(PhotoGallery.App.Collections.CollectionPicker), "Narrowed")]
-    [InlineData(typeof(PhotoGallery.App.Collections.CollectionPicker), "IsNarrowed")]
+    [InlineData(typeof(PhotoGallery.App.Albums.AlbumsViewModel), "SuggestionGrid")]
+    [InlineData(typeof(PhotoGallery.App.Albums.AlbumPicker), "Narrowed")]
+    [InlineData(typeof(PhotoGallery.App.Albums.AlbumPicker), "IsNarrowed")]
     public void EveryNameTheMarkupBindsToExists(Type owner, string member)
     {
         Assert.True(
@@ -118,7 +118,7 @@ public sealed class SuggestionReviewTests
         string window = Window();
 
         int start = window.IndexOf(
-            "ItemsSource=\"{Binding Collections.Suggestions}\"", StringComparison.Ordinal);
+            "ItemsSource=\"{Binding Albums.Suggestions}\"", StringComparison.Ordinal);
 
         Assert.True(start >= 0, "The strip of proposals has been renamed or removed.");
 

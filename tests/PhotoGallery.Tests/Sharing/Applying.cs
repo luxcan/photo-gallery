@@ -65,14 +65,14 @@ internal static class Applying
             stranger => stranger.Face);
     }
 
-    private static IReadOnlyList<AlbumMembership> Memberships(DecisionSet mine, MergePlan plan)
+    private static IReadOnlyList<SharedAlbumMembership> Memberships(DecisionSet mine, MergePlan plan)
     {
         HashSet<AssetKey> moved = [.. plan.Moves.Select(move => move.Photo)];
 
         return
         [
             .. mine.Memberships.Where(membership => !moved.Contains(membership.Photo)),
-            .. plan.Moves.Select(move => new AlbumMembership(
+            .. plan.Moves.Select(move => new SharedAlbumMembership(
                 move.Photo, move.To, move.AddedUtc, move.DecidedBy)),
         ];
     }

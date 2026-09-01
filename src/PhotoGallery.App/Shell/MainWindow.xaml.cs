@@ -8,13 +8,13 @@ using System.Windows.Media;
 using System.Windows.Navigation;
 using System.Windows.Media.Animation;
 using Microsoft.Win32;
-using PhotoGallery.App.Collections;
+using PhotoGallery.App.Albums;
 using PhotoGallery.App.Duplicates;
 using PhotoGallery.App.Gallery;
 using PhotoGallery.App.People;
 using PhotoGallery.App.ViewModels;
 using PhotoGallery.Application.Ports;
-using PhotoGallery.Application.UseCases.Collections;
+using PhotoGallery.Application.UseCases.Albums;
 using PhotoGallery.Application.UseCases.Gallery;
 
 namespace PhotoGallery.App.Shell;
@@ -105,8 +105,8 @@ public partial class MainWindow : Window
         // reach for most: putting a photograph in an album left the arrows dead
         // where naming a face in the same viewer did not.
         WhenPickingEnds(
-            viewModel.Gallery.Collections,
-            () => viewModel.Gallery.Collections.IsOpen,
+            viewModel.Gallery.Albums,
+            () => viewModel.Gallery.Albums.IsOpen,
             () => viewModel.Gallery.IsViewerOpen,
             PhotoViewer);
     }
@@ -419,15 +419,15 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Keeps the open collection's grid in step with its own size, exactly as
+    /// Keeps the open album's grid in step with its own size, exactly as
     /// the People grid does.
     /// </summary>
-    private void OnCollectionPhotosSizeChanged(object sender, SizeChangedEventArgs e)
+    private void OnAlbumPhotosSizeChanged(object sender, SizeChangedEventArgs e)
     {
-        CollectionsViewModel collections = _viewModel.Collections;
+        AlbumsViewModel albums = _viewModel.Albums;
         double cellSize = _viewModel.Gallery.CellSize;
 
-        collections.SetVisibleRows(GalleryLayout.RowsOnScreen(e.NewSize.Height, cellSize));
+        albums.SetVisibleRows(GalleryLayout.RowsOnScreen(e.NewSize.Height, cellSize));
 
         if (!e.WidthChanged)
         {
@@ -435,7 +435,7 @@ public partial class MainWindow : Window
         }
 
         int columns = GalleryLayout.ColumnsFor(e.NewSize.Width, cellSize);
-        if (columns == collections.Columns)
+        if (columns == albums.Columns)
         {
             return;
         }
@@ -443,31 +443,31 @@ public partial class MainWindow : Window
         bool firstLayout = e.PreviousSize.Width == 0 || e.PreviousSize.Height == 0;
         int firstItem = firstLayout
             ? 0
-            : Math.Max(0, FirstVisibleItem(CollectionPhotoGrid, collections.PhotoCount));
+            : Math.Max(0, FirstVisibleItem(AlbumPhotoGrid, albums.PhotoCount));
 
-        collections.SetColumns(columns);
+        albums.SetColumns(columns);
 
-        GalleryRow? landing = collections.PhotoRows
+        GalleryRow? landing = albums.PhotoRows
             .LastOrDefault(row => row.FirstIndex <= firstItem);
         if (landing is not null)
         {
-            CollectionPhotoGrid.ScrollIntoView(landing);
+            AlbumPhotoGrid.ScrollIntoView(landing);
         }
     }
 
-    private void OnCollectionPhotosScrolled(object sender, ScrollChangedEventArgs e)
+    private void OnAlbumPhotosScrolled(object sender, ScrollChangedEventArgs e)
     {
         if (e.VerticalChange == 0)
         {
             return;
         }
 
-        CollectionsViewModel collections = _viewModel.Collections;
-        collections.SetVisibleRows(
+        AlbumsViewModel albums = _viewModel.Albums;
+        albums.SetVisibleRows(
             GalleryLayout.RowsOnScreen(e.ViewportHeight, _viewModel.Gallery.CellSize));
 
-        _ = collections.ShowRangeAsync(
-            FirstVisibleItem(CollectionPhotoGrid, collections.PhotoCount));
+        _ = albums.ShowRangeAsync(
+            FirstVisibleItem(AlbumPhotoGrid, albums.PhotoCount));
     }
 
     private void OnPersonPhotosScrolled(object sender, ScrollChangedEventArgs e)
@@ -618,7 +618,7 @@ public partial class MainWindow : Window
     /// </remarks>
     private void OnViewerKeyDown(object sender, KeyEventArgs e)
     {
-        if (_viewModel.Gallery.Picker.IsOpen || _viewModel.Gallery.Collections.IsOpen)
+        if (_viewModel.Gallery.Picker.IsOpen || _viewModel.Gallery.Albums.IsOpen)
         {
             return;
         }
@@ -820,13 +820,13 @@ public partial class MainWindow : Window
     {
         GalleryViewModel gallery = _viewModel.Gallery;
         PeopleViewModel people = _viewModel.People;
-        CollectionsViewModel collections = _viewModel.Collections;
+        AlbumsViewModel albums = _viewModel.Albums;
 
         yield return (() => gallery.Picker.IsOpen, gallery.Picker.CancelCommand);
-        yield return (() => gallery.Collections.IsOpen, gallery.Collections.CancelCommand);
+        yield return (() => gallery.Albums.IsOpen, gallery.Albums.CancelCommand);
         yield return (() => people.Reassign.IsOpen, people.Reassign.CancelCommand);
-        yield return (() => collections.IsEditing, collections.CancelEditCommand);
-        yield return (() => collections.IsCreating, collections.CancelCreateCommand);
+        yield return (() => albums.IsEditing, albums.CancelEditCommand);
+        yield return (() => albums.IsCreating, albums.CancelCreateCommand);
     }
 
     private void OnDuplicateInspectorKeyDown(object sender, KeyEventArgs e)
@@ -1549,7 +1549,7 @@ public partial class MainWindow : Window
     /// </remarks>
     private async void OnRemoveAlbumClicked(object sender, RoutedEventArgs e)
     {
-        if (_confirming || _viewModel.Collections.Selected is not CollectionItem album)
+        if (_confirming || _viewModel.Albums.Selected is not AlbumItem album)
         {
             return;
         }
@@ -1576,7 +1576,7 @@ public partial class MainWindow : Window
 
             if (answer)
             {
-                await _viewModel.Collections.DeleteCommand.ExecuteAsync(null);
+                await _viewModel.Albums.DeleteCommand.ExecuteAsync(null);
             }
         }
         finally
@@ -1590,7 +1590,7 @@ public partial class MainWindow : Window
     {
         if (_confirming
             || !_viewModel.IsIdle
-            || _viewModel.Collections.Selected is not CollectionItem album)
+            || _viewModel.Albums.Selected is not AlbumItem album)
         {
             return;
         }

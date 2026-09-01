@@ -47,7 +47,7 @@ own thumbnails and its own vectors, and none of them is authoritative.
 
 ## Depends on
 
-[06 — Faces](06-faces.md) for the people, [11 — Collections](11-collections.md)
+[06 — Faces](06-faces.md) for the people, [11 — Albums](11-albums.md)
 for the albums, [02 — Scanning](02-scanning.md) for the path that identifies a
 photograph, and [03 — Thumbnails](03-thumbnails.md) for the content hash the
 pooled pictures are named after.
@@ -428,8 +428,8 @@ has to settle it without asking nine thousand questions.
 **Last decision wins, by when it was decided.** That needs a date on every human
 answer — and the app very nearly has one already. Its own convention, adopted so
 that decisions could be reviewed and undone, is *"a date rather than a flag"*:
-`IgnoredUtc` on a face, `QuarantinedUtc` on an asset, `RejectedUtc` on a
-collection rejection, `AddedUtc` on a membership. A convention chosen for undo
+`IgnoredUtc` on a face, `QuarantinedUtc` on an asset, `RejectedUtc` on an
+album rejection, `AddedUtc` on a membership. A convention chosen for undo
 turns out to be exactly what merging needs. Three things still carry a flag
 where they should carry a date, and that is most of this feature's schema cost.
 
@@ -655,7 +655,7 @@ capture date, the dimensions, the GPS coordinates and the perceptual hash — th
 reason `GeneratedThumbnail` carries all of them. **A machine that copied the
 pictures but not those facts would get a library with no timeline, no places and
 no albums**: 9,544 capture dates and 1,709 sets of coordinates missing, and
-[11](11-collections.md) with nothing to cluster.
+[11](11-albums.md) with nothing to cluster.
 
 So what is published beside the decisions is every answer that read produced:
 
@@ -847,11 +847,11 @@ pairing and the framing described above. The merge cannot tell them apart and
 must never learn to.
 
 `ApplyHeldDecisionsHandler` runs as a phase of the scan, **after finding faces
-and before collections** — not, as it first seemed, straight after indexing. A
+and before albums** — not, as it first seemed, straight after indexing. A
 held answer names a *face*, and a photograph that has just been indexed has none
 yet: swept too early it would find nothing, put the answers back, and leave the
 names one whole scan behind the pictures they belong to. Placed after the face
-phase it reads what that phase has just written, and collections then get the
+phase it reads what that phase has just written, and albums then get the
 names in time to use them for naming. Same dependency-first rule as every other
 phase.
 
@@ -862,7 +862,7 @@ phase.
 | `Person.PublicId`, `UpdatedUtc`, `DeletedUtc` | identity across machines, and a tombstone |
 | `FaceAssignment.DecidedUtc` | the only human answer in the model with no date on it |
 | `AssignmentSource.Cleared` | a fourth value, so unnaming is not a rejection |
-| `Collection.PublicId`, `NamedUtc`, `DeletedUtc` | `WasRenamed` is a flag where a date is needed |
+| `Album.PublicId`, `NamedUtc`, `DeletedUtc` | `WasRenamed` is a flag where a date is needed |
 | `Asset.RotatedUtc` | six rows today, but a turn is a decision like any other |
 | `PhotoSource.SharedId` | the identity a matched pair of roots share, so no key holds a machine-local path |
 | `LibrarySettings.MachineId`, `MachineName`, `SharedFolder` | |

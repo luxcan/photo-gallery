@@ -1,7 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
-using PhotoGallery.Domain.Collections;
+using PhotoGallery.Domain.Albums;
 using PhotoGallery.Domain.Library;
 using PhotoGallery.Domain.People;
 using PhotoGallery.Infrastructure.Persistence;
@@ -27,6 +27,12 @@ namespace PhotoGallery.Tests.Sharing;
 public sealed class UpgradingALibraryTests : IDisposable
 {
     /// <summary>The last release before any of this existed.</summary>
+    /// <remarks>
+    /// Still spelt the old way, and it always will be. A migration's name is
+    /// the name of something that already happened, so it did not move when the
+    /// domain word did - and neither did the table this test writes into, which
+    /// was called Collections on the day that migration ran.
+    /// </remarks>
     private const string BeforeSharing = "AddCollectionRules";
 
     private readonly string _root;
@@ -69,7 +75,7 @@ public sealed class UpgradingALibraryTests : IDisposable
 
         Upgrade();
 
-        Assert.Equal(2, _db.Collections.Select(c => c.PublicId).Distinct().Count());
+        Assert.Equal(2, _db.Albums.Select(c => c.PublicId).Distinct().Count());
         Assert.Equal(2, _db.PhotoSources.Select(s => s.SharedId).Distinct().Count());
         Assert.DoesNotContain(Guid.Empty, _db.PhotoSources.Select(s => s.SharedId));
     }
@@ -125,8 +131,8 @@ public sealed class UpgradingALibraryTests : IDisposable
 
         Upgrade();
 
-        Assert.NotNull(_db.Collections.Single(c => c.Name == "Genting Trip").NamedUtc);
-        Assert.Null(_db.Collections.Single(c => c.Name == "March 2019").NamedUtc);
+        Assert.NotNull(_db.Albums.Single(c => c.Name == "Genting Trip").NamedUtc);
+        Assert.Null(_db.Albums.Single(c => c.Name == "March 2019").NamedUtc);
     }
 
     [Fact]
@@ -138,7 +144,7 @@ public sealed class UpgradingALibraryTests : IDisposable
 
         Upgrade();
 
-        Assert.Equal(DateTime.MinValue, _db.Collections.Single().NamedUtc);
+        Assert.Equal(DateTime.MinValue, _db.Albums.Single().NamedUtc);
     }
 
     [Fact]
@@ -207,7 +213,7 @@ public sealed class UpgradingALibraryTests : IDisposable
              INSERT INTO Collections
                  (Name, StartUtc, EndUtc, CoverAssetId, Kind, Origin, WasRenamed, BuiltUtc)
              VALUES ('{name}', '2019-03-03 00:00:00', '2019-03-05 00:00:00', 0,
-                     {(int)CollectionKind.Event}, {(int)CollectionOrigin.Made},
+                     {(int)AlbumKind.Event}, {(int)AlbumOrigin.Made},
                      {(renamed ? 1 : 0)}, '2019-03-06 00:00:00');
              """);
 

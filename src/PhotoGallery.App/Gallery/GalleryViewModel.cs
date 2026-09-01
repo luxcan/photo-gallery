@@ -3,8 +3,8 @@ using System.Windows.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.DependencyInjection;
-using PhotoGallery.App.Collections;
-using PhotoGallery.Domain.Collections;
+using PhotoGallery.App.Albums;
+using PhotoGallery.Domain.Albums;
 using PhotoGallery.App.Imaging;
 using PhotoGallery.App.People;
 using PhotoGallery.App.Shell;
@@ -126,7 +126,7 @@ public sealed partial class GalleryViewModel : ObservableObject
             "Nobody — stop asking",
             closed: () => FacingBeingNamed = null);
 
-        Collections = new CollectionPicker(PutInCollectionAsync, TakeOutOfCollectionAsync);
+        Albums = new AlbumPicker(PutInAlbumAsync, TakeOutOfAlbumAsync);
     }
 
     /// <summary>
@@ -169,7 +169,7 @@ public sealed partial class GalleryViewModel : ObservableObject
 
 
     /// <summary>
-    /// The collection the open photograph is in, or null while it is in none.
+    /// The album the open photograph is in, or null while it is in none.
     /// </summary>
     /// <remarks>
     /// At most one, because a photograph belongs to one occasion. Shown in the
@@ -177,11 +177,11 @@ public sealed partial class GalleryViewModel : ObservableObject
     /// are making rather than a rule they discover afterwards.
     /// </remarks>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(CollectionLabel), nameof(CollectionTip),
-        nameof(IsInACollection))]
-    private CollectionSummary? _openPhotoCollection;
+    [NotifyPropertyChangedFor(nameof(AlbumLabel), nameof(AlbumTip),
+        nameof(IsInAnAlbum))]
+    private AlbumSummary? _openPhotoAlbum;
 
-    /// <summary>What just happened to this photograph's collection, said once.</summary>
+    /// <summary>What just happened to this photograph's album, said once.</summary>
     /// <remarks>
     /// Only what the button beside it cannot say. The button carries the album's
     /// name, so "In Taiwan" printed next to a button reading Taiwan was the same
@@ -189,12 +189,12 @@ public sealed partial class GalleryViewModel : ObservableObject
     /// somewhere to get there, which no label showing one album can express.
     /// </remarks>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasCollectionNotice))]
-    private string _collectionNotice = string.Empty;
+    [NotifyPropertyChangedFor(nameof(HasAlbumNotice))]
+    private string _albumNotice = string.Empty;
 
-    public bool IsInACollection => OpenPhotoCollection is not null;
+    public bool IsInAnAlbum => OpenPhotoAlbum is not null;
 
-    public bool HasCollectionNotice => CollectionNotice.Length > 0;
+    public bool HasAlbumNotice => AlbumNotice.Length > 0;
 
     /// <summary>
     /// What the one album button says: where the photograph is, or the offer to
@@ -207,17 +207,17 @@ public sealed partial class GalleryViewModel : ObservableObject
     /// it replaced was a list glyph and a tick, and the tick meant "take it
     /// out": a tick means confirm in every other corner of this app.
     /// </remarks>
-    public string CollectionLabel => OpenPhotoCollection is CollectionSummary collection
-        ? collection.Name
+    public string AlbumLabel => OpenPhotoAlbum is AlbumSummary album
+        ? album.Name
         : "Add to an album";
 
     /// <summary>What that button promises before it is pressed.</summary>
-    public string CollectionTip => OpenPhotoCollection is CollectionSummary collection
-        ? $"In {collection.Name}. Choose another album to move it, or take it out."
+    public string AlbumTip => OpenPhotoAlbum is AlbumSummary album
+        ? $"In {album.Name}. Choose another album to move it, or take it out."
         : "Put this photograph in an album";
 
-    /// <summary>Choosing which collection this photograph belongs in.</summary>
-    public CollectionPicker Collections { get; }
+    /// <summary>Choosing which album this photograph belongs in.</summary>
+    public AlbumPicker Albums { get; }
 
     public bool IsEmpty => _window.Count == 0;
 
@@ -675,12 +675,12 @@ public sealed partial class GalleryViewModel : ObservableObject
         // grid opens none of them.
         WarmPlayer(value);
 
-        OpenPhotoCollection = null;
-        CollectionNotice = string.Empty;
-        Collections.Close();
+        OpenPhotoAlbum = null;
+        AlbumNotice = string.Empty;
+        Albums.Close();
         if (value is not null)
         {
-            _ = LoadOpenCollectionAsync(value.Item.Id);
+            _ = LoadOpenAlbumAsync(value.Item.Id);
         }
 
         TurnNotice = value?.Item.IsTurnedInAppOnly == true ? TurnNotices.HereOnly : null;
@@ -704,155 +704,155 @@ public sealed partial class GalleryViewModel : ObservableObject
         }
     }
 
-    /// <summary>Reads which collection the open photograph is in.</summary>
+    /// <summary>Reads which album the open photograph is in.</summary>
     /// <remarks>
     /// Only the picture still open may fill it in, for the same reason the
     /// detail panel checks: holding an arrow key down starts one of these per
     /// press, and whichever finished last would otherwise win.
     /// </remarks>
-    private async Task LoadOpenCollectionAsync(int assetId)
+    private async Task LoadOpenAlbumAsync(int assetId)
     {
-        CollectionSummary? collection;
+        AlbumSummary? album;
         try
         {
             using IServiceScope scope = _scopeFactory.CreateScope();
-            collection = await scope.ServiceProvider
-                .GetRequiredService<ICollectionRepository>()
+            album = await scope.ServiceProvider
+                .GetRequiredService<IAlbumRepository>()
                 .FindForAssetAsync(assetId)
                 .ConfigureAwait(true);
         }
         catch (Exception ex) when (ex is IOException or InvalidOperationException)
         {
-            DiagnosticLog.Write($"could not read the collection of asset {assetId}", ex);
+            DiagnosticLog.Write($"could not read the album of asset {assetId}", ex);
             return;
         }
 
         if (OpenTile?.Item.Id == assetId)
         {
-            OpenPhotoCollection = collection;
+            OpenPhotoAlbum = album;
         }
     }
 
-    /// <summary>Offers every collection, so this photograph can join one.</summary>
+    /// <summary>Offers every album, so this photograph can join one.</summary>
     [RelayCommand]
-    private async Task AddToCollectionAsync()
+    private async Task AddToAlbumAsync()
     {
         if (OpenTile is null)
         {
             return;
         }
 
-        IReadOnlyList<CollectionSummary> all;
+        IReadOnlyList<AlbumSummary> all;
         using (IServiceScope scope = _scopeFactory.CreateScope())
         {
             all = await scope.ServiceProvider
-                .GetRequiredService<ICollectionRepository>()
+                .GetRequiredService<IAlbumRepository>()
                 .GetAsync()
                 .ConfigureAwait(true);
         }
 
-        Collections.Open(
+        Albums.Open(
             all,
-            OpenPhotoCollection?.Id ?? 0,
+            OpenPhotoAlbum?.Id ?? 0,
             "Put this photograph in an album",
             "A photograph belongs to one album, so choosing another moves it. "
                 + "Type a name that is not there to make one.");
     }
 
     /// <summary>
-    /// Puts the open photograph into the collection named, making it if it is new.
+    /// Puts the open photograph into the album named, making it if it is new.
     /// </summary>
     /// <remarks>
     /// A name rather than an id, because the picker's box is both the filter and
     /// the way to make a new one - so what comes back may name something that
     /// does not exist yet.
     /// </remarks>
-    private async Task PutInCollectionAsync(string name)
+    private async Task PutInAlbumAsync(string name)
     {
         if (OpenTile is not GalleryTile tile)
         {
             return;
         }
 
-        Collections.Close();
+        Albums.Close();
 
         try
         {
-            CollectionMoveResult moved;
+            AlbumAddResult moved;
             using (IServiceScope scope = _scopeFactory.CreateScope())
             {
-                ICollectionRepository collections = scope.ServiceProvider
-                    .GetRequiredService<ICollectionRepository>();
+                IAlbumRepository albums = scope.ServiceProvider
+                    .GetRequiredService<IAlbumRepository>();
 
-                IReadOnlyList<CollectionSummary> all =
-                    await collections.GetAsync().ConfigureAwait(true);
+                IReadOnlyList<AlbumSummary> all =
+                    await albums.GetAsync().ConfigureAwait(true);
 
-                CollectionSummary? chosen = all.FirstOrDefault(collection =>
-                    string.Equals(collection.Name, name, StringComparison.CurrentCultureIgnoreCase));
+                AlbumSummary? chosen = all.FirstOrDefault(album =>
+                    string.Equals(album.Name, name, StringComparison.CurrentCultureIgnoreCase));
 
                 int id = chosen?.Id
-                    ?? await collections.CreateAsync(name).ConfigureAwait(true);
+                    ?? await albums.CreateAsync(name).ConfigureAwait(true);
 
-                moved = await collections
+                moved = await albums
                     .AddAsync(id, [tile.Item.Id])
                     .ConfigureAwait(true);
             }
 
             // The rule nobody asked about, said out loud rather than applied
             // quietly: it left somewhere to be here.
-            CollectionNotice = moved.Moved > 0 && moved.From.Count > 0
+            AlbumNotice = moved.Moved > 0 && moved.From.Count > 0
                 ? $"Moved into {name}, out of {string.Join(" and ", moved.From)}"
                 : $"Added to {name}";
 
-            await LoadOpenCollectionAsync(tile.Item.Id).ConfigureAwait(true);
+            await LoadOpenAlbumAsync(tile.Item.Id).ConfigureAwait(true);
             LibraryChanged?.Invoke(this, EventArgs.Empty);
         }
         catch (Exception ex) when (ex is IOException or InvalidOperationException)
         {
-            CollectionNotice = $"That could not be done: {ex.Message}";
+            AlbumNotice = $"That could not be done: {ex.Message}";
         }
     }
 
-    /// <summary>Takes the open photograph out of the collection it is in.</summary>
+    /// <summary>Takes the open photograph out of the album it is in.</summary>
     /// <remarks>
     /// Out of something the app suggested, this is a rejection and is
     /// remembered: that photograph is never offered for those days again. Out of
-    /// a collection the user made, it is only a rearrangement.
+    /// an album the user made, it is only a rearrangement.
     ///
     /// <para>Answered from inside the album list rather than by a button of its
     /// own, so it closes the list the way choosing an album does. It is the same
     /// question - which album is this in - and "none" is one of the answers.</para>
     /// </remarks>
-    private async Task TakeOutOfCollectionAsync()
+    private async Task TakeOutOfAlbumAsync()
     {
         if (OpenTile is not GalleryTile tile
-            || OpenPhotoCollection is not CollectionSummary collection)
+            || OpenPhotoAlbum is not AlbumSummary album)
         {
             return;
         }
 
-        Collections.Close();
+        Albums.Close();
 
         try
         {
             using (IServiceScope scope = _scopeFactory.CreateScope())
             {
                 await scope.ServiceProvider
-                    .GetRequiredService<ICollectionRepository>()
-                    .RemoveAsync(collection.Id, [tile.Item.Id])
+                    .GetRequiredService<IAlbumRepository>()
+                    .RemoveAsync(album.Id, [tile.Item.Id])
                     .ConfigureAwait(true);
             }
 
-            CollectionNotice = collection.Origin == CollectionOrigin.Made
-                ? $"Taken out of {collection.Name}"
-                : $"Taken out of {collection.Name}. It will not be suggested for those days again.";
+            AlbumNotice = album.Origin == AlbumOrigin.Made
+                ? $"Taken out of {album.Name}"
+                : $"Taken out of {album.Name}. It will not be suggested for those days again.";
 
-            OpenPhotoCollection = null;
+            OpenPhotoAlbum = null;
             LibraryChanged?.Invoke(this, EventArgs.Empty);
         }
         catch (Exception ex) when (ex is IOException or InvalidOperationException)
         {
-            CollectionNotice = $"That could not be done: {ex.Message}";
+            AlbumNotice = $"That could not be done: {ex.Message}";
         }
     }
 

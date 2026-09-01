@@ -19,8 +19,8 @@ public sealed record HeldAnswers(
     IReadOnlyList<FaceAnswer> Answers,
     IReadOnlyList<StrangerFace> Strangers,
     IReadOnlyList<PhotoTurn> Turns,
-    IReadOnlyList<AlbumMembership> Memberships,
-    IReadOnlyList<AlbumRejection> Rejections)
+    IReadOnlyList<SharedAlbumMembership> Memberships,
+    IReadOnlyList<SharedAlbumRejection> Rejections)
 {
     public static HeldAnswers None { get; } = new([], [], [], [], []);
 

@@ -15,7 +15,7 @@ target machine. Nothing here is estimated.
 
 Browse the whole library as pictures, two ways: a flat grid newest-first, and a
 folder tree beside a grid. Click any picture to see it large, and move through
-the collection from there without coming back.
+the library from there without coming back.
 
 ## Depends on
 

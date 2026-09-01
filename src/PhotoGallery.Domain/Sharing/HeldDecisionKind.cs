@@ -10,10 +10,10 @@ public enum HeldDecisionKind
     Turn = 1,
 
     /// <summary>Somebody put the photograph in an album.</summary>
-    AlbumMembership = 2,
+    SharedAlbumMembership = 2,
 
     /// <summary>Somebody said the photograph does not belong in a run of days.</summary>
-    AlbumRejection = 3,
+    SharedAlbumRejection = 3,
 
     /// <summary>Somebody said the face at a given box is nobody worth tracking.</summary>
     /// <remarks>

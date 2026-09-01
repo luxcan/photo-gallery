@@ -3,7 +3,7 @@ using PhotoGallery.Application.Ports;
 using PhotoGallery.Application.UseCases.Scanning;
 using PhotoGallery.Application.UseCases.Sharing;
 using PhotoGallery.Domain.Assets;
-using PhotoGallery.Domain.Collections;
+using PhotoGallery.Domain.Albums;
 using PhotoGallery.Domain.Faces;
 using PhotoGallery.Domain.Library;
 using PhotoGallery.Domain.People;
@@ -414,21 +414,21 @@ internal sealed class Library : IDisposable
     }
 
     /// <summary>An album somebody made, as opposed to one the app proposed.</summary>
-    public Collection Album(string name, DateTime namedUtc, Guid? publicId = null)
+    public Album Album(string name, DateTime namedUtc, Guid? publicId = null)
     {
-        var album = new Collection
+        var album = new Album
         {
             PublicId = publicId ?? Guid.NewGuid(),
             Name = name,
             StartUtc = new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc),
             EndUtc = new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc),
-            Kind = CollectionKind.Period,
-            Origin = CollectionOrigin.Made,
+            Kind = AlbumKind.Period,
+            Origin = AlbumOrigin.Made,
             NamedUtc = namedUtc,
             BuiltUtc = namedUtc,
         };
 
-        Db.Collections.Add(album);
+        Db.Albums.Add(album);
         Db.SaveChanges();
         return album;
     }

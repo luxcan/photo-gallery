@@ -1,6 +1,6 @@
 using System.Diagnostics;
 using PhotoGallery.Application.Ports;
-using PhotoGallery.Application.UseCases.Collections;
+using PhotoGallery.Application.UseCases.Albums;
 using PhotoGallery.Application.UseCases.Faces;
 using PhotoGallery.Application.UseCases.Places;
 using PhotoGallery.Application.UseCases.Scanning;
@@ -81,7 +81,7 @@ public sealed class RefreshLibraryHandler
     private readonly BuildVideoKeyframesHandler _videos;
     private readonly DetectFacesHandler _faces;
     private readonly ApplyHeldDecisionsHandler _waiting;
-    private readonly BuildCollectionsHandler _collect;
+    private readonly BuildAlbumsHandler _collect;
 
     public RefreshLibraryHandler(
         ScanPhotoSourceHandler scan,
@@ -91,7 +91,7 @@ public sealed class RefreshLibraryHandler
         BuildVideoKeyframesHandler videos,
         DetectFacesHandler faces,
         ApplyHeldDecisionsHandler waiting,
-        BuildCollectionsHandler collect)
+        BuildAlbumsHandler collect)
     {
         _scan = scan;
         _generate = generate;
@@ -396,12 +396,12 @@ public sealed class RefreshLibraryHandler
         // over dates the index already holds is the cheapest thing in the run.
         progress?.Report(new RefreshProgress(RefreshPhase.Collecting, string.Empty, 0, 0, 0));
 
-        var collecting = new PhaseProgress<CollectionsProgress>(
+        var collecting = new PhaseProgress<AlbumsProgress>(
             p => new RefreshProgress(
                 RefreshPhase.Collecting, string.Empty, p.Done, p.Total, 0),
             progress);
 
-        CollectionsResult collected = await _collect
+        AlbumsResult collected = await _collect
             .HandleAsync(progress: collecting, cancellationToken: cancellationToken)
             .ConfigureAwait(false);
 

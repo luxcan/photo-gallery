@@ -1,5 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
-using PhotoGallery.Application.UseCases.Collections;
+using PhotoGallery.Application.UseCases.Albums;
 using PhotoGallery.Application.UseCases.Duplicates;
 using PhotoGallery.Application.UseCases.Faces;
 using PhotoGallery.Application.UseCases.Gallery;
@@ -43,7 +43,7 @@ public static class AppServiceCollectionExtensions
             .AddScoped<BuildThumbnailsHandler>()
             .AddScoped<BuildVideoKeyframesHandler>()
             .AddScoped<DetectFacesHandler>()
-            .AddScoped<BuildCollectionsHandler>()
+            .AddScoped<BuildAlbumsHandler>()
             .AddScoped<MoveAlbumFilesHandler>()
             .AddScoped<IndexContentHandler>()
             .AddScoped<LocatePhotosHandler>()

@@ -18,6 +18,207 @@ namespace PhotoGallery.Infrastructure.Persistence.Migrations
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "9.0.19");
 
+            modelBuilder.Entity("PhotoGallery.Domain.Albums.Album", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("BuiltUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("CoverAssetId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime?>("DeletedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("EndUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Kind")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("NamedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Origin")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("PlaceId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("ProposalKey")
+                        .HasMaxLength(24)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("PublicId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("RuleFromUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("RuleToUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("StartUtc")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CoverAssetId");
+
+                    b.HasIndex("Origin");
+
+                    b.HasIndex("PlaceId");
+
+                    b.HasIndex("ProposalKey")
+                        .IsUnique();
+
+                    b.HasIndex("PublicId")
+                        .IsUnique();
+
+                    b.HasIndex("StartUtc");
+
+                    b.ToTable("Albums", (string)null);
+                });
+
+            modelBuilder.Entity("PhotoGallery.Domain.Albums.AlbumFileMove", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("AlbumId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("AssetId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("DestinationRelativePath")
+                        .IsRequired()
+                        .HasMaxLength(1024)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Error")
+                        .HasMaxLength(1024)
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("ExpectedLength")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("ExpectedModifiedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("FinishedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("OperationId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("PhotoSourceId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("SourceRelativePath")
+                        .IsRequired()
+                        .HasMaxLength(1024)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("StartedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("State")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AssetId");
+
+                    b.HasIndex("OperationId");
+
+                    b.HasIndex("State");
+
+                    b.ToTable("AlbumFileMoves", (string)null);
+                });
+
+            modelBuilder.Entity("PhotoGallery.Domain.Albums.AlbumMember", b =>
+                {
+                    b.Property<int>("AssetId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<Guid>("AddedBy")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("AddedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("AlbumId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("AssetId");
+
+                    b.HasIndex("AlbumId");
+
+                    b.ToTable("AlbumMembers", (string)null);
+                });
+
+            modelBuilder.Entity("PhotoGallery.Domain.Albums.AlbumRejection", b =>
+                {
+                    b.Property<int>("AssetId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("ProposalKey")
+                        .HasMaxLength(24)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("RejectedBy")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("RejectedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("AssetId", "ProposalKey");
+
+                    b.HasIndex("ProposalKey");
+
+                    b.ToTable("AlbumRejections", (string)null);
+                });
+
+            modelBuilder.Entity("PhotoGallery.Domain.Albums.AlbumRulePerson", b =>
+                {
+                    b.Property<int>("AlbumId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("PersonId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("AlbumId", "PersonId");
+
+                    b.HasIndex("PersonId");
+
+                    b.ToTable("AlbumRulePeople", (string)null);
+                });
+
+            modelBuilder.Entity("PhotoGallery.Domain.Albums.AlbumRulePlace", b =>
+                {
+                    b.Property<int>("AlbumId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("PlaceId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("AlbumId", "PlaceId");
+
+                    b.HasIndex("PlaceId");
+
+                    b.ToTable("AlbumRulePlaces", (string)null);
+                });
+
             modelBuilder.Entity("PhotoGallery.Domain.Assets.Asset", b =>
                 {
                     b.Property<int>("Id")
@@ -149,207 +350,6 @@ namespace PhotoGallery.Infrastructure.Persistence.Migrations
                         .IsUnique();
 
                     b.ToTable("VideoKeyframes", (string)null);
-                });
-
-            modelBuilder.Entity("PhotoGallery.Domain.Collections.AlbumFileMove", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("AssetId")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("CollectionId")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("DestinationRelativePath")
-                        .IsRequired()
-                        .HasMaxLength(1024)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Error")
-                        .HasMaxLength(1024)
-                        .HasColumnType("TEXT");
-
-                    b.Property<long>("ExpectedLength")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<DateTime>("ExpectedModifiedUtc")
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime?>("FinishedUtc")
-                        .HasColumnType("TEXT");
-
-                    b.Property<Guid>("OperationId")
-                        .HasColumnType("TEXT");
-
-                    b.Property<int>("PhotoSourceId")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("SourceRelativePath")
-                        .IsRequired()
-                        .HasMaxLength(1024)
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime>("StartedUtc")
-                        .HasColumnType("TEXT");
-
-                    b.Property<int>("State")
-                        .HasColumnType("INTEGER");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("AssetId");
-
-                    b.HasIndex("OperationId");
-
-                    b.HasIndex("State");
-
-                    b.ToTable("AlbumFileMoves", (string)null);
-                });
-
-            modelBuilder.Entity("PhotoGallery.Domain.Collections.Collection", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
-
-                    b.Property<DateTime>("BuiltUtc")
-                        .HasColumnType("TEXT");
-
-                    b.Property<int>("CoverAssetId")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<DateTime?>("DeletedUtc")
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime>("EndUtc")
-                        .HasColumnType("TEXT");
-
-                    b.Property<int>("Kind")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(128)
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime?>("NamedUtc")
-                        .HasColumnType("TEXT");
-
-                    b.Property<int>("Origin")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int?>("PlaceId")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("ProposalKey")
-                        .HasMaxLength(24)
-                        .HasColumnType("TEXT");
-
-                    b.Property<Guid>("PublicId")
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime?>("RuleFromUtc")
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime?>("RuleToUtc")
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime>("StartUtc")
-                        .HasColumnType("TEXT");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("CoverAssetId");
-
-                    b.HasIndex("Origin");
-
-                    b.HasIndex("PlaceId");
-
-                    b.HasIndex("ProposalKey")
-                        .IsUnique();
-
-                    b.HasIndex("PublicId")
-                        .IsUnique();
-
-                    b.HasIndex("StartUtc");
-
-                    b.ToTable("Collections", (string)null);
-                });
-
-            modelBuilder.Entity("PhotoGallery.Domain.Collections.CollectionMember", b =>
-                {
-                    b.Property<int>("AssetId")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<Guid>("AddedBy")
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime>("AddedUtc")
-                        .HasColumnType("TEXT");
-
-                    b.Property<int>("CollectionId")
-                        .HasColumnType("INTEGER");
-
-                    b.HasKey("AssetId");
-
-                    b.HasIndex("CollectionId");
-
-                    b.ToTable("CollectionMembers", (string)null);
-                });
-
-            modelBuilder.Entity("PhotoGallery.Domain.Collections.CollectionRejection", b =>
-                {
-                    b.Property<int>("AssetId")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("ProposalKey")
-                        .HasMaxLength(24)
-                        .HasColumnType("TEXT");
-
-                    b.Property<Guid>("RejectedBy")
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime>("RejectedUtc")
-                        .HasColumnType("TEXT");
-
-                    b.HasKey("AssetId", "ProposalKey");
-
-                    b.HasIndex("ProposalKey");
-
-                    b.ToTable("CollectionRejections", (string)null);
-                });
-
-            modelBuilder.Entity("PhotoGallery.Domain.Collections.CollectionRulePerson", b =>
-                {
-                    b.Property<int>("CollectionId")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("PersonId")
-                        .HasColumnType("INTEGER");
-
-                    b.HasKey("CollectionId", "PersonId");
-
-                    b.HasIndex("PersonId");
-
-                    b.ToTable("CollectionRulePeople", (string)null);
-                });
-
-            modelBuilder.Entity("PhotoGallery.Domain.Collections.CollectionRulePlace", b =>
-                {
-                    b.Property<int>("CollectionId")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("PlaceId")
-                        .HasColumnType("INTEGER");
-
-                    b.HasKey("CollectionId", "PlaceId");
-
-                    b.HasIndex("PlaceId");
-
-                    b.ToTable("CollectionRulePlaces", (string)null);
                 });
 
             modelBuilder.Entity("PhotoGallery.Domain.Duplicates.DuplicateMember", b =>
@@ -771,6 +771,74 @@ namespace PhotoGallery.Infrastructure.Persistence.Migrations
                     b.ToTable("PairedSources", (string)null);
                 });
 
+            modelBuilder.Entity("PhotoGallery.Domain.Albums.AlbumMember", b =>
+                {
+                    b.HasOne("PhotoGallery.Domain.Albums.Album", "Album")
+                        .WithMany("Members")
+                        .HasForeignKey("AlbumId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("PhotoGallery.Domain.Assets.Asset", "Asset")
+                        .WithMany()
+                        .HasForeignKey("AssetId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Album");
+
+                    b.Navigation("Asset");
+                });
+
+            modelBuilder.Entity("PhotoGallery.Domain.Albums.AlbumRejection", b =>
+                {
+                    b.HasOne("PhotoGallery.Domain.Assets.Asset", "Asset")
+                        .WithMany()
+                        .HasForeignKey("AssetId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Asset");
+                });
+
+            modelBuilder.Entity("PhotoGallery.Domain.Albums.AlbumRulePerson", b =>
+                {
+                    b.HasOne("PhotoGallery.Domain.Albums.Album", "Album")
+                        .WithMany("RulePeople")
+                        .HasForeignKey("AlbumId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("PhotoGallery.Domain.People.Person", "Person")
+                        .WithMany()
+                        .HasForeignKey("PersonId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Album");
+
+                    b.Navigation("Person");
+                });
+
+            modelBuilder.Entity("PhotoGallery.Domain.Albums.AlbumRulePlace", b =>
+                {
+                    b.HasOne("PhotoGallery.Domain.Albums.Album", "Album")
+                        .WithMany("RulePlaces")
+                        .HasForeignKey("AlbumId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("PhotoGallery.Domain.Places.Place", "Place")
+                        .WithMany()
+                        .HasForeignKey("PlaceId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Album");
+
+                    b.Navigation("Place");
+                });
+
             modelBuilder.Entity("PhotoGallery.Domain.Assets.Asset", b =>
                 {
                     b.HasOne("PhotoGallery.Domain.Library.PhotoSource", null)
@@ -789,74 +857,6 @@ namespace PhotoGallery.Infrastructure.Persistence.Migrations
                         .IsRequired();
 
                     b.Navigation("Asset");
-                });
-
-            modelBuilder.Entity("PhotoGallery.Domain.Collections.CollectionMember", b =>
-                {
-                    b.HasOne("PhotoGallery.Domain.Assets.Asset", "Asset")
-                        .WithMany()
-                        .HasForeignKey("AssetId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("PhotoGallery.Domain.Collections.Collection", "Collection")
-                        .WithMany("Members")
-                        .HasForeignKey("CollectionId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Asset");
-
-                    b.Navigation("Collection");
-                });
-
-            modelBuilder.Entity("PhotoGallery.Domain.Collections.CollectionRejection", b =>
-                {
-                    b.HasOne("PhotoGallery.Domain.Assets.Asset", "Asset")
-                        .WithMany()
-                        .HasForeignKey("AssetId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Asset");
-                });
-
-            modelBuilder.Entity("PhotoGallery.Domain.Collections.CollectionRulePerson", b =>
-                {
-                    b.HasOne("PhotoGallery.Domain.Collections.Collection", "Collection")
-                        .WithMany("RulePeople")
-                        .HasForeignKey("CollectionId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("PhotoGallery.Domain.People.Person", "Person")
-                        .WithMany()
-                        .HasForeignKey("PersonId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Collection");
-
-                    b.Navigation("Person");
-                });
-
-            modelBuilder.Entity("PhotoGallery.Domain.Collections.CollectionRulePlace", b =>
-                {
-                    b.HasOne("PhotoGallery.Domain.Collections.Collection", "Collection")
-                        .WithMany("RulePlaces")
-                        .HasForeignKey("CollectionId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("PhotoGallery.Domain.Places.Place", "Place")
-                        .WithMany()
-                        .HasForeignKey("PlaceId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Collection");
-
-                    b.Navigation("Place");
                 });
 
             modelBuilder.Entity("PhotoGallery.Domain.Duplicates.DuplicateMember", b =>
@@ -930,7 +930,7 @@ namespace PhotoGallery.Infrastructure.Persistence.Migrations
                     b.Navigation("Asset");
                 });
 
-            modelBuilder.Entity("PhotoGallery.Domain.Collections.Collection", b =>
+            modelBuilder.Entity("PhotoGallery.Domain.Albums.Album", b =>
                 {
                     b.Navigation("Members");
 

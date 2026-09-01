@@ -1,6 +1,6 @@
-using PhotoGallery.App.Collections;
+using PhotoGallery.App.Albums;
 using PhotoGallery.Application.Ports;
-using PhotoGallery.Domain.Collections;
+using PhotoGallery.Domain.Albums;
 
 namespace PhotoGallery.Tests.App;
 
@@ -24,7 +24,7 @@ public sealed class AlbumPickerTests
     [Fact]
     public void NothingTypedShowsNoCount()
     {
-        CollectionPicker picker = Open("Taiwan", "Japan", "Genting");
+        AlbumPicker picker = Open("Taiwan", "Japan", "Genting");
 
         Assert.Equal(string.Empty, picker.Narrowed);
         Assert.False(picker.IsNarrowed);
@@ -34,7 +34,7 @@ public sealed class AlbumPickerTests
     [Fact]
     public void TypingSaysHowMuchOfTheListIsHidden()
     {
-        CollectionPicker picker = Open("Taiwan", "Japan", "Genting");
+        AlbumPicker picker = Open("Taiwan", "Japan", "Genting");
 
         picker.Typed = "an";
 
@@ -47,7 +47,7 @@ public sealed class AlbumPickerTests
     [Fact]
     public void AnEmptyResultStillCountsRatherThanGoingSilent()
     {
-        CollectionPicker picker = Open("Taiwan", "Japan");
+        AlbumPicker picker = Open("Taiwan", "Japan");
 
         picker.Typed = "Peru";
 
@@ -81,18 +81,18 @@ public sealed class AlbumPickerTests
         Assert.Contains("{Binding Narrowed}", PickerTemplate(), StringComparison.Ordinal);
     }
 
-    private static CollectionPicker Open(params string[] names)
+    private static AlbumPicker Open(params string[] names)
     {
-        var picker = new CollectionPicker(_ => Task.CompletedTask);
+        var picker = new AlbumPicker(_ => Task.CompletedTask);
 
         picker.Open(
-            [.. names.Select((name, index) => new CollectionSummary(
+            [.. names.Select((name, index) => new AlbumSummary(
                 index + 1,
                 name,
                 DateTime.UnixEpoch,
                 DateTime.UnixEpoch,
-                CollectionKind.Period,
-                CollectionOrigin.Made,
+                AlbumKind.Period,
+                AlbumOrigin.Made,
                 0,
                 null))],
             current: 0,
@@ -102,13 +102,13 @@ public sealed class AlbumPickerTests
         return picker;
     }
 
-    /// <summary>The CollectionPicker's own slice of Controls.xaml.</summary>
+    /// <summary>The AlbumPicker's own slice of Controls.xaml.</summary>
     private static string PickerTemplate()
     {
         string controls = File.ReadAllText(AppMarkup.PathTo("Theme", "Controls.xaml"));
 
         int start = controls.IndexOf(
-            "DataType=\"{x:Type collections:CollectionPicker}\"", StringComparison.Ordinal);
+            "DataType=\"{x:Type albums:AlbumPicker}\"", StringComparison.Ordinal);
 
         Assert.True(start >= 0, "The album picker's template has been renamed or removed.");
 

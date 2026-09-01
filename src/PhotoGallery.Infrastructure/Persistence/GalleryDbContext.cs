@@ -1,6 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using PhotoGallery.Domain.Assets;
-using PhotoGallery.Domain.Collections;
+using PhotoGallery.Domain.Albums;
 using PhotoGallery.Domain.Duplicates;
 using PhotoGallery.Domain.Faces;
 using PhotoGallery.Domain.Library;
@@ -39,15 +39,15 @@ public sealed class GalleryDbContext : DbContext
 
     public DbSet<DuplicateMember> DuplicateMembers => Set<DuplicateMember>();
 
-    public DbSet<Collection> Collections => Set<Collection>();
+    public DbSet<Album> Albums => Set<Album>();
 
-    public DbSet<CollectionMember> CollectionMembers => Set<CollectionMember>();
+    public DbSet<AlbumMember> AlbumMembers => Set<AlbumMember>();
 
-    public DbSet<CollectionRejection> CollectionRejections => Set<CollectionRejection>();
+    public DbSet<AlbumRejection> AlbumRejections => Set<AlbumRejection>();
 
-    public DbSet<CollectionRulePerson> CollectionRulePeople => Set<CollectionRulePerson>();
+    public DbSet<AlbumRulePerson> AlbumRulePeople => Set<AlbumRulePerson>();
 
-    public DbSet<CollectionRulePlace> CollectionRulePlaces => Set<CollectionRulePlace>();
+    public DbSet<AlbumRulePlace> AlbumRulePlaces => Set<AlbumRulePlace>();
 
     public DbSet<AlbumFileMove> AlbumFileMoves => Set<AlbumFileMove>();
 

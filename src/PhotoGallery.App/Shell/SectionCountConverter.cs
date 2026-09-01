@@ -30,7 +30,7 @@ public sealed class SectionCountConverter : IMultiValueConverter
         {
             ActivitySection.LibraryKey => counts.TotalAssets,
             ActivitySection.PeopleKey => counts.People,
-            ActivitySection.CollectionsKey => counts.Collections,
+            ActivitySection.AlbumsKey => counts.Albums,
             ActivitySection.DuplicatesKey => counts.UnresolvedDuplicateSets,
             ActivitySection.SourcesKey => sources,
             _ => 0,

@@ -2,7 +2,7 @@ using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using PhotoGallery.Application.Ports;
 using PhotoGallery.Domain.Assets;
-using PhotoGallery.Domain.Collections;
+using PhotoGallery.Domain.Albums;
 using PhotoGallery.Domain.Faces;
 using PhotoGallery.Domain.People;
 using PhotoGallery.Domain.Sharing;
@@ -451,7 +451,7 @@ public sealed class SqliteDecisionRepository : IDecisionRepository
             return 0;
         }
 
-        List<Collection> here = await _db.Collections
+        List<Album> here = await _db.Albums
             .IgnoreQueryFilters()
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
@@ -460,7 +460,7 @@ public sealed class SqliteDecisionRepository : IDecisionRepository
 
         foreach (SharedAlbum settled in plan.Albums)
         {
-            Collection? album = Match(here, settled);
+            Album? album = Match(here, settled);
 
             if (album is null)
             {
@@ -468,18 +468,18 @@ public sealed class SqliteDecisionRepository : IDecisionRepository
                 // is derived, so its row is this machine's own to build - what
                 // travels about one is a name, and a name with nothing to sit on
                 // waits for the rebuild that makes it.
-                if (settled.Origin == CollectionOrigin.Proposed || settled.DeletedUtc is not null)
+                if (settled.Origin == AlbumOrigin.Proposed || settled.DeletedUtc is not null)
                 {
                     continue;
                 }
 
-                _db.Collections.Add(new Collection
+                _db.Albums.Add(new Album
                 {
                     PublicId = settled.PublicId,
                     Name = settled.Name,
                     StartUtc = DateTime.UtcNow,
                     EndUtc = DateTime.UtcNow,
-                    Kind = CollectionKind.Period,
+                    Kind = AlbumKind.Period,
                     Origin = settled.Origin,
                     ProposalKey = settled.ProposalKey,
                     NamedUtc = settled.NamedUtc,
@@ -492,8 +492,8 @@ public sealed class SqliteDecisionRepository : IDecisionRepository
 
             if (settled.DeletedUtc is not null && album.DeletedUtc is null)
             {
-                await _db.CollectionMembers
-                    .Where(member => member.CollectionId == album.Id)
+                await _db.AlbumMembers
+                    .Where(member => member.AlbumId == album.Id)
                     .ExecuteDeleteAsync(cancellationToken)
                     .ConfigureAwait(false);
 
@@ -519,7 +519,7 @@ public sealed class SqliteDecisionRepository : IDecisionRepository
     /// The row an album names: by its run of days where it has one, and by its
     /// identity otherwise.
     /// </summary>
-    private static Collection? Match(List<Collection> here, SharedAlbum album) =>
+    private static Album? Match(List<Album> here, SharedAlbum album) =>
         album.ProposalKey is null
             ? here.FirstOrDefault(row => row.PublicId == album.PublicId)
             : here.FirstOrDefault(row => row.ProposalKey == album.ProposalKey)
@@ -534,7 +534,7 @@ public sealed class SqliteDecisionRepository : IDecisionRepository
 
         Dictionary<AssetKey, int> assets =
             await AssetRowsAsync(cancellationToken).ConfigureAwait(false);
-        Dictionary<Guid, int> albums = await _db.Collections
+        Dictionary<Guid, int> albums = await _db.Albums
             .IgnoreQueryFilters()
             .Where(album => album.DeletedUtc == null)
             .ToDictionaryAsync(album => album.PublicId, album => album.Id, cancellationToken)
@@ -542,7 +542,7 @@ public sealed class SqliteDecisionRepository : IDecisionRepository
 
         int moved = 0;
 
-        foreach (AlbumMove move in plan.Moves)
+        foreach (SharedAlbumMove move in plan.Moves)
         {
             if (!assets.TryGetValue(move.Photo, out int assetId)
                 || !albums.TryGetValue(move.To, out int albumId))
@@ -553,15 +553,15 @@ public sealed class SqliteDecisionRepository : IDecisionRepository
             // One delete and one insert, because a photograph's row is its whole
             // primary key in that table - the schema refuses a second rather
             // than overwriting it.
-            await _db.CollectionMembers
+            await _db.AlbumMembers
                 .Where(member => member.AssetId == assetId)
                 .ExecuteDeleteAsync(cancellationToken)
                 .ConfigureAwait(false);
 
-            _db.CollectionMembers.Add(new CollectionMember
+            _db.AlbumMembers.Add(new AlbumMember
             {
                 AssetId = assetId,
-                CollectionId = albumId,
+                AlbumId = albumId,
                 AddedUtc = move.AddedUtc,
                 AddedBy = move.DecidedBy,
             });
@@ -587,18 +587,18 @@ public sealed class SqliteDecisionRepository : IDecisionRepository
 
         HashSet<(int, string)> here =
         [
-            .. await _db.CollectionRejections
+            .. await _db.AlbumRejections
                 .Select(r => ValueTuple.Create(r.AssetId, r.ProposalKey))
                 .ToListAsync(cancellationToken)
                 .ConfigureAwait(false),
         ];
 
-        foreach (AlbumRejection rejection in plan.Rejections)
+        foreach (SharedAlbumRejection rejection in plan.Rejections)
         {
             if (assets.TryGetValue(rejection.Photo, out int assetId)
                 && here.Add((assetId, rejection.ProposalKey)))
             {
-                _db.CollectionRejections.Add(new CollectionRejection
+                _db.AlbumRejections.Add(new AlbumRejection
                 {
                     AssetId = assetId,
                     ProposalKey = rejection.ProposalKey,
@@ -984,22 +984,22 @@ public sealed class SqliteDecisionRepository : IDecisionRepository
                 turn.DecidedUtc);
         }
 
-        foreach (AlbumMembership membership in held.Memberships)
+        foreach (SharedAlbumMembership membership in held.Memberships)
         {
             yield return new Waiting(
                 membership.Photo,
-                HeldDecisionKind.AlbumMembership,
+                HeldDecisionKind.SharedAlbumMembership,
                 membership.Album.ToString("D"),
                 Written(membership),
                 membership.DecidedBy,
                 membership.AddedUtc);
         }
 
-        foreach (AlbumRejection rejection in held.Rejections)
+        foreach (SharedAlbumRejection rejection in held.Rejections)
         {
             yield return new Waiting(
                 rejection.Photo,
-                HeldDecisionKind.AlbumRejection,
+                HeldDecisionKind.SharedAlbumRejection,
                 rejection.ProposalKey,
                 Written(rejection),
                 rejection.DecidedBy,

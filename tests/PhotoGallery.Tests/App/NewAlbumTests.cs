@@ -1,8 +1,8 @@
 using Microsoft.Extensions.DependencyInjection;
-using PhotoGallery.App.Collections;
+using PhotoGallery.App.Albums;
 using PhotoGallery.Application.Ports;
 using PhotoGallery.Domain.Assets;
-using PhotoGallery.Domain.Collections;
+using PhotoGallery.Domain.Albums;
 using PhotoGallery.Domain.Faces;
 using PhotoGallery.Domain.People;
 using PhotoGallery.Infrastructure.Storage;
@@ -27,8 +27,8 @@ public sealed class NewAlbumTests : IDisposable
 
     private readonly string _root;
     private readonly ServiceProvider _services;
-    private readonly FakeCollections _collections = new();
-    private readonly CollectionsViewModel _albums;
+    private readonly FakeAlbums _repository = new();
+    private readonly AlbumsViewModel _albums;
 
     public NewAlbumTests()
     {
@@ -39,12 +39,12 @@ public sealed class NewAlbumTests : IDisposable
         workingFolder.EnsureCreated();
 
         _services = new ServiceCollection()
-            .AddSingleton<ICollectionRepository>(_collections)
+            .AddSingleton<IAlbumRepository>(_repository)
             .AddSingleton<IPeopleReader, TwoPeople>()
             .AddSingleton<IPlaceReader, OnePlaceAndOneCountry>()
             .BuildServiceProvider();
 
-        _albums = new CollectionsViewModel(
+        _albums = new AlbumsViewModel(
             _services.GetRequiredService<IServiceScopeFactory>(),
             new FileSystemThumbnailStore(workingFolder));
     }
@@ -91,9 +91,9 @@ public sealed class NewAlbumTests : IDisposable
         Assert.Equal("1 person chosen", _albums.PeopleChosen);
 
         _albums.NewName = "Whoever";
-        await _albums.CreateCollectionCommand.ExecuteAsync(null);
+        await _albums.CreateAlbumCommand.ExecuteAsync(null);
 
-        Assert.Equal(Ana, Assert.Single(Assert.Single(_collections.RulesSet).Rule.PersonIds));
+        Assert.Equal(Ana, Assert.Single(Assert.Single(_repository.RulesSet).Rule.PersonIds));
     }
 
     [Fact]
@@ -173,9 +173,9 @@ public sealed class NewAlbumTests : IDisposable
         _albums.IsOneDay = true;
         _albums.RuleDay = new DateTime(2019, 3, 3);
 
-        await _albums.CreateCollectionCommand.ExecuteAsync(null);
+        await _albums.CreateAlbumCommand.ExecuteAsync(null);
 
-        CollectionRule rule = Assert.Single(_collections.RulesSet).Rule;
+        AlbumRule rule = Assert.Single(_repository.RulesSet).Rule;
         Assert.Equal(new DateOnly(2019, 3, 3), rule.From);
         Assert.Equal(new DateOnly(2019, 3, 3), rule.To);
     }
@@ -193,9 +193,9 @@ public sealed class NewAlbumTests : IDisposable
         // must not quietly keep asking about them.
         _albums.IsAnyDay = true;
 
-        await _albums.CreateCollectionCommand.ExecuteAsync(null);
+        await _albums.CreateAlbumCommand.ExecuteAsync(null);
 
-        Assert.Empty(_collections.RulesSet);
+        Assert.Empty(_repository.RulesSet);
     }
 
     [Fact]
@@ -210,11 +210,11 @@ public sealed class NewAlbumTests : IDisposable
         _albums.People.Single(choice => choice.Id == Ana).IsChosen = true;
         _albums.Places.Single(choice => choice.Id == Genting).IsChosen = true;
 
-        await _albums.CreateCollectionCommand.ExecuteAsync(null);
+        await _albums.CreateAlbumCommand.ExecuteAsync(null);
 
-        Assert.Equal("Genting, at last", _collections.Created);
+        Assert.Equal("Genting, at last", _repository.Created);
 
-        CollectionRule rule = Assert.Single(_collections.RulesSet).Rule;
+        AlbumRule rule = Assert.Single(_repository.RulesSet).Rule;
         Assert.Equal(new DateOnly(2019, 3, 3), rule.From);
         Assert.Equal(new DateOnly(2019, 3, 5), rule.To);
         Assert.Equal(Ana, Assert.Single(rule.PersonIds));
@@ -231,9 +231,9 @@ public sealed class NewAlbumTests : IDisposable
         _albums.IsOneDay = true;
         _albums.RuleDay = new DateTime(2019, 3, 3);
 
-        await _albums.CreateCollectionCommand.ExecuteAsync(null);
+        await _albums.CreateAlbumCommand.ExecuteAsync(null);
 
-        Assert.Equal(_collections.CreatedId, Assert.Single(_collections.RulesSet).CollectionId);
+        Assert.Equal(_repository.CreatedId, Assert.Single(_repository.RulesSet).AlbumId);
     }
 
     [Fact]
@@ -242,12 +242,12 @@ public sealed class NewAlbumTests : IDisposable
         await _albums.StartCreatingCommand.ExecuteAsync(null);
         _albums.NewName = "Odds and ends";
 
-        await _albums.CreateCollectionCommand.ExecuteAsync(null);
+        await _albums.CreateAlbumCommand.ExecuteAsync(null);
 
         // Not an empty rule written over the top: an album that asks for nothing
         // and an album never given a rule are the same album, and writing one
         // would cost a round trip to say so.
-        Assert.Empty(_collections.RulesSet);
+        Assert.Empty(_repository.RulesSet);
     }
 
     [Fact]
@@ -256,7 +256,7 @@ public sealed class NewAlbumTests : IDisposable
         await _albums.StartCreatingCommand.ExecuteAsync(null);
         _albums.NewName = "Genting, at last";
 
-        await _albums.CreateCollectionCommand.ExecuteAsync(null);
+        await _albums.CreateAlbumCommand.ExecuteAsync(null);
 
         Assert.False(_albums.IsCreating);
 
@@ -279,13 +279,13 @@ public sealed class NewAlbumTests : IDisposable
         _albums.RuleToDate = new DateTime(2019, 3, 3);
 
         Assert.True(_albums.HasRuleProblem);
-        Assert.False(_albums.CreateCollectionCommand.CanExecute(null));
+        Assert.False(_albums.CreateAlbumCommand.CanExecute(null));
 
         // And it comes back the moment the pair is the right way round, rather
         // than staying dead for the rest of the session.
         _albums.RuleToDate = new DateTime(2019, 3, 7);
         Assert.False(_albums.HasRuleProblem);
-        Assert.True(_albums.CreateCollectionCommand.CanExecute(null));
+        Assert.True(_albums.CreateAlbumCommand.CanExecute(null));
     }
 
     [Fact]
@@ -298,7 +298,7 @@ public sealed class NewAlbumTests : IDisposable
         _albums.RuleToDate = new DateTime(2019, 3, 3);
 
         Assert.False(_albums.HasRuleProblem);
-        Assert.True(_albums.CreateCollectionCommand.CanExecute(null));
+        Assert.True(_albums.CreateAlbumCommand.CanExecute(null));
     }
 
     [Fact]
@@ -307,7 +307,7 @@ public sealed class NewAlbumTests : IDisposable
         await _albums.StartCreatingCommand.ExecuteAsync(null);
         _albums.NewName = "   ";
 
-        Assert.False(_albums.CreateCollectionCommand.CanExecute(null));
+        Assert.False(_albums.CreateAlbumCommand.CanExecute(null));
     }
 
     [Fact]
@@ -319,7 +319,7 @@ public sealed class NewAlbumTests : IDisposable
         _albums.CancelCreateCommand.Execute(null);
 
         Assert.False(_albums.IsCreating);
-        Assert.Null(_collections.Created);
+        Assert.Null(_repository.Created);
     }
 
     public void Dispose()
@@ -333,15 +333,15 @@ public sealed class NewAlbumTests : IDisposable
     }
 
     /// <summary>Records what the screen asked for, and hands back what it made.</summary>
-    private sealed class FakeCollections : ICollectionRepository
+    private sealed class FakeAlbums : IAlbumRepository
     {
-        private readonly List<CollectionSummary> _made = [];
+        private readonly List<AlbumSummary> _made = [];
 
         public string? Created { get; private set; }
 
         public int CreatedId { get; private set; }
 
-        public List<(int CollectionId, CollectionRule Rule)> RulesSet { get; } = [];
+        public List<(int AlbumId, AlbumRule Rule)> RulesSet { get; } = [];
 
         public Task<int> CreateAsync(string name, CancellationToken cancellationToken = default)
         {
@@ -350,33 +350,33 @@ public sealed class NewAlbumTests : IDisposable
             // Not 1: an id that happens to equal a count or an index would hide
             // the very mix-up the rule-target test is watching for.
             CreatedId = 400 + _made.Count;
-            _made.Add(new CollectionSummary(
+            _made.Add(new AlbumSummary(
                 CreatedId, name, DateTime.UnixEpoch, DateTime.UnixEpoch,
-                CollectionKind.Event, CollectionOrigin.Made, 0, CoverThumbnailName: null));
+                AlbumKind.Event, AlbumOrigin.Made, 0, CoverThumbnailName: null));
 
             return Task.FromResult(CreatedId);
         }
 
         public Task SetRuleAsync(
-            int collectionId, CollectionRule rule, CancellationToken cancellationToken = default)
+            int albumId, AlbumRule rule, CancellationToken cancellationToken = default)
         {
-            RulesSet.Add((collectionId, rule));
+            RulesSet.Add((albumId, rule));
             return Task.CompletedTask;
         }
 
-        public Task<IReadOnlyList<CollectionSummary>> GetAsync(
+        public Task<IReadOnlyList<AlbumSummary>> GetAsync(
             CancellationToken cancellationToken = default) =>
-            Task.FromResult<IReadOnlyList<CollectionSummary>>([.. _made]);
+            Task.FromResult<IReadOnlyList<AlbumSummary>>([.. _made]);
 
         public Task<IReadOnlyList<int>> GetMembersAsync(
-            int collectionId, CancellationToken cancellationToken = default) =>
+            int albumId, CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyList<int>>([]);
 
-        public Task<CollectionRule> GetRuleAsync(
-            int collectionId, CancellationToken cancellationToken = default) =>
+        public Task<AlbumRule> GetRuleAsync(
+            int albumId, CancellationToken cancellationToken = default) =>
             Task.FromResult(
-                RulesSet.LastOrDefault(set => set.CollectionId == collectionId).Rule
-                ?? CollectionRule.None);
+                RulesSet.LastOrDefault(set => set.AlbumId == albumId).Rule
+                ?? AlbumRule.None);
 
         public Task<IReadOnlyList<DatedPhoto>> GetCandidatesAsync(
             CancellationToken cancellationToken = default) =>
@@ -387,39 +387,39 @@ public sealed class NewAlbumTests : IDisposable
             throw new NotSupportedException();
 
         public Task<int> SaveProposalsAsync(
-            IReadOnlyList<ProposedCollection> proposals,
+            IReadOnlyList<ProposedAlbum> proposals,
             CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
 
-        public Task<CollectionSummary?> FindForAssetAsync(
+        public Task<AlbumSummary?> FindForAssetAsync(
             int assetId, CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
 
         public Task<IReadOnlyList<int>> SuggestAsync(
-            int collectionId, CancellationToken cancellationToken = default) =>
+            int albumId, CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
 
-        public Task AcceptAsync(int collectionId, CancellationToken cancellationToken = default) =>
+        public Task AcceptAsync(int albumId, CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
 
-        public Task DismissAsync(int collectionId, CancellationToken cancellationToken = default) =>
+        public Task DismissAsync(int albumId, CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
 
         public Task RenameAsync(
-            int collectionId, string name, CancellationToken cancellationToken = default) =>
+            int albumId, string name, CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
 
-        public Task DeleteAsync(int collectionId, CancellationToken cancellationToken = default) =>
+        public Task DeleteAsync(int albumId, CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
 
-        public Task<CollectionMoveResult> AddAsync(
-            int collectionId,
+        public Task<AlbumAddResult> AddAsync(
+            int albumId,
             IReadOnlyList<int> assetIds,
             CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
 
         public Task RemoveAsync(
-            int collectionId,
+            int albumId,
             IReadOnlyList<int> assetIds,
             CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();

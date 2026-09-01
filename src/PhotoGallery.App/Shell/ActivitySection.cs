@@ -29,7 +29,7 @@ public sealed record ActivitySection(
 
     public const string PeopleKey = "people";
 
-    public const string CollectionsKey = "collections";
+    public const string AlbumsKey = "albums";
 
     public const string DuplicatesKey = "duplicates";
 

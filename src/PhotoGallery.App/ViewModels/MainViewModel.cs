@@ -5,7 +5,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.DependencyInjection;
 using PhotoGallery.App.About;
-using PhotoGallery.App.Collections;
+using PhotoGallery.App.Albums;
 using PhotoGallery.App.Duplicates;
 using PhotoGallery.App.Gallery;
 using PhotoGallery.App.Imaging;
@@ -15,7 +15,7 @@ using PhotoGallery.App.People;
 using PhotoGallery.App.Shell;
 using PhotoGallery.App.Theme;
 using PhotoGallery.Application.Ports;
-using PhotoGallery.Application.UseCases.Collections;
+using PhotoGallery.Application.UseCases.Albums;
 using PhotoGallery.Application.UseCases.Gallery;
 using PhotoGallery.Application.UseCases.OpenLibrary;
 using PhotoGallery.Application.UseCases.People;
@@ -282,7 +282,7 @@ public sealed partial class MainViewModel : ObservableObject
         _activityLog = activityLog;
 
         About = new AboutViewModel();
-        Collections = new CollectionsViewModel(scopeFactory, thumbnails);
+        Albums = new AlbumsViewModel(scopeFactory, thumbnails);
         Models = new ModelsViewModel(scopeFactory);
         Sharing = new SharingViewModel(scopeFactory);
 
@@ -292,14 +292,14 @@ public sealed partial class MainViewModel : ObservableObject
 
         // Glyphs are Segoe MDL2 Assets code points. Everything except Photo
         // sources needs photos before it can show anything, so it stays disabled.
-        // Collections sits directly under Library because it is the same photos
+        // Albums sits directly under Library because it is the same photos
         // grouped, and People follows it: the bar descends from everything,
         // through a grouping of everything, to a slice of it.
         TopSections =
         [
             new ActivitySection(ActivitySection.LibraryKey, "Library", "\uE91B", true),
             new ActivitySection(
-                ActivitySection.CollectionsKey, "Albums", "\uE8FD", true),
+                ActivitySection.AlbumsKey, "Albums", "\uE8FD", true),
             new ActivitySection(
                 ActivitySection.PeopleKey, "People", "\uE716", true, RequiresFaces: true),
             new ActivitySection(ActivitySection.DuplicatesKey, "Duplicates", "\uE8C8", true),
@@ -347,7 +347,7 @@ public sealed partial class MainViewModel : ObservableObject
                 && _decidedSuggestions)
             {
                 _decidedSuggestions = false;
-                _ = Collections.SettleAfterDecidingAsync();
+                _ = Albums.SettleAfterDecidingAsync();
             }
         };
 
@@ -358,7 +358,7 @@ public sealed partial class MainViewModel : ObservableObject
         Gallery.LibraryChanged += OnLibraryChanged;
         People.LibraryChanged += OnLibraryChanged;
         Duplicates.LibraryChanged += OnLibraryChanged;
-        Collections.LibraryChanged += OnLibraryChanged;
+        Albums.LibraryChanged += OnLibraryChanged;
     }
 
     /// <remarks>
@@ -400,7 +400,7 @@ public sealed partial class MainViewModel : ObservableObject
 
     public DuplicatesViewModel Duplicates { get; }
 
-    public CollectionsViewModel Collections { get; }
+    public AlbumsViewModel Albums { get; }
 
     /// <summary>
     /// Built here rather than injected, unlike its three siblings above. About
@@ -598,7 +598,7 @@ public sealed partial class MainViewModel : ObservableObject
 
     public bool ShowPeople => SelectedSection.Key == ActivitySection.PeopleKey;
 
-    public bool ShowCollections => SelectedSection.Key == ActivitySection.CollectionsKey;
+    public bool ShowAlbums => SelectedSection.Key == ActivitySection.AlbumsKey;
 
     public bool ShowDuplicates => SelectedSection.Key == ActivitySection.DuplicatesKey;
 
@@ -1086,7 +1086,7 @@ public sealed partial class MainViewModel : ObservableObject
 
     /// <summary>Checks an album move and chooses every final file name.</summary>
     public async Task<AlbumMovePlan> PlanAlbumMoveAsync(
-        int collectionId, string destinationFolder)
+        int albumId, string destinationFolder)
     {
         if (!IsIdle)
         {
@@ -1111,7 +1111,7 @@ public sealed partial class MainViewModel : ObservableObject
             CancellationToken token = _albumMoveCancellation.Token;
 
             return await Task.Run(
-                () => handler.PlanAsync(collectionId, destinationFolder, token),
+                () => handler.PlanAsync(albumId, destinationFolder, token),
                 CancellationToken.None);
         }
         finally
@@ -1136,7 +1136,7 @@ public sealed partial class MainViewModel : ObservableObject
         if (plan.Items.Count == 0)
         {
             AlbumMoveResult nothing = AlbumMoveResult.Nothing(plan.AlreadyThere);
-            await Collections.SettleAfterOriginalsMovedAsync(nothing.Summary);
+            await Albums.SettleAfterOriginalsMovedAsync(nothing.Summary);
             return nothing;
         }
 
@@ -1187,7 +1187,7 @@ public sealed partial class MainViewModel : ObservableObject
 
             try
             {
-                await Collections.SettleAfterOriginalsMovedAsync(result.Summary);
+                await Albums.SettleAfterOriginalsMovedAsync(result.Summary);
                 if (_galleryLoaded)
                 {
                     await Gallery.LoadFoldersAsync();
@@ -1203,7 +1203,7 @@ public sealed partial class MainViewModel : ObservableObject
                 // move, which would encourage somebody to try the files again.
                 Append($"  the screens could not be brought up to date: {ex.Message}");
                 DiagnosticLog.Write("could not settle after moving album originals", ex);
-                Collections.Status = result.Summary
+                Albums.Status = result.Summary
                     + " Reopen the album if the old folders are still shown.";
             }
 
@@ -1875,7 +1875,7 @@ public sealed partial class MainViewModel : ObservableObject
     private void OpenPersonPhoto(GalleryTile? tile) => Gallery.OpenFrom(People.Photos, tile);
 
     /// <summary>
-    /// Opens one of a collection's photographs, stepping through that collection.
+    /// Opens one of an album's photographs, stepping through that album.
     /// </summary>
     /// <remarks>
     /// The same wiring the People screen needs, and for the same reason: told
@@ -1883,8 +1883,8 @@ public sealed partial class MainViewModel : ObservableObject
     /// pictures the user is actually looking at.
     /// </remarks>
     [RelayCommand]
-    private void OpenCollectionPhoto(GalleryTile? tile) =>
-        Gallery.OpenFrom(Collections.Photos, tile);
+    private void OpenAlbumPhoto(GalleryTile? tile) =>
+        Gallery.OpenFrom(Albums.Photos, tile);
 
     /// <summary>
     /// Opens one of an album's proposals, stepping through the proposals.
@@ -1896,7 +1896,7 @@ public sealed partial class MainViewModel : ObservableObject
     /// </remarks>
     [RelayCommand]
     private void OpenSuggestedPhoto(GalleryTile? tile) =>
-        Gallery.OpenSuggestion(Collections.SuggestionGrid, tile);
+        Gallery.OpenSuggestion(Albums.SuggestionGrid, tile);
 
     /// <summary>Puts the proposal on screen into the album.</summary>
     [RelayCommand]
@@ -1924,16 +1924,16 @@ public sealed partial class MainViewModel : ObservableObject
             return;
         }
 
-        int at = Collections.SuggestionGrid.IndexOf(tile);
+        int at = Albums.SuggestionGrid.IndexOf(tile);
 
-        if (!await Collections.DecideSuggestionAsync(tile, keep).ConfigureAwait(true))
+        if (!await Albums.DecideSuggestionAsync(tile, keep).ConfigureAwait(true))
         {
             return;
         }
 
         _decidedSuggestions = true;
 
-        if (Collections.SuggestionGrid.Count == 0)
+        if (Albums.SuggestionGrid.Count == 0)
         {
             // Closing raises IsViewerOpen, which settles the album's screen.
             Gallery.ClosePhoto();
@@ -1941,9 +1941,9 @@ public sealed partial class MainViewModel : ObservableObject
         }
 
         Gallery.OpenSuggestion(
-            Collections.SuggestionGrid,
-            Collections.SuggestionGrid[
-                Math.Clamp(at, 0, Collections.SuggestionGrid.Count - 1)]);
+            Albums.SuggestionGrid,
+            Albums.SuggestionGrid[
+                Math.Clamp(at, 0, Albums.SuggestionGrid.Count - 1)]);
     }
 
     /// <summary>
@@ -1979,7 +1979,7 @@ public sealed partial class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(ShowLibrary));
         OnPropertyChanged(nameof(ShowSettings));
         OnPropertyChanged(nameof(ShowPeople));
-        OnPropertyChanged(nameof(ShowCollections));
+        OnPropertyChanged(nameof(ShowAlbums));
         OnPropertyChanged(nameof(ShowDuplicates));
         OnPropertyChanged(nameof(ShowAbout));
         OnPropertyChanged(nameof(ShowSharing));
@@ -1995,12 +1995,12 @@ public sealed partial class MainViewModel : ObservableObject
             // is how a person added a minute ago failed to appear at all.
             _ = People.ReloadAsync();
         }
-        else if (ShowCollections)
+        else if (ShowAlbums)
         {
             // Rebuilt on every visit, like the two screens above: a photograph
-            // put into a collection from the viewer changes what belongs here.
-            Collections.Reopened();
-            _ = Collections.ReloadAsync();
+            // put into an album from the viewer changes what belongs here.
+            Albums.Reopened();
+            _ = Albums.ReloadAsync();
         }
         else if (ShowDuplicates)
         {

@@ -384,7 +384,7 @@ public sealed class DecisionMergeTests
                 .Puts(photo, chingay, Wednesday),
             here: Pictures.Indexed(photo));
 
-        AlbumMove move = Assert.Single(plan.Moves);
+        SharedAlbumMove move = Assert.Single(plan.Moves);
         Assert.Equal(genting, move.From);
         Assert.Equal(chingay, move.To);
     }

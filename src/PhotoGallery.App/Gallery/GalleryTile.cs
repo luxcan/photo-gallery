@@ -29,7 +29,7 @@ public sealed partial class GalleryTile : ObservableObject
     /// Whether this one is switched on, where the grid is asking a question.
     /// </summary>
     /// <remarks>
-    /// Only the collection suggestions use it, and they start every tile on -
+    /// Only the album suggestions use it, and they start every tile on -
     /// the same bargain the face review makes, so a screenful is accepted with
     /// one press and the odd wrong one is switched off first. Everywhere else
     /// the grid shows rather than asks, and nothing reads this.

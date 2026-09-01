@@ -19,8 +19,8 @@ internal sealed class Machine
     private readonly List<StrangerFace> _strangers = [];
     private readonly List<PhotoTurn> _turns = [];
     private readonly List<SharedAlbum> _albums = [];
-    private readonly List<AlbumMembership> _memberships = [];
-    private readonly List<AlbumRejection> _rejections = [];
+    private readonly List<SharedAlbumMembership> _memberships = [];
+    private readonly List<SharedAlbumRejection> _rejections = [];
     private readonly List<SharedEra> _eras = [];
     private readonly List<SharedSource> _sources;
     private readonly List<SourceLink> _links = [];
@@ -99,13 +99,13 @@ internal sealed class Machine
 
     public Machine Puts(AssetKey photo, Guid album, DateTime when)
     {
-        _memberships.Add(new AlbumMembership(photo, album, when, Id));
+        _memberships.Add(new SharedAlbumMembership(photo, album, when, Id));
         return this;
     }
 
     public Machine Refuses(AssetKey photo, string proposalKey, DateTime when)
     {
-        _rejections.Add(new AlbumRejection(photo, proposalKey, when, Id));
+        _rejections.Add(new SharedAlbumRejection(photo, proposalKey, when, Id));
         return this;
     }
 

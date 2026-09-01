@@ -1,5 +1,5 @@
 using PhotoGallery.Application.Ports;
-using PhotoGallery.Application.UseCases.Collections;
+using PhotoGallery.Application.UseCases.Albums;
 using PhotoGallery.Domain.Library;
 
 namespace PhotoGallery.Application.UseCases.OpenLibrary;

@@ -1,4 +1,4 @@
-using PhotoGallery.Domain.Collections;
+using PhotoGallery.Domain.Albums;
 using PhotoGallery.Domain.Faces;
 using PhotoGallery.Domain.Sharing;
 
@@ -43,14 +43,14 @@ internal static class Pictures
 
     /// <summary>An album somebody made, with a name they typed.</summary>
     public static SharedAlbum Album(Guid id, string name, DateTime namedUtc) =>
-        new(id, name, CollectionOrigin.Made, null, namedUtc, null);
+        new(id, name, AlbumOrigin.Made, null, namedUtc, null);
 
     /// <summary>One the app proposed, named after the run of days it covers.</summary>
     public static SharedAlbum Proposal(string proposalKey, string name, DateTime? namedUtc = null) =>
         new(
             Guid.NewGuid(),
             name,
-            namedUtc is null ? CollectionOrigin.Proposed : CollectionOrigin.Accepted,
+            namedUtc is null ? AlbumOrigin.Proposed : AlbumOrigin.Accepted,
             proposalKey,
             namedUtc,
             null);

@@ -1,4 +1,4 @@
-using PhotoGallery.Domain.Collections;
+using PhotoGallery.Domain.Albums;
 
 namespace PhotoGallery.Domain.Sharing;
 
@@ -15,7 +15,7 @@ namespace PhotoGallery.Domain.Sharing;
 public sealed record SharedAlbum(
     Guid PublicId,
     string Name,
-    CollectionOrigin Origin,
+    AlbumOrigin Origin,
     string? ProposalKey,
     DateTime? NamedUtc,
     DateTime? DeletedUtc);

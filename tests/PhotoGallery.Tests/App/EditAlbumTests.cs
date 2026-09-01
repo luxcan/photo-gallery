@@ -1,7 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
-using PhotoGallery.App.Collections;
+using PhotoGallery.App.Albums;
 using PhotoGallery.Application.Ports;
-using PhotoGallery.Domain.Collections;
+using PhotoGallery.Domain.Albums;
 using PhotoGallery.Domain.Faces;
 using PhotoGallery.Domain.People;
 using PhotoGallery.Domain.Places;
@@ -33,8 +33,8 @@ public sealed class EditAlbumTests : IDisposable
 
     private readonly string _root;
     private readonly ServiceProvider _services;
-    private readonly FakeCollections _collections = new();
-    private readonly CollectionsViewModel _albums;
+    private readonly FakeAlbums _repository = new();
+    private readonly AlbumsViewModel _albums;
 
     public EditAlbumTests()
     {
@@ -45,12 +45,12 @@ public sealed class EditAlbumTests : IDisposable
         workingFolder.EnsureCreated();
 
         _services = new ServiceCollection()
-            .AddSingleton<ICollectionRepository>(_collections)
+            .AddSingleton<IAlbumRepository>(_repository)
             .AddSingleton<IPeopleReader, NoPeople>()
             .AddSingleton<IPlaceReader, NoPlaces>()
             .BuildServiceProvider();
 
-        _albums = new CollectionsViewModel(
+        _albums = new AlbumsViewModel(
             _services.GetRequiredService<IServiceScopeFactory>(),
             new FileSystemThumbnailStore(workingFolder));
     }
@@ -68,9 +68,9 @@ public sealed class EditAlbumTests : IDisposable
 
         await _albums.SaveCommand.ExecuteAsync(null);
 
-        Assert.Equal((Mine, "BBK Trip 2012"), _collections.Renamed.Single());
-        Assert.Equal(Mine, _collections.RulesSet.Single().CollectionId);
-        Assert.Equal(new DateOnly(2012, 3, 12), _collections.RulesSet.Single().Rule.From);
+        Assert.Equal((Mine, "BBK Trip 2012"), _repository.Renamed.Single());
+        Assert.Equal(Mine, _repository.RulesSet.Single().AlbumId);
+        Assert.Equal(new DateOnly(2012, 3, 12), _repository.RulesSet.Single().Rule.From);
     }
 
     [Fact]
@@ -98,8 +98,8 @@ public sealed class EditAlbumTests : IDisposable
 
         await _albums.SaveCommand.ExecuteAsync(null);
 
-        Assert.Empty(_collections.Renamed);
-        Assert.Single(_collections.RulesSet);
+        Assert.Empty(_repository.Renamed);
+        Assert.Single(_repository.RulesSet);
     }
 
     [Fact]
@@ -110,7 +110,7 @@ public sealed class EditAlbumTests : IDisposable
 
         await _albums.SaveCommand.ExecuteAsync(null);
 
-        Assert.Empty(_collections.Renamed);
+        Assert.Empty(_repository.Renamed);
     }
 
     [Fact]
@@ -150,17 +150,17 @@ public sealed class EditAlbumTests : IDisposable
         Assert.DoesNotContain("RenameCommand", markup, StringComparison.Ordinal);
 
         Assert.Contains(
-            "Text=\"{Binding Collections.EditedName,", markup, StringComparison.Ordinal);
+            "Text=\"{Binding Albums.EditedName,", markup, StringComparison.Ordinal);
         Assert.Contains(
-            "Command=\"{Binding Collections.SaveCommand}\"", markup, StringComparison.Ordinal);
+            "Command=\"{Binding Albums.SaveCommand}\"", markup, StringComparison.Ordinal);
     }
 
     /// <summary>Loads the wall, opens one album, and opens its edit panel.</summary>
-    private async Task OpenForEditAsync(int collectionId)
+    private async Task OpenForEditAsync(int albumId)
     {
         await _albums.ReloadAsync();
-        _albums.ShowMine = collectionId == Mine;
-        _albums.Selected = _albums.Showing.Single(item => item.Id == collectionId);
+        _albums.ShowMine = albumId == Mine;
+        _albums.Selected = _albums.Showing.Single(item => item.Id == albumId);
 
         await _albums.EditCommand.ExecuteAsync(null);
     }
@@ -176,44 +176,44 @@ public sealed class EditAlbumTests : IDisposable
     }
 
     /// <summary>Two albums, and a record of what the panel asked to be done.</summary>
-    private sealed class FakeCollections : ICollectionRepository
+    private sealed class FakeAlbums : IAlbumRepository
     {
-        public List<(int CollectionId, string Name)> Renamed { get; } = [];
+        public List<(int AlbumId, string Name)> Renamed { get; } = [];
 
-        public List<(int CollectionId, CollectionRule Rule)> RulesSet { get; } = [];
+        public List<(int AlbumId, AlbumRule Rule)> RulesSet { get; } = [];
 
-        public Task<IReadOnlyList<CollectionSummary>> GetAsync(
+        public Task<IReadOnlyList<AlbumSummary>> GetAsync(
             CancellationToken cancellationToken = default) =>
-            Task.FromResult<IReadOnlyList<CollectionSummary>>(
+            Task.FromResult<IReadOnlyList<AlbumSummary>>(
             [
-                new CollectionSummary(
+                new AlbumSummary(
                     Mine, "BBK Trip", DateTime.UnixEpoch, DateTime.UnixEpoch,
-                    CollectionKind.Trip, CollectionOrigin.Made, 179, CoverThumbnailName: null),
-                new CollectionSummary(
+                    AlbumKind.Trip, AlbumOrigin.Made, 179, CoverThumbnailName: null),
+                new AlbumSummary(
                     Suggested, "12-16 March 2012", DateTime.UnixEpoch, DateTime.UnixEpoch,
-                    CollectionKind.Trip, CollectionOrigin.Proposed, 41, CoverThumbnailName: null),
+                    AlbumKind.Trip, AlbumOrigin.Proposed, 41, CoverThumbnailName: null),
             ]);
 
         public Task RenameAsync(
-            int collectionId, string name, CancellationToken cancellationToken = default)
+            int albumId, string name, CancellationToken cancellationToken = default)
         {
-            Renamed.Add((collectionId, name));
+            Renamed.Add((albumId, name));
             return Task.CompletedTask;
         }
 
         public Task SetRuleAsync(
-            int collectionId, CollectionRule rule, CancellationToken cancellationToken = default)
+            int albumId, AlbumRule rule, CancellationToken cancellationToken = default)
         {
-            RulesSet.Add((collectionId, rule));
+            RulesSet.Add((albumId, rule));
             return Task.CompletedTask;
         }
 
-        public Task<CollectionRule> GetRuleAsync(
-            int collectionId, CancellationToken cancellationToken = default) =>
-            Task.FromResult(CollectionRule.None);
+        public Task<AlbumRule> GetRuleAsync(
+            int albumId, CancellationToken cancellationToken = default) =>
+            Task.FromResult(AlbumRule.None);
 
         public Task<IReadOnlyList<int>> GetMembersAsync(
-            int collectionId, CancellationToken cancellationToken = default) =>
+            int albumId, CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyList<int>>([]);
 
         public Task<int> CreateAsync(string name, CancellationToken cancellationToken = default) =>
@@ -228,35 +228,35 @@ public sealed class EditAlbumTests : IDisposable
             throw new NotSupportedException();
 
         public Task<int> SaveProposalsAsync(
-            IReadOnlyList<ProposedCollection> proposals,
+            IReadOnlyList<ProposedAlbum> proposals,
             CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
 
-        public Task<CollectionSummary?> FindForAssetAsync(
+        public Task<AlbumSummary?> FindForAssetAsync(
             int assetId, CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
 
         public Task<IReadOnlyList<int>> SuggestAsync(
-            int collectionId, CancellationToken cancellationToken = default) =>
+            int albumId, CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
 
-        public Task AcceptAsync(int collectionId, CancellationToken cancellationToken = default) =>
+        public Task AcceptAsync(int albumId, CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
 
-        public Task DismissAsync(int collectionId, CancellationToken cancellationToken = default) =>
+        public Task DismissAsync(int albumId, CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
 
-        public Task DeleteAsync(int collectionId, CancellationToken cancellationToken = default) =>
+        public Task DeleteAsync(int albumId, CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
 
-        public Task<CollectionMoveResult> AddAsync(
-            int collectionId,
+        public Task<AlbumAddResult> AddAsync(
+            int albumId,
             IReadOnlyList<int> assetIds,
             CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
 
         public Task RemoveAsync(
-            int collectionId,
+            int albumId,
             IReadOnlyList<int> assetIds,
             CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();

@@ -26,7 +26,7 @@ public sealed record MergeOutcome(
     int AlbumsChanged,
     int PhotographsMoved,
     int Held,
-    IReadOnlyList<AlbumMove> Moves,
+    IReadOnlyList<SharedAlbumMove> Moves,
     IReadOnlyList<PersonJoin> Joins,
     IReadOnlyList<RefusedSet> Refused,
     bool WasCancelled)

@@ -1,4 +1,4 @@
-using PhotoGallery.Domain.Collections;
+using PhotoGallery.Domain.Albums;
 
 namespace PhotoGallery.Application.Ports;
 
@@ -6,14 +6,14 @@ namespace PhotoGallery.Application.Ports;
 public interface IAlbumFileMoveRepository
 {
     Task<AlbumMoveAlbum?> FindAlbumAsync(
-        int collectionId, CancellationToken cancellationToken = default);
+        int albumId, CancellationToken cancellationToken = default);
 
     Task<IReadOnlyList<AlbumMoveAsset>> GetAlbumAssetsAsync(
-        int collectionId, CancellationToken cancellationToken = default);
+        int albumId, CancellationToken cancellationToken = default);
 
     Task BeginAsync(
         Guid operationId,
-        int collectionId,
+        int albumId,
         IReadOnlyList<AlbumMoveJournalPlan> files,
         CancellationToken cancellationToken = default);
 
@@ -35,7 +35,7 @@ public interface IAlbumFileMoveRepository
 public sealed record AlbumMoveAlbum(
     int Id,
     string Name,
-    CollectionOrigin Origin,
+    AlbumOrigin Origin,
     int PhotoCount);
 
 public sealed record AlbumMoveAsset(
@@ -57,7 +57,7 @@ public sealed record AlbumMoveJournalPlan(
 public sealed record AlbumMoveJournalEntry(
     int Id,
     Guid OperationId,
-    int CollectionId,
+    int AlbumId,
     int AssetId,
     int PhotoSourceId,
     string SourceRoot,

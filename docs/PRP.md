@@ -136,14 +136,15 @@ before them. A number is a PRP's identity, not its turn.
 | 05 | Duplicates | ✅ Done | [05-duplicates.md](prp/05-duplicates.md) |
 | 10 | Location — coordinates and place names | ✅ Done | [10-location.md](prp/10-location.md) |
 | 07 | Search | ✅ Done — bar its download | [07-content-search.md](prp/07-content-search.md) |
-| 11 | Collections — proposed groupings | ⬜ **Next** | [11-collections.md](prp/11-collections.md) |
+| 11 | Albums — proposed groupings | ⬜ **Next** | [11-albums.md](prp/11-albums.md) |
 | 09 | Models — installing, removing and licence | ◐ Half built | [09-models.md](prp/09-models.md) |
 | 08 | Video | ◐ Posters ship | [08-video.md](prp/08-video.md) |
 | 12 | Sharing between machines | ✅ Done | [12-sharing.md](prp/12-sharing.md) |
+| 13 | Collections — shelves of albums | ⬜ Planned | [13-collections.md](prp/13-collections.md) |
 
 **Location before models** deliberately. It needs no weights, it rides a read the
-app already does, and it is the one signal the collection names cannot fake — a
-collection with no place is *"March 2019, 42 photos"* rather than
+app already does, and it is the one signal the album names cannot fake — an
+album with no place is *"March 2019, 42 photos"* rather than
 *"Genting Trip"*.
 
 That ordering held, and [07](prp/07-content-search.md) then overtook
@@ -152,7 +153,7 @@ can install them: faces offer "use model files I have…", content search offers
 nothing and has its four files copied into `models\` by hand, and a fresh install
 has ~1.9 GB to be located before either works. The licences the manifest names are
 shown nowhere. **09 is the outstanding debt of everything already shipped**, where
-[11](prp/11-collections.md) is new work that is now unblocked and needs no weights
+[11](prp/11-albums.md) is new work that is now unblocked and needs no weights
 at all.
 
 ---

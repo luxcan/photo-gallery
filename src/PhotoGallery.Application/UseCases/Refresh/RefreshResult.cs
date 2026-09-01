@@ -1,4 +1,4 @@
-using PhotoGallery.Application.UseCases.Collections;
+using PhotoGallery.Application.UseCases.Albums;
 using PhotoGallery.Application.UseCases.Faces;
 using PhotoGallery.Application.UseCases.Places;
 using PhotoGallery.Application.UseCases.Scanning;
@@ -52,7 +52,7 @@ public sealed record RefreshResult(
     VideoBuildResult? Videos,
     FaceDetectionResult? Faces,
     HeldResult? Answers,
-    CollectionsResult? Collected,
+    AlbumsResult? Collected,
     TimeSpan Elapsed,
     bool WasCancelled)
 {
@@ -88,7 +88,7 @@ public sealed record RefreshResult(
     public int AnswersWaiting => Answers?.Waiting ?? 0;
 
     /// <summary>How many occasions are on offer after this run.</summary>
-    public int CollectionsProposed => Collected?.Proposed ?? 0;
+    public int AlbumsProposed => Collected?.Proposed ?? 0;
 
     /// <summary>How many photographs were given the name of a place this run.</summary>
     public int PhotosPlaced => Located?.Named ?? 0;
