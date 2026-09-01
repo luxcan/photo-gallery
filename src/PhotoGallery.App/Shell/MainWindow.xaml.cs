@@ -598,41 +598,28 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Left and right walk the library; Escape goes back to the grid. Bound here
-    /// rather than as window-level input bindings so they only apply while the
-    /// picture is actually open.
-    /// </summary>
-    /// <summary>
     /// Arrow keys and Escape over the open picture.
     /// </summary>
     /// <remarks>
-    /// While either list is up they belong to it instead: the arrows are moving
-    /// a caret through what is being typed, and Escape means put the question
-    /// down rather than the photograph. Taking them here would have typing a
-    /// name quietly walk the library.
+    /// Left and right walk the library and Escape goes back to the grid. Bound
+    /// to the picture rather than to the window so they only apply while one is
+    /// actually open.
     ///
-    /// <para>The album list was left out of that when it was added, so typing an
-    /// album name walked the photographs underneath it - and each step closed
+    /// <para>While either list is up the arrows belong to it instead - they are
+    /// moving a caret through what is being typed - so this stands down
+    /// entirely. Taking them here would have typing a name quietly walk the
+    /// library. The album list was left out of that when it was added, so typing
+    /// an album name walked the photographs underneath it, and each step closed
     /// the list, because opening another picture closes it.</para>
+    ///
+    /// <para>Escape while a list is up is not decided here at all: the window
+    /// puts the list down before this runs. See <see cref="OnWindowKeyDown"/>,
+    /// which is the one place that knows what Escape closes.</para>
     /// </remarks>
     private void OnViewerKeyDown(object sender, KeyEventArgs e)
     {
         if (_viewModel.Gallery.Picker.IsOpen || _viewModel.Gallery.Collections.IsOpen)
         {
-            if (e.Key == Key.Escape)
-            {
-                if (_viewModel.Gallery.Picker.IsOpen)
-                {
-                    _viewModel.Gallery.Picker.CancelCommand.Execute(null);
-                }
-                else
-                {
-                    _viewModel.Gallery.Collections.CancelCommand.Execute(null);
-                }
-
-                e.Handled = true;
-            }
-
             return;
         }
 
@@ -781,6 +768,67 @@ public partial class MainWindow : Window
     /// Arrow keys and Escape over one copy of a duplicated picture, so two of
     /// them can be flicked between rather than clicked between.
     /// </summary>
+    /// <summary>
+    /// Escape puts down whatever is floating over the app.
+    /// </summary>
+    /// <remarks>
+    /// One handler for every panel rather than an Escape branch inside each
+    /// screen's key handler. The album panels had no such branch and could only
+    /// be left by finding their Cancel button - which on a short window is below
+    /// the fold of a panel the user cannot see the bottom of.
+    ///
+    /// <para>Tunnelling on the window, so it runs before whatever holds the
+    /// focus inside the panel. A half-typed name in a text box must not swallow
+    /// the key that dismisses the panel the box is in.</para>
+    ///
+    /// <para>Nothing is handled when no panel is open, so the key still reaches
+    /// the viewer and the two inspectors, where Escape closes the picture
+    /// itself.</para>
+    /// </remarks>
+    private void OnWindowKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Escape)
+        {
+            return;
+        }
+
+        foreach ((Func<bool> isOpen, ICommand close) in Dismissible())
+        {
+            if (isOpen())
+            {
+                close.Execute(null);
+                e.Handled = true;
+                return;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Everything Escape may put down, nearest the front first.
+    /// </summary>
+    /// <remarks>
+    /// The lists drawn over a picture come before the panels behind them, so a
+    /// name list open over the album panel closes the list and leaves the panel.
+    ///
+    /// <para>The long pass is deliberately absent. It is work already running
+    /// rather than a question waiting to be answered, and it carries a Stop
+    /// button that says what stopping it means - one of those passes deletes
+    /// photographs, and abandoning it halfway should cost more than a keystroke
+    /// somebody meant for something else.</para>
+    /// </remarks>
+    private IEnumerable<(Func<bool> IsOpen, ICommand Close)> Dismissible()
+    {
+        GalleryViewModel gallery = _viewModel.Gallery;
+        PeopleViewModel people = _viewModel.People;
+        CollectionsViewModel collections = _viewModel.Collections;
+
+        yield return (() => gallery.Picker.IsOpen, gallery.Picker.CancelCommand);
+        yield return (() => gallery.Collections.IsOpen, gallery.Collections.CancelCommand);
+        yield return (() => people.Reassign.IsOpen, people.Reassign.CancelCommand);
+        yield return (() => collections.IsEditing, collections.CancelEditCommand);
+        yield return (() => collections.IsCreating, collections.CancelCreateCommand);
+    }
+
     private void OnDuplicateInspectorKeyDown(object sender, KeyEventArgs e)
     {
         DuplicatesViewModel duplicates = _viewModel.Duplicates;
@@ -808,15 +856,10 @@ public partial class MainWindow : Window
         PeopleViewModel people = _viewModel.People;
 
         // The name list has first claim on these while it is up - see the photo
-        // viewer's handler for why.
+        // viewer's handler for why. Escape is not among them: the window put the
+        // list down before this ran.
         if (people.Reassign.IsOpen)
         {
-            if (e.Key == Key.Escape)
-            {
-                people.Reassign.CancelCommand.Execute(null);
-                e.Handled = true;
-            }
-
             return;
         }
 

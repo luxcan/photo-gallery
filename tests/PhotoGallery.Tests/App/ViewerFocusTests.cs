@@ -140,6 +140,38 @@ public sealed class ViewerFocusTests
     }
 
     /// <summary>
+    /// And is put down by Escape, from the one place that decides what Escape does.
+    /// </summary>
+    /// <remarks>
+    /// Each screen's key handler used to carry an Escape branch of its own for
+    /// the list drawn over it, which is three copies of one rule and is why the
+    /// two album panels - which have no such handler - could not be escaped at
+    /// all. The rule now lives in <c>Dismissible</c>, so a fourth list has one
+    /// place to be added to rather than three to be copied into.
+    /// </remarks>
+    [Fact]
+    public void EveryListIsPutDownByEscape()
+    {
+        string dismissible = Body(Source(), "> Dismissible()");
+        List<string> wrong = [];
+
+        Assert.True(
+            dismissible.Length > 0,
+            "Dismissible has been renamed or removed; nothing decides what Escape closes.");
+
+        foreach (Picker picker in Pickers())
+        {
+            if (!dismissible.Contains($"{picker.Property}.IsOpen", StringComparison.Ordinal))
+            {
+                wrong.Add($"{picker.Path} is not in Dismissible, so Escape does nothing to it "
+                        + "and the user has to find its Cancel button.");
+            }
+        }
+
+        Assert.True(wrong.Count == 0, string.Join("\n", wrong));
+    }
+
+    /// <summary>
     /// Every list this window could have to wire, found rather than listed.
     /// </summary>
     /// <remarks>

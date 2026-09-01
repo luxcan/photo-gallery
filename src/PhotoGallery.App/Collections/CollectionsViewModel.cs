@@ -64,8 +64,8 @@ public sealed partial class CollectionsViewModel : ObservableObject
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsIdle))]
     [NotifyCanExecuteChangedFor(nameof(CreateCollectionCommand), nameof(AcceptCommand),
-        nameof(DismissCommand), nameof(RenameCommand), nameof(DeleteCommand),
-        nameof(SaveRuleCommand), nameof(SuggestCommand), nameof(EditCommand),
+        nameof(DismissCommand), nameof(DeleteCommand),
+        nameof(SaveCommand), nameof(SuggestCommand), nameof(EditCommand),
         nameof(StartCreatingCommand))]
     private bool _isBusy;
 
@@ -94,8 +94,8 @@ public sealed partial class CollectionsViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(HasSelected), nameof(SelectedIsProposed),
         nameof(SelectedIsMine), nameof(SelectedName))]
     [NotifyCanExecuteChangedFor(nameof(AcceptCommand), nameof(DismissCommand),
-        nameof(RenameCommand), nameof(DeleteCommand), nameof(EditCommand),
-        nameof(SaveRuleCommand), nameof(SuggestCommand))]
+        nameof(DeleteCommand), nameof(EditCommand),
+        nameof(SaveCommand), nameof(SuggestCommand))]
     private CollectionItem? _selected;
 
     /// <summary>The name being typed for a new collection.</summary>
@@ -103,16 +103,22 @@ public sealed partial class CollectionsViewModel : ObservableObject
     [NotifyCanExecuteChangedFor(nameof(CreateCollectionCommand))]
     private string _newName = string.Empty;
 
-    /// <summary>The name being typed over an existing one.</summary>
+    /// <summary>The album's name as the edit panel currently has it.</summary>
+    /// <remarks>
+    /// Typed over the existing name rather than beside it: the panel has one
+    /// Save, and this is one of the things it saves. It had its own Rename
+    /// button once, which meant a name typed and then saved was silently
+    /// discarded - the rule went in and the name did not.
+    /// </remarks>
     [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(RenameCommand))]
-    private string _renameTo = string.Empty;
+    [NotifyCanExecuteChangedFor(nameof(SaveCommand))]
+    private string _editedName = string.Empty;
 
     /// <summary>Which of the three date questions the rule is asking.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsAnyDay), nameof(IsOneDay), nameof(IsDateRange),
         nameof(RuleProblem), nameof(HasRuleProblem))]
-    [NotifyCanExecuteChangedFor(nameof(SaveRuleCommand), nameof(CreateCollectionCommand))]
+    [NotifyCanExecuteChangedFor(nameof(SaveCommand), nameof(CreateCollectionCommand))]
     private AlbumDateMode _dateMode;
 
     /// <summary>The one day the rule admits, when it asks for a single day.</summary>
@@ -129,12 +135,12 @@ public sealed partial class CollectionsViewModel : ObservableObject
     /// </remarks>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(RuleProblem), nameof(HasRuleProblem))]
-    [NotifyCanExecuteChangedFor(nameof(SaveRuleCommand), nameof(CreateCollectionCommand))]
+    [NotifyCanExecuteChangedFor(nameof(SaveCommand), nameof(CreateCollectionCommand))]
     private DateTime? _ruleFromDate;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(RuleProblem), nameof(HasRuleProblem))]
-    [NotifyCanExecuteChangedFor(nameof(SaveRuleCommand), nameof(CreateCollectionCommand))]
+    [NotifyCanExecuteChangedFor(nameof(SaveCommand), nameof(CreateCollectionCommand))]
     private DateTime? _ruleToDate;
 
     /// <summary>What has been typed to narrow the list of people.</summary>
@@ -354,7 +360,7 @@ public sealed partial class CollectionsViewModel : ObservableObject
             return;
         }
 
-        RenameTo = SelectedName;
+        EditedName = SelectedName;
         Status = string.Empty;
         IsEditing = true;
 
@@ -528,9 +534,23 @@ public sealed partial class CollectionsViewModel : ObservableObject
         RuleToDate = rule.To?.ToDateTime(TimeOnly.MinValue);
     }
 
-    /// <summary>Saves what the rule asks for.</summary>
-    [RelayCommand(CanExecute = nameof(CanSaveRule))]
-    private async Task SaveRuleAsync()
+    /// <summary>
+    /// Saves everything the edit panel holds: the name and the rule.
+    /// </summary>
+    /// <remarks>
+    /// One button for one panel. The name used to have a Rename button of its
+    /// own beside the box, and Save saved only the rule - so typing a new name
+    /// and pressing the panel's one obvious button threw the name away without
+    /// saying so. Anything the panel can change, this saves.
+    ///
+    /// <para>The rename is only sent when the name actually changed, which is
+    /// not tidiness: <see cref="ICollectionRepository.RenameAsync"/> records
+    /// that the name is the user's, and a suggested album whose name has been
+    /// claimed is never re-named by a later scan. Saving a rule must not quietly
+    /// adopt a name the app chose.</para>
+    /// </remarks>
+    [RelayCommand(CanExecute = nameof(CanSave))]
+    private async Task SaveAsync()
     {
         if (Selected is not CollectionItem collection)
         {
@@ -538,34 +558,55 @@ public sealed partial class CollectionsViewModel : ObservableObject
         }
 
         CollectionRule rule = TypedRule();
+        string name = EditedName.Trim();
+        bool renaming = !string.Equals(name, collection.Name, StringComparison.Ordinal);
 
         IsBusy = true;
         try
         {
             using (IServiceScope scope = _scopeFactory.CreateScope())
             {
-                await scope.ServiceProvider
-                    .GetRequiredService<ICollectionRepository>()
-                    .SetRuleAsync(collection.Id, rule)
-                    .ConfigureAwait(true);
+                ICollectionRepository collections = scope.ServiceProvider
+                    .GetRequiredService<ICollectionRepository>();
+
+                if (renaming)
+                {
+                    await collections.RenameAsync(collection.Id, name).ConfigureAwait(true);
+                }
+
+                await collections.SetRuleAsync(collection.Id, rule).ConfigureAwait(true);
             }
 
             IsEditing = false;
+
+            string saved = renaming ? $"Saved as \"{name}\"." : "Saved.";
             Status = rule.IsSomething
-                ? "Saved. Choose Find photos that fit to see what matches."
-                : "Saved. This album has no rule, so nothing is looked for.";
+                ? $"{saved} Choose Find photos that fit to see what matches."
+                : $"{saved} This album has no rule, so nothing is looked for.";
         }
         catch (Exception ex) when (ex is IOException or InvalidOperationException)
         {
-            Status = $"That rule could not be saved: {ex.Message}";
+            Status = $"That could not be saved: {ex.Message}";
         }
         finally
         {
             IsBusy = false;
         }
+
+        // The wall carries the name, so it has to be read again after one
+        // changes - and the shell's counts with it.
+        if (renaming)
+        {
+            await ReloadAsync().ConfigureAwait(true);
+            LibraryChanged?.Invoke(this, EventArgs.Empty);
+        }
     }
 
-    private bool CanSaveRule() => IsIdle && HasSelected && !HasRuleProblem;
+    /// <summary>
+    /// An album may not be saved without a name, whatever else the panel holds.
+    /// </summary>
+    private bool CanSave() =>
+        IsIdle && HasSelected && !HasRuleProblem && EditedName.Trim().Length > 0;
 
     /// <summary>Looks for photographs that fit, and offers them.</summary>
     /// <remarks>
@@ -994,16 +1035,6 @@ public sealed partial class CollectionsViewModel : ObservableObject
             (repository, id) => repository.DeleteAsync(id),
             $"\"{SelectedName}\" is gone. Its photographs are still in your library.");
 
-    [RelayCommand(CanExecute = nameof(CanRename))]
-    private Task RenameAsync()
-    {
-        string name = RenameTo.Trim();
-
-        return AnswerAsync(
-            (repository, id) => repository.RenameAsync(id, name),
-            $"Renamed to \"{name}\".");
-    }
-
     /// <summary>Opens the panel that describes an album before making it.</summary>
     [RelayCommand(CanExecute = nameof(IsIdle))]
     private async Task StartCreatingAsync()
@@ -1086,8 +1117,6 @@ public sealed partial class CollectionsViewModel : ObservableObject
 
     private bool CanDelete() => IsIdle && SelectedIsMine;
 
-    private bool CanRename() => IsIdle && HasSelected && RenameTo.Trim().Length > 0;
-
     private bool CanCreate() => IsIdle && NewName.Trim().Length > 0 && !HasRuleProblem;
 
     /// <summary>Does one thing to the open collection, then reads the lists again.</summary>
@@ -1111,7 +1140,7 @@ public sealed partial class CollectionsViewModel : ObservableObject
             }
 
             Status = said;
-            RenameTo = string.Empty;
+            EditedName = string.Empty;
         }
         catch (Exception ex) when (ex is IOException or InvalidOperationException)
         {
@@ -1167,7 +1196,7 @@ public sealed partial class CollectionsViewModel : ObservableObject
             return;
         }
 
-        RenameTo = value?.Name ?? string.Empty;
+        EditedName = value?.Name ?? string.Empty;
 
         if (value is not null)
         {

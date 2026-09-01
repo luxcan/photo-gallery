@@ -12,6 +12,7 @@
         MinWidth="880" MinHeight="540"
         Activated="OnWindowActivated" Loaded="OnWindowLoaded"
         SizeChanged="OnWindowSizeChanged"
+        PreviewKeyDown="OnWindowKeyDown"
         Background="{DynamicResource Editor.Background}">
 
   <Window.Resources>
@@ -1010,33 +1011,28 @@
                              TextWrapping="Wrap"
                              Text="Changing the name or rule does not touch the originals. Moving them is a separate confirmed action below." />
 
+                  <!-- No Rename button beside the box. One panel, one Save: a
+                       name typed here and then saved used to be thrown away,
+                       because Save took the rule and left the name to a button
+                       the user had no reason to think was still needed. -->
                   <TextBlock Style="{DynamicResource FieldLabel}" Text="Name" />
-                  <Grid Margin="0,2,0,0">
-                    <Grid.ColumnDefinitions>
-                      <ColumnDefinition Width="*" />
-                      <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <TextBox Grid.Column="0" Style="{DynamicResource InputTextBox}"
-                             AutomationProperties.Name="Rename this album"
-                             Text="{Binding Collections.RenameTo,
-                                    UpdateSourceTrigger=PropertyChanged}">
-                      <TextBox.InputBindings>
-                        <KeyBinding Key="Return" Command="{Binding Collections.RenameCommand}" />
-                      </TextBox.InputBindings>
-                    </TextBox>
-                    <Button Grid.Column="1" Style="{DynamicResource SecondaryButton}"
-                            Margin="6,0,0,0" MinWidth="72" Content="Rename"
-                            ToolTip="Your name for it. A scan never writes over it."
-                            Command="{Binding Collections.RenameCommand}" />
-                  </Grid>
+                  <TextBox Style="{DynamicResource InputTextBox}" Margin="0,2,0,0"
+                           AutomationProperties.Name="Name this album"
+                           ToolTip="Your name for it. A scan never writes over it."
+                           Text="{Binding Collections.EditedName,
+                                  UpdateSourceTrigger=PropertyChanged}">
+                    <TextBox.InputBindings>
+                      <KeyBinding Key="Return" Command="{Binding Collections.SaveCommand}" />
+                    </TextBox.InputBindings>
+                  </TextBox>
 
                   <ContentControl Margin="0,16,0,0" Content="{Binding Collections}"
                                   ContentTemplate="{StaticResource AlbumRuleFields}" />
 
                   <Button Style="{DynamicResource PrimaryButton}" Margin="0,12,0,0"
-                          HorizontalAlignment="Stretch" Content="Save the rule"
-                          ToolTip="Keep this as what the album is looking for"
-                          Command="{Binding Collections.SaveRuleCommand}" />
+                          HorizontalAlignment="Stretch" Content="Save"
+                          ToolTip="Keep the name and what this album is looking for"
+                          Command="{Binding Collections.SaveCommand}" />
 
                   <!-- A suggestion is a question: keep it or do not. -->
                   <StackPanel Margin="0,16,0,0"

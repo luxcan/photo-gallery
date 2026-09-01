@@ -33,6 +33,9 @@ public sealed class ModalParityTests
     private const string Scrim = "{DynamicResource ModalScrim}";
     private const string TitleStyle = "{DynamicResource ModalTitle}";
 
+    /// <summary>What gates the long pass, which is the one modal Escape leaves alone.</summary>
+    private const string Running = "IsOverlayVisible";
+
     /// <summary>
     /// A panel centred in both directions is floating over something, whatever
     /// it holds - which is the one thing every modal here has in common, and the
@@ -167,6 +170,116 @@ public sealed class ModalParityTests
             "{DynamicResource Heading}",
             Source("Shell", "AppDialog.xaml"),
             StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Every panel floating over the app can be put down with Escape.
+    /// </summary>
+    /// <remarks>
+    /// The lists drawn over a picture always could, because each screen's key
+    /// handler carried a branch for its own. The two album panels have no such
+    /// handler and so could only be left by finding their Cancel button, which
+    /// on a short window is below the fold of a panel whose bottom the user
+    /// cannot see. Escape is now decided in one place for all of them.
+    ///
+    /// <para>Found rather than listed, so a fourth panel arrives here on the day
+    /// it is written. The lists themselves are checked the same way in
+    /// <c>ViewerFocusTests</c> - their surfaces live in templates rather than in
+    /// this window, so they are found by shape instead of by markup.</para>
+    /// </remarks>
+    [Fact]
+    public void EveryModalPanelIsClosedByEscape()
+    {
+        string list = DismissibleList();
+        List<string> stuck = [];
+        int considered = 0;
+
+        Assert.True(
+            list.Length > 0,
+            "Dismissible has been renamed or removed; nothing decides what Escape closes.");
+
+        foreach (string opener in ModalOpeners())
+        {
+            if (opener == Running)
+            {
+                continue;
+            }
+
+            considered++;
+            if (!list.Contains(opener, StringComparison.OrdinalIgnoreCase))
+            {
+                stuck.Add($"{opener} opens a panel over the app that Escape cannot close. "
+                        + "Add it to Dismissible in MainWindow.");
+            }
+        }
+
+        Assert.True(
+            considered > 0, "No dismissible panel was found; the test has lost its subject.");
+        Assert.True(stuck.Count == 0, string.Join("\n", stuck));
+    }
+
+    /// <summary>The body of the one method that says what Escape closes.</summary>
+    private static string DismissibleList()
+    {
+        string window = Source("Shell", "MainWindow.xaml.cs");
+
+        // The declaration, not the call above it: the call reads "in Dismissible()".
+        int start = window.IndexOf("> Dismissible()", StringComparison.Ordinal);
+        if (start < 0)
+        {
+            return string.Empty;
+        }
+
+        int end = window.IndexOf("\n    private ", start, StringComparison.Ordinal);
+
+        return end < 0 ? window[start..] : window[start..end];
+    }
+
+    /// <summary>
+    /// The one panel Escape may not close is still the one that is working.
+    /// </summary>
+    /// <remarks>
+    /// A long pass is not a question waiting to be answered. It carries a Stop
+    /// button that names what stopping costs, and one of those passes deletes
+    /// photographs - abandoning it halfway should take more than a keystroke
+    /// meant for something else. This exists so the exclusion stays a decision
+    /// rather than becoming an oversight nobody can date.
+    /// </remarks>
+    [Fact]
+    public void TheRunningPassIsTheDeliberateException()
+    {
+        Assert.Contains(Running, ModalOpeners());
+        Assert.DoesNotContain(Running, DismissibleList(), StringComparison.Ordinal);
+    }
+
+    /// <summary>What each modal in this window is gated by, as a binding path.</summary>
+    private static IEnumerable<string> ModalOpeners()
+    {
+        XDocument window = Markup()
+            .Single(pair => pair.File.EndsWith("MainWindow.xaml", StringComparison.Ordinal))
+            .Document;
+
+        foreach (XElement surface in Surfaces(window))
+        {
+            string? gate = surface.AncestorsAndSelf()
+                .Select(element => (string?)element.Attribute("Visibility"))
+                .FirstOrDefault(value =>
+                    value is not null && value.Contains("{Binding", StringComparison.Ordinal));
+
+            if (gate is not null)
+            {
+                yield return BindingPath(gate);
+            }
+        }
+    }
+
+    /// <summary>The property a <c>{Binding Some.Path, Converter=...}</c> reads.</summary>
+    private static string BindingPath(string binding)
+    {
+        int start = binding.IndexOf("{Binding", StringComparison.Ordinal) + "{Binding".Length;
+        int end = binding.IndexOfAny([',', '}'], start);
+
+        return binding[start..(end < 0 ? binding.Length : end)].Trim();
     }
 
     private static XElement Title(string fileName, Func<XElement, bool> isTitle)
