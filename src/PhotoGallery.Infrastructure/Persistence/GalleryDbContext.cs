@@ -51,6 +51,8 @@ public sealed class GalleryDbContext : DbContext
 
     public DbSet<AlbumFileMove> AlbumFileMoves => Set<AlbumFileMove>();
 
+    public DbSet<Collection> Collections => Set<Collection>();
+
     public DbSet<LibrarySettings> LibrarySettings => Set<LibrarySettings>();
 
     public DbSet<PhotoSource> PhotoSources => Set<PhotoSource>();

@@ -8,6 +8,12 @@ namespace PhotoGallery.Application.Ports;
 /// with no picture is not shown - the same rule a duplicate set follows when its
 /// keeper disappears.
 /// </param>
+/// <param name="CollectionId">
+/// The shelf this album is on, or null while it is on none. Carried on the
+/// summary rather than asked for separately because the wall needs it every
+/// time it is drawn: the top level shows the albums on no shelf, and an open
+/// collection shows its own.
+/// </param>
 public sealed record AlbumSummary(
     int Id,
     string Name,
@@ -16,4 +22,5 @@ public sealed record AlbumSummary(
     AlbumKind Kind,
     AlbumOrigin Origin,
     int PhotoCount,
-    string? CoverThumbnailName);
+    string? CoverThumbnailName,
+    int? CollectionId = null);

@@ -106,6 +106,24 @@ public sealed class Album
 
     public DateTime? RuleToUtc { get; set; }
 
+    /// <summary>
+    /// The collection this album is on, or null while it is on no shelf.
+    /// </summary>
+    /// <remarks>
+    /// A column rather than a table between the two, which is what makes "an
+    /// album is on at most one shelf" true by construction rather than by
+    /// whichever handler remembers to check - the same reason
+    /// <see cref="AlbumMember.AssetId"/> is the whole key of the membership
+    /// table.
+    ///
+    /// <para>There is deliberately no navigation property back to the
+    /// collection. Nothing needs one: every query here asks which albums are on
+    /// a shelf rather than which shelf an album is on, and an optional
+    /// navigation across two entities that both carry a tombstone filter is a
+    /// warning waiting to be argued with.</para>
+    /// </remarks>
+    public int? CollectionId { get; set; }
+
     public List<AlbumMember> Members { get; } = [];
 
     /// <summary>Everybody a photograph must hold to fit. All of them, not any.</summary>

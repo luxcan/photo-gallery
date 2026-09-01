@@ -51,6 +51,7 @@ public sealed class AlbumTabsTests : IDisposable
 
         _services = new ServiceCollection()
             .AddSingleton(_repository)
+            .AddSingleton<ICollectionRepository>(new SqliteCollectionRepository(_db))
             .BuildServiceProvider();
 
         _albums = new AlbumsViewModel(
@@ -66,7 +67,7 @@ public sealed class AlbumTabsTests : IDisposable
     {
         Assert.True(_albums.ShowMine);
         Assert.False(_albums.IsShowingSuggested);
-        Assert.Same(_albums.Mine, _albums.Showing);
+        Assert.Same(_albums.Wall, _albums.Showing);
     }
 
     /// <summary>

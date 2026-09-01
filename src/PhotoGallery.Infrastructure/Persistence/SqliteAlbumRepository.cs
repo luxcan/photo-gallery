@@ -118,7 +118,8 @@ public sealed class SqliteAlbumRepository : IAlbumRepository
                 _db.Assets
                     .Where(asset => asset.Id == album.CoverAssetId)
                     .Select(asset => asset.ThumbnailName)
-                    .FirstOrDefault()))
+                    .FirstOrDefault(),
+                album.CollectionId))
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
     }

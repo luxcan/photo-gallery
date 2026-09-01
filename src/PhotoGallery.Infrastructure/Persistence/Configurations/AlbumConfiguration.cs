@@ -57,5 +57,14 @@ public sealed class AlbumConfiguration : IEntityTypeConfiguration<Album>
         // here would take a whole album away with its cover photograph.
         builder.HasIndex(c => c.PlaceId);
         builder.HasIndex(c => c.CoverAssetId);
+
+        // The shelf, on the same terms: indexed but not related. A real foreign
+        // key here cannot be added to an existing table by SQLite, so EF would
+        // rebuild the whole Albums table to attach it - and that rebuild turns
+        // off foreign keys, which cannot happen inside a transaction, so the
+        // migration stops being all-or-nothing. Removing a collection already
+        // clears this column itself, and the screen treats a shelf it has never
+        // heard of as no shelf, so nothing is left resting on the constraint.
+        builder.HasIndex(c => c.CollectionId);
     }
 }

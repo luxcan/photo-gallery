@@ -1,6 +1,6 @@
 # 13 — Collections of albums
 
-**Status: ⬜ Planned**
+**Status: ✅ Done**
 
 Photographs group into occasions ([11](11-albums.md)). Occasions group into
 nothing: the albums screen is one wall of cards, and the wall only ever grows.
@@ -230,6 +230,35 @@ already on disk. This is the cheapest PRP in the document.
 - [ ] The band is absent when there are no collections.
 - [ ] Escape closes the album picker before the panels behind it.
 - [ ] Nothing on disk is moved or renamed.
+
+---
+
+## What the building changed
+
+Three things came out differently from the plan above, and the plan was wrong
+about each of them rather than the code being a compromise.
+
+**There is no foreign key on the album's column.** SQLite cannot add one to a
+table that already exists, so EF attaches it by rebuilding the whole table -
+and that rebuild turns foreign keys off, which cannot be done inside a
+transaction. The migration would have stopped being all-or-nothing on a real
+library to buy a constraint nothing rests on: removing a collection clears the
+column itself, and the wall now reads a shelf it has never heard of as no
+shelf, so a dangling value is an album on the wall rather than an album
+nowhere. Indexed but not related, which is what this album's `PlaceId` and
+`CoverAssetId` already are, and for the same kind of reason.
+
+**The tick list offers every album, not only the loose ones.** The first
+version left out the ones standing on another shelf, on the ground that a
+collision is confusing. It made moving an album between two collections a trip
+to the first one to untick it and a trip back - which is the procedure a tick
+list exists to avoid. Every album is offered, the line says which shelf it is
+on, and saving says which shelf it left. That is the rule an album already
+follows for a photograph, one level up.
+
+**`RuleChoice` became `TickChoice`.** Its third use is an album on a shelf
+rather than a person or a place in a rule, and a third use is what made the
+name wrong rather than merely narrow.
 
 ---
 

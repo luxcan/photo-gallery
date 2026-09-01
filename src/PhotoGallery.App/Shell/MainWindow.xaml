@@ -689,13 +689,17 @@
                 Visibility="{Binding ShowAlbums, Converter={StaticResource BoolToVisibility}}">
             <Grid.RowDefinitions>
               <RowDefinition Height="Auto" />
+              <RowDefinition Height="Auto" />
               <RowDefinition Height="*" />
             </Grid.RowDefinitions>
 
-            <!-- The strip: what this screen is, and the two tabs -->
+            <!-- The strip: what this screen is, and the two tabs. Hidden while a
+                 collection is open, which brings its own header in its place -
+                 the tabs and New album belong to the whole library rather than
+                 to one shelf. -->
             <Grid Grid.Row="0" Margin="0,0,0,12"
-                  Visibility="{Binding Albums.HasSelected,
-                               Converter={StaticResource InverseBoolToVisibility}}">
+                  Visibility="{Binding Albums.ShowingTheStrip,
+                               Converter={StaticResource BoolToVisibility}}">
               <Grid.ColumnDefinitions>
                 <!-- Two columns, not one cell with two alignments: the sentence
                      ran under the controls the moment the window was narrower
@@ -723,10 +727,20 @@
                      than a box and a button, because naming an album is only
                      half of describing one - the panel it opens asks the rest,
                      and a box on the strip could not have. -->
-                <Button Style="{DynamicResource SecondaryButton}" Margin="0,0,16,0"
+                <Button Style="{DynamicResource SecondaryButton}" Margin="0,0,8,0"
                         MinWidth="110" Content="New album"
                         ToolTip="Name an album, and say what it is looking for"
                         Command="{Binding Albums.StartCreatingCommand}" />
+
+                <!-- Beside New album rather than above the band, and only on
+                     the tab that has collections: making a shelf is the same
+                     kind of act as making an album, one level up. -->
+                <Button Style="{DynamicResource SecondaryButton}" Margin="0,0,16,0"
+                        MinWidth="120" Content="New collection"
+                        ToolTip="Group albums together - Holiday over three trips"
+                        Visibility="{Binding Albums.ShowMine,
+                                     Converter={StaticResource BoolToVisibility}}"
+                        Command="{Binding Albums.Collections.StartCreatingCommand}" />
 
                 <Border Background="{DynamicResource Input.Background}"
                         BorderBrush="{DynamicResource Separator}" BorderThickness="1"
@@ -746,8 +760,111 @@
               </StackPanel>
             </Grid>
 
+            <!-- One collection, open: its own header where the strip was. The
+                 chevron is the same one an open album uses, one level up, so
+                 going back is the same gesture wherever you are. -->
+            <Grid Grid.Row="0" Margin="0,0,0,12"
+                  Visibility="{Binding Albums.ShowingOneCollection,
+                               Converter={StaticResource BoolToVisibility}}">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+              </Grid.ColumnDefinitions>
+
+              <StackPanel Grid.Column="0" Orientation="Horizontal"
+                          VerticalAlignment="Center" HorizontalAlignment="Left"
+                          Margin="0,0,16,0" MaxWidth="620">
+                <Button Style="{DynamicResource ViewerButton}" Margin="0,0,10,0"
+                        VerticalAlignment="Center" Content="&#xE72B;"
+                        ToolTip="Back to all albums"
+                        AutomationProperties.Name="Back to all collections"
+                        Command="{Binding Albums.Collections.CloseCommand}" />
+                <StackPanel VerticalAlignment="Center">
+                  <TextBlock Text="{Binding Albums.Collections.OpenName}" FontSize="17"
+                             FontWeight="SemiBold" TextTrimming="CharacterEllipsis"
+                             Foreground="{DynamicResource Editor.Foreground}" />
+                  <TextBlock Style="{DynamicResource HintText}" TextWrapping="Wrap"
+                             Text="The albums on this collection. An album is on one collection, so putting it on another takes it off the first."
+                             Visibility="{Binding Albums.HasStatus,
+                                          Converter={StaticResource InverseBoolToVisibility}}" />
+                  <TextBlock Style="{DynamicResource HintText}" TextWrapping="Wrap"
+                             Text="{Binding Albums.Status}"
+                             Visibility="{Binding Albums.HasStatus,
+                                          Converter={StaticResource BoolToVisibility}}" />
+                </StackPanel>
+              </StackPanel>
+
+              <StackPanel Grid.Column="1" Orientation="Horizontal"
+                          HorizontalAlignment="Right" VerticalAlignment="Center">
+                <Button Style="{DynamicResource PrimaryButton}" Margin="0,0,8,0"
+                        MinWidth="110" Content="Add albums"
+                        ToolTip="Tick the albums that belong on this collection"
+                        Command="{Binding Albums.Collections.StartPickingCommand}" />
+                <Button Style="{DynamicResource SecondaryButton}" Margin="0,0,8,0"
+                        MinWidth="90" Content="Rename"
+                        ToolTip="Call this collection something else"
+                        Command="{Binding Albums.Collections.StartRenamingCommand}" />
+                <Button Style="{DynamicResource SecondaryButton}" MinWidth="90"
+                        Content="Remove"
+                        ToolTip="Take the collection away and leave its albums where they are"
+                        IsEnabled="{Binding Albums.Collections.IsIdle}"
+                        Click="OnRemoveCollectionClicked" />
+              </StackPanel>
+            </Grid>
+
+            <!-- The band of collections, across the top of the wall. Two
+                 questions get two places: which shelf is answered here, which
+                 album below, and neither has to be read out of the other's
+                 ordering. Drawn only when there is one, so a library that never
+                 makes a collection sees the screen it saw before. -->
+            <StackPanel Grid.Row="1" Margin="0,0,0,4"
+                        Visibility="{Binding Albums.ShowingTheBand,
+                                     Converter={StaticResource BoolToVisibility}}">
+              <TextBlock Style="{DynamicResource FieldLabel}" Margin="0,0,0,6"
+                         Text="Collections" />
+              <ScrollViewer VerticalScrollBarVisibility="Disabled"
+                            HorizontalScrollBarVisibility="Auto">
+                <ItemsControl ItemsSource="{Binding Albums.Collections.All}" Focusable="False">
+                  <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                      <StackPanel Orientation="Horizontal" />
+                    </ItemsPanelTemplate>
+                  </ItemsControl.ItemsPanel>
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                      <!-- The same card an album gets. What tells them apart is
+                           the heading above them, not a badge on every one of
+                           them - a badge that is always there stops being one. -->
+                      <Button Style="{DynamicResource AlbumCard}"
+                              ToolTip="{Binding Name}"
+                              AutomationProperties.Name="{Binding Name}"
+                              Command="{Binding DataContext.Albums.Collections.OpenShelfCommand,
+                                        RelativeSource={RelativeSource AncestorType=Window}}"
+                              CommandParameter="{Binding}">
+                        <StackPanel Width="180">
+                          <Grid Height="120">
+                            <Border Background="{DynamicResource Panel.Background}"
+                                    CornerRadius="{StaticResource Radius.Inner}" />
+                            <Image Source="{Binding Cover}" Stretch="UniformToFill" />
+                          </Grid>
+                          <TextBlock Text="{Binding Name}" Margin="2,8,2,0" FontSize="13"
+                                     FontWeight="SemiBold" TextTrimming="CharacterEllipsis"
+                                     Foreground="{DynamicResource Editor.Foreground}" />
+                          <TextBlock Text="{Binding Caption}" Margin="2,1,2,0" FontSize="11.5"
+                                     TextTrimming="CharacterEllipsis"
+                                     Foreground="{DynamicResource Editor.Placeholder}" />
+                        </StackPanel>
+                      </Button>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </ScrollViewer>
+              <Border Height="1" Margin="0,10,0,12"
+                      Background="{DynamicResource Separator}" />
+            </StackPanel>
+
             <!-- The wall of albums -->
-            <Grid Grid.Row="1"
+            <Grid Grid.Row="2"
                   Visibility="{Binding Albums.HasSelected,
                                Converter={StaticResource InverseBoolToVisibility}}">
               <ScrollViewer VerticalScrollBarVisibility="Auto"
@@ -806,7 +923,7 @@
             </Grid>
 
             <!-- One album, open -->
-            <DockPanel Grid.Row="0" Grid.RowSpan="2"
+            <DockPanel Grid.Row="0" Grid.RowSpan="3"
                        Visibility="{Binding Albums.HasSelected,
                                     Converter={StaticResource BoolToVisibility}}">
               <Grid DockPanel.Dock="Top" Margin="0,0,0,12">
@@ -994,7 +1111,7 @@
             <!-- Editing one album. Over the album rather than beside it,
                  and dimming what is behind, because it is a question with an
                  answer rather than a panel to live in. -->
-            <Grid Grid.Row="0" Grid.RowSpan="2" Margin="-20,-14,-20,-10"
+            <Grid Grid.Row="0" Grid.RowSpan="3" Margin="-20,-14,-20,-10"
                   Background="{DynamicResource ModalScrim}"
                   Visibility="{Binding Albums.IsEditing,
                                Converter={StaticResource BoolToVisibility}}">
@@ -1090,7 +1207,7 @@
                  be the surprise. Scrolls: the two directories can be long, and
                  on a short window the Create button is the part that would have
                  gone off the bottom. -->
-            <Grid Grid.Row="0" Grid.RowSpan="2" Margin="-20,-14,-20,-10"
+            <Grid Grid.Row="0" Grid.RowSpan="3" Margin="-20,-14,-20,-10"
                   Background="{DynamicResource ModalScrim}"
                   Visibility="{Binding Albums.IsCreating,
                                Converter={StaticResource BoolToVisibility}}">
@@ -1131,6 +1248,119 @@
                             Command="{Binding Albums.CancelCreateCommand}" />
                   </StackPanel>
                 </ScrollViewer>
+              </Border>
+            </Grid>
+
+            <!-- Naming a collection, whether it is new or being renamed. One
+                 panel for both, because they ask the same question and refuse
+                 the same answers - two would be two copies of the rule that a
+                 name cannot be blank and cannot already be taken. -->
+            <Grid Grid.Row="0" Grid.RowSpan="3" Margin="-20,-14,-20,-10"
+                  Background="{DynamicResource ModalScrim}"
+                  Visibility="{Binding Albums.Collections.IsNaming,
+                               Converter={StaticResource BoolToVisibility}}">
+              <Border Style="{DynamicResource ModalSurface}" Padding="18,16"
+                      MaxWidth="420" HorizontalAlignment="Center"
+                      VerticalAlignment="Center">
+                <StackPanel>
+                  <TextBlock Style="{DynamicResource FieldLabel}"
+                             Text="{Binding Albums.Collections.NamingTitle}" />
+                  <TextBlock Style="{DynamicResource HintText}" Margin="0,2,0,12"
+                             TextWrapping="Wrap"
+                             Text="A collection is a shelf of albums - Holiday over three trips. Nothing here moves or renames a file, and an album stands on one collection at a time." />
+
+                  <TextBlock Style="{DynamicResource FieldLabel}" Text="Name" />
+                  <TextBox Style="{DynamicResource InputTextBox}" Margin="0,2,0,0"
+                           AutomationProperties.Name="Name this collection"
+                           ToolTip="What to call it"
+                           Text="{Binding Albums.Collections.TypedName,
+                                  UpdateSourceTrigger=PropertyChanged}">
+                    <TextBox.InputBindings>
+                      <KeyBinding Key="Return"
+                                  Command="{Binding Albums.Collections.SaveNameCommand}" />
+                    </TextBox.InputBindings>
+                  </TextBox>
+                  <TextBlock Style="{DynamicResource HintText}" Margin="0,4,0,0"
+                             TextWrapping="Wrap"
+                             Foreground="{DynamicResource Status.Caution}"
+                             Text="{Binding Albums.Collections.NameProblem}"
+                             Visibility="{Binding Albums.Collections.HasNameProblem,
+                                          Converter={StaticResource BoolToVisibility}}" />
+
+                  <Button Style="{DynamicResource PrimaryButton}" Margin="0,16,0,0"
+                          HorizontalAlignment="Stretch" Content="Save"
+                          Command="{Binding Albums.Collections.SaveNameCommand}" />
+                  <Button Style="{DynamicResource LinkButton}" Margin="0,14,0,0"
+                          HorizontalAlignment="Center" Content="Cancel"
+                          Command="{Binding Albums.Collections.CancelNamingCommand}" />
+                </StackPanel>
+              </Border>
+            </Grid>
+
+            <!-- Filling a shelf. A tick list rather than a way in and a separate
+                 way out: the list is the shelf, so eight albums is one action
+                 instead of eight trips through the album panel. -->
+            <Grid Grid.Row="0" Grid.RowSpan="3" Margin="-20,-14,-20,-10"
+                  Background="{DynamicResource ModalScrim}"
+                  Visibility="{Binding Albums.Collections.IsPicking,
+                               Converter={StaticResource BoolToVisibility}}">
+              <Border Style="{DynamicResource ModalSurface}" Padding="18,16"
+                      MaxWidth="480" MaxHeight="720" HorizontalAlignment="Center"
+                      VerticalAlignment="Center">
+                <StackPanel>
+                  <TextBlock Style="{DynamicResource FieldLabel}"><Run Text="Albums on " /><Run
+                             Text="{Binding Albums.Collections.OpenName, Mode=OneWay}" /></TextBlock>
+                  <TextBlock Style="{DynamicResource HintText}" Margin="0,2,0,12"
+                             TextWrapping="Wrap"
+                             Text="Tick the ones that belong here. Clearing a tick takes an album off and leaves it on the wall. An album is on one collection, so ticking one that is already on another moves it, and the app says which it left." />
+
+                  <ScrollViewer MaxHeight="360" VerticalScrollBarVisibility="Auto"
+                                HorizontalScrollBarVisibility="Disabled">
+                    <ItemsControl ItemsSource="{Binding Albums.Collections.Choices}"
+                                  Focusable="False">
+                      <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                          <ToggleButton Style="{DynamicResource CheckRow}" Margin="0,1,0,1"
+                                        HorizontalAlignment="Stretch"
+                                        AutomationProperties.Name="{Binding Name}"
+                                        IsChecked="{Binding IsChosen, Mode=TwoWay}">
+                            <StackPanel Orientation="Horizontal">
+                              <TextBlock Text="{Binding Name}" FontSize="12.5" />
+                              <TextBlock Text="{Binding Caption}" FontSize="11" Margin="8,0,0,0"
+                                         VerticalAlignment="Center"
+                                         Foreground="{DynamicResource Editor.Placeholder}" />
+                            </StackPanel>
+                          </ToggleButton>
+                        </DataTemplate>
+                      </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                  </ScrollViewer>
+
+                  <TextBlock Style="{DynamicResource HintText}" Margin="0,8,0,0"
+                             TextWrapping="Wrap"
+                             Text="No albums yet. Make one with New album, or keep a suggestion, and it can go on a collection afterwards."
+                             Visibility="{Binding Albums.Collections.HasChoices,
+                                          Converter={StaticResource InverseBoolToVisibility}}" />
+
+                  <TextBlock Style="{DynamicResource HintText}" Margin="0,8,0,0"
+                             TextWrapping="Wrap"
+                             Foreground="{DynamicResource Status.Info}"
+                             Text="{Binding Albums.Collections.Chosen}"
+                             Visibility="{Binding Albums.Collections.HasChoices,
+                                          Converter={StaticResource BoolToVisibility}}" />
+
+                  <TextBlock Style="{DynamicResource HintText}" Margin="0,4,0,0"
+                             TextWrapping="Wrap"
+                             Text="Ticking a suggested album keeps it, so it moves out of Suggested and no later scan rewrites it." />
+
+                  <Button Style="{DynamicResource PrimaryButton}" Margin="0,16,0,0"
+                          HorizontalAlignment="Stretch" Content="Save"
+                          ToolTip="Put the ticked albums on this collection"
+                          Command="{Binding Albums.Collections.SavePickCommand}" />
+                  <Button Style="{DynamicResource LinkButton}" Margin="0,14,0,0"
+                          HorizontalAlignment="Center" Content="Cancel"
+                          Command="{Binding Albums.Collections.CancelPickingCommand}" />
+                </StackPanel>
               </Border>
             </Grid>
           </Grid>

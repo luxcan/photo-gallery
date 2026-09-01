@@ -40,6 +40,7 @@ public sealed class NewAlbumTests : IDisposable
 
         _services = new ServiceCollection()
             .AddSingleton<IAlbumRepository>(_repository)
+            .AddSingleton<ICollectionRepository, NoCollections>()
             .AddSingleton<IPeopleReader, TwoPeople>()
             .AddSingleton<IPlaceReader, OnePlaceAndOneCountry>()
             .BuildServiceProvider();

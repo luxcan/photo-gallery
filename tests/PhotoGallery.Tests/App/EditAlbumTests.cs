@@ -46,6 +46,7 @@ public sealed class EditAlbumTests : IDisposable
 
         _services = new ServiceCollection()
             .AddSingleton<IAlbumRepository>(_repository)
+            .AddSingleton<ICollectionRepository, NoCollections>()
             .AddSingleton<IPeopleReader, NoPeople>()
             .AddSingleton<IPlaceReader, NoPlaces>()
             .BuildServiceProvider();
@@ -146,8 +147,16 @@ public sealed class EditAlbumTests : IDisposable
     {
         string markup = File.ReadAllText(AppMarkup.PathTo("Shell", "MainWindow.xaml"));
 
-        Assert.DoesNotContain("Content=\"Rename\"", markup, StringComparison.Ordinal);
-        Assert.DoesNotContain("RenameCommand", markup, StringComparison.Ordinal);
+        // Named against the album rather than scanned for the word. A collection
+        // has a Rename of its own now, one level up, and it is not a second way
+        // to save this name - it is the only way to save a different one.
+        Assert.DoesNotContain("Albums.RenameCommand", markup, StringComparison.Ordinal);
+        Assert.DoesNotContain("Albums.SaveRuleCommand", markup, StringComparison.Ordinal);
+
+        // One box types the album's name, so there is one place it can be
+        // changed and one command that saves it.
+        Assert.Equal(
+            1, markup.Split("Albums.EditedName", StringSplitOptions.None).Length - 1);
 
         Assert.Contains(
             "Text=\"{Binding Albums.EditedName,", markup, StringComparison.Ordinal);

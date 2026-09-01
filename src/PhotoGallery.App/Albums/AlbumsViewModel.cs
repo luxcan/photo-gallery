@@ -87,12 +87,13 @@ public sealed partial class AlbumsViewModel : ObservableObject
     /// </remarks>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsShowingSuggested), nameof(Showing),
-        nameof(HasNone), nameof(EmptyMessage))]
+        nameof(HasNone), nameof(EmptyMessage), nameof(ShowingTheBand))]
     private bool _showMine = true;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasSelected), nameof(SelectedIsProposed),
-        nameof(SelectedIsMine), nameof(SelectedName))]
+        nameof(SelectedIsMine), nameof(SelectedName), nameof(ShowingTheStrip),
+        nameof(ShowingOneCollection), nameof(ShowingTheBand))]
     [NotifyCanExecuteChangedFor(nameof(AcceptCommand), nameof(DismissCommand),
         nameof(DeleteCommand), nameof(EditCommand),
         nameof(SaveCommand), nameof(SuggestCommand))]
@@ -181,7 +182,13 @@ public sealed partial class AlbumsViewModel : ObservableObject
         _store = store;
         _photos = new TileWindow(store);
         _suggestionGrid = new TileWindow(store);
+        Collections = new CollectionsViewModel(scopeFactory, store);
+        Collections.Changed += OnCollectionsChanged;
+        Collections.PropertyChanged += OnCollectionsPropertyChanged;
     }
+
+    /// <summary>The shelves above these albums, and the one that is open.</summary>
+    public CollectionsViewModel Collections { get; }
 
     /// <summary>Raised when the library's albums have changed.</summary>
     public event EventHandler? LibraryChanged;
@@ -189,11 +196,26 @@ public sealed partial class AlbumsViewModel : ObservableObject
     /// <summary>Everything the app is offering, newest occasion first.</summary>
     public ObservableCollection<AlbumItem> Suggested { get; } = [];
 
-    /// <summary>Everything the user kept or made.</summary>
+    /// <summary>Everything the user kept or made, wherever it is.</summary>
+    /// <remarks>
+    /// The whole of it, including the albums standing on a shelf. The wall draws
+    /// <see cref="Wall"/> instead - this is what the wall is filtered from, and
+    /// what a count of "your albums" has to be taken from.
+    /// </remarks>
     public ObservableCollection<AlbumItem> Mine { get; } = [];
 
+    /// <summary>The albums the wall is actually drawing.</summary>
+    /// <remarks>
+    /// At the top level, the ones on no shelf; inside an open collection, the
+    /// ones on that one. A separate list rather than a filtered view because the
+    /// cards are records that are replaced as their covers decode, and a live
+    /// filter over a list whose items keep being swapped is a scroll position
+    /// that jumps while you are reading it.
+    /// </remarks>
+    public ObservableCollection<AlbumItem> Wall { get; } = [];
+
     /// <summary>The list the visible tab is showing.</summary>
-    public ObservableCollection<AlbumItem> Showing => ShowMine ? Mine : Suggested;
+    public ObservableCollection<AlbumItem> Showing => ShowMine ? Wall : Suggested;
 
     /// <summary>
     /// The other side of <see cref="ShowMine"/>, so each tab binds to a property
@@ -235,6 +257,35 @@ public sealed partial class AlbumsViewModel : ObservableObject
 
     public bool HasSelected => Selected is not null;
 
+    /// <summary>
+    /// Whether the screen's own strip is showing: the heading, the two tabs and
+    /// the two New buttons.
+    /// </summary>
+    /// <remarks>
+    /// Three headers, one at a time, and each of them is the answer to "where am
+    /// I". The strip belongs to the library; a collection's header belongs to
+    /// one shelf; an open album brings its own. The tabs and New album sit on
+    /// the first because they are about the library rather than about whatever
+    /// is open in front of it.
+    /// </remarks>
+    public bool ShowingTheStrip => !HasSelected && !Collections.HasOpen;
+
+    /// <summary>Whether a collection is open, with no album open inside it.</summary>
+    public bool ShowingOneCollection => !HasSelected && Collections.HasOpen;
+
+    /// <summary>
+    /// Whether the band of collections is drawn above the wall.
+    /// </summary>
+    /// <remarks>
+    /// Only at the top level of the user's own tab, and only once there is a
+    /// collection to draw. Inside one there is nothing to choose between; on the
+    /// Suggested tab there is nothing to put on a shelf until it is kept; and
+    /// with none made, an empty band would be a strip explaining a feature that
+    /// is not being used.
+    /// </remarks>
+    public bool ShowingTheBand =>
+        !HasSelected && !Collections.HasOpen && ShowMine && Collections.HasAny;
+
     public bool SelectedIsProposed => Selected?.IsProposed == true;
 
     public bool SelectedIsMine => Selected?.IsMine == true;
@@ -249,16 +300,16 @@ public sealed partial class AlbumsViewModel : ObservableObject
     /// than off what the filter box happens to be showing, so narrowing the list
     /// never quietly drops somebody already chosen.
     /// </remarks>
-    public ObservableCollection<RuleChoice> People { get; } = [];
+    public ObservableCollection<TickChoice> People { get; } = [];
 
     /// <summary>The people the filter box is letting through.</summary>
-    public ObservableCollection<RuleChoice> ShownPeople { get; } = [];
+    public ObservableCollection<TickChoice> ShownPeople { get; } = [];
 
     /// <summary>Every place photographs have been resolved to.</summary>
-    public ObservableCollection<RuleChoice> Places { get; } = [];
+    public ObservableCollection<TickChoice> Places { get; } = [];
 
     /// <summary>The places the filter box is letting through.</summary>
-    public ObservableCollection<RuleChoice> ShownPlaces { get; } = [];
+    public ObservableCollection<TickChoice> ShownPlaces { get; } = [];
 
     public bool HasPeopleToPick => People.Count > 0;
 
@@ -328,10 +379,38 @@ public sealed partial class AlbumsViewModel : ObservableObject
     private string _suggestionNote = string.Empty;
 
     /// <summary>What an empty tab says, which differs by tab.</summary>
-    public string EmptyMessage => ShowMine
-        ? "Nothing of your own yet. Choose New album, and say what it is looking for."
-        : "Nothing suggested yet. Scan your folders and the app will group what it finds - "
-          + "a weekend away, a day out - and offer them here.";
+    /// <summary>
+    /// What an empty wall says, which depends on why it is empty.
+    /// </summary>
+    /// <remarks>
+    /// Three empty walls of the user's own, and they are not the same question.
+    /// A library with no albums needs to be told how to make one; an open shelf
+    /// with nothing on it needs the button that fills it; and a wall that is
+    /// empty only because every album is on a shelf must say so, or it reads as
+    /// the albums having gone.
+    /// </remarks>
+    public string EmptyMessage
+    {
+        get
+        {
+            if (!ShowMine)
+            {
+                return "Nothing suggested yet. Scan your folders and the app will group what "
+                       + "it finds - a weekend away, a day out - and offer them here.";
+            }
+
+            if (Collections.HasOpen)
+            {
+                return "Nothing on this collection yet. Choose Add albums, and tick the ones "
+                       + "that belong on it.";
+            }
+
+            return Mine.Count == 0
+                ? "Nothing of your own yet. Choose New album, and say what it is looking for."
+                : "Every album you have is on a collection. Open one above to see what is on "
+                  + "it, or make an album that is on none.";
+        }
+    }
 
     /// <summary>Opens one album on its photographs.</summary>
     /// <remarks>
@@ -466,16 +545,16 @@ public sealed partial class AlbumsViewModel : ObservableObject
     }
 
     /// <summary>One tickable line, counted the way both lists count.</summary>
-    private RuleChoice Choice(int id, string name, int photos, bool isChosen)
+    private TickChoice Choice(int id, string name, int photos, bool isChosen)
     {
-        var choice = new RuleChoice(
+        var choice = new TickChoice(
             id, name, photos == 1 ? "1 photo" : $"{photos:N0} photos", isChosen);
 
         // The count beside the list is the only place a tick hidden by the
         // filter still shows, so it has to hear about every one of them.
         choice.PropertyChanged += (_, args) =>
         {
-            if (args.PropertyName == nameof(RuleChoice.IsChosen))
+            if (args.PropertyName == nameof(TickChoice.IsChosen))
             {
                 RefreshChosenCounts();
             }
@@ -863,7 +942,7 @@ public sealed partial class AlbumsViewModel : ObservableObject
         }
     }
 
-    private static string Chosen(IEnumerable<RuleChoice> all, string one, string many)
+    private static string Chosen(IEnumerable<TickChoice> all, string one, string many)
     {
         int count = all.Count(choice => choice.IsChosen);
         return count switch
@@ -902,7 +981,7 @@ public sealed partial class AlbumsViewModel : ObservableObject
     [RelayCommand]
     private void ChoosePerson()
     {
-        if (PeopleFilter.Trim().Length > 0 && ShownPeople.FirstOrDefault() is RuleChoice person)
+        if (PeopleFilter.Trim().Length > 0 && ShownPeople.FirstOrDefault() is TickChoice person)
         {
             person.IsChosen = true;
             PeopleFilter = string.Empty;
@@ -913,7 +992,7 @@ public sealed partial class AlbumsViewModel : ObservableObject
     [RelayCommand]
     private void ChoosePlace()
     {
-        if (PlacesFilter.Trim().Length > 0 && ShownPlaces.FirstOrDefault() is RuleChoice place)
+        if (PlacesFilter.Trim().Length > 0 && ShownPlaces.FirstOrDefault() is TickChoice place)
         {
             place.IsChosen = true;
             PlacesFilter = string.Empty;
@@ -922,12 +1001,12 @@ public sealed partial class AlbumsViewModel : ObservableObject
 
     /// <summary>Puts the ones whose name contains what was typed on the screen.</summary>
     private static void Narrow(
-        IEnumerable<RuleChoice> all, ObservableCollection<RuleChoice> shown, string typed)
+        IEnumerable<TickChoice> all, ObservableCollection<TickChoice> shown, string typed)
     {
         string wanted = typed.Trim();
 
         shown.Clear();
-        foreach (RuleChoice choice in all)
+        foreach (TickChoice choice in all)
         {
             if (wanted.Length == 0
                 || choice.Name.Contains(wanted, StringComparison.CurrentCultureIgnoreCase))
@@ -982,6 +1061,10 @@ public sealed partial class AlbumsViewModel : ObservableObject
                     .ConfigureAwait(true);
             }
 
+            // The band before the wall. Its counts are of albums and of the
+            // photographs in them, so anything that changes an album changes
+            // what a shelf says about itself.
+            await Collections.ReloadAsync().ConfigureAwait(true);
             Apply(all);
         }
         catch (Exception ex) when (ex is IOException or InvalidOperationException
@@ -1183,10 +1266,105 @@ public sealed partial class AlbumsViewModel : ObservableObject
             _rebuilding = false;
         }
 
-        OnPropertyChanged(nameof(HasNone));
+        FillWall();
         Selected = Showing.FirstOrDefault(item => item.Id == wasOpen);
 
         _ = LoadCoversAsync();
+    }
+
+    /// <summary>
+    /// Puts on the wall the albums that belong on it: at the top level the ones
+    /// on no shelf, and inside an open collection the ones on that one.
+    /// </summary>
+    /// <remarks>
+    /// An album whose shelf this screen has never heard of counts as being on
+    /// none. There is no foreign key behind that column - see AlbumConfiguration
+    /// for why - so without this rule an album left pointing at a collection
+    /// that is gone would be an album that appears on no wall at all, which is
+    /// indistinguishable from having lost it.
+    /// </remarks>
+    private void FillWall()
+    {
+        int? shelf = Collections.Open?.Id;
+        IReadOnlySet<int> known = Collections.KnownIds;
+
+        _rebuilding = true;
+        try
+        {
+            Wall.Clear();
+
+            foreach (AlbumItem item in Mine)
+            {
+                int? on = item.Summary.CollectionId;
+                bool loose = on is null || !known.Contains(on.Value);
+
+                if (shelf is null ? loose : on == shelf)
+                {
+                    Wall.Add(item);
+                }
+            }
+        }
+        finally
+        {
+            _rebuilding = false;
+        }
+
+        OnPropertyChanged(nameof(HasNone));
+        OnPropertyChanged(nameof(EmptyMessage));
+    }
+
+    /// <summary>
+    /// Re-reads the library after a shelf was made, filled, named or removed.
+    /// </summary>
+    /// <remarks>
+    /// One place, because every one of those changes which albums the wall
+    /// should be drawing, and because two status lines on one screen is one more
+    /// than anybody reads. Opening and closing a shelf comes through here too
+    /// and says nothing, which is why an empty sentence leaves the last one
+    /// alone rather than clearing it.
+    /// </remarks>
+    private async void OnCollectionsChanged(object? sender, string said)
+    {
+        if (said.Length > 0)
+        {
+            Status = said;
+        }
+
+        await ReloadAsync().ConfigureAwait(true);
+    }
+
+    /// <summary>
+    /// Going in or out of a shelf redraws the wall, without reading anything.
+    /// </summary>
+    /// <remarks>
+    /// The albums are already in memory and none of them changed - only which of
+    /// them belong on the wall did. An album cannot stay open across it: what is
+    /// behind the back chevron has moved, and leaving a photograph grid up over a
+    /// wall that is no longer the one it came from is how a back button starts
+    /// lying.
+    /// </remarks>
+    private void OnCollectionsPropertyChanged(
+        object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        // HasAny moves when a collection is made or removed, which is what
+        // decides whether there is a band at all.
+        if (e.PropertyName == nameof(CollectionsViewModel.HasAny))
+        {
+            OnPropertyChanged(nameof(ShowingTheBand));
+            return;
+        }
+
+        if (e.PropertyName != nameof(CollectionsViewModel.Open))
+        {
+            return;
+        }
+
+        OnPropertyChanged(nameof(ShowingTheStrip));
+        OnPropertyChanged(nameof(ShowingOneCollection));
+        OnPropertyChanged(nameof(ShowingTheBand));
+
+        Selected = null;
+        FillWall();
     }
 
     partial void OnSelectedChanged(AlbumItem? value)
@@ -1278,6 +1456,7 @@ public sealed partial class AlbumsViewModel : ObservableObject
         {
             Replace(Suggested, pair.Item, pair.Picture);
             Replace(Mine, pair.Item, pair.Picture);
+            Replace(Wall, pair.Item, pair.Picture);
         });
 
         await Task.Run(() => Parallel.ForEachAsync(

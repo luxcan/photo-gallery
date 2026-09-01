@@ -46,6 +46,7 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddScoped<IAssetRepository, SqliteAssetRepository>();
         services.AddScoped<IDuplicateRepository, SqliteDuplicateRepository>();
         services.AddScoped<IAlbumRepository, SqliteAlbumRepository>();
+        services.AddScoped<ICollectionRepository, SqliteCollectionRepository>();
         services.AddScoped<IAlbumFileMoveRepository, SqliteAlbumFileMoveRepository>();
         services.AddScoped<IAlbumFactsReader, SqliteAlbumFactsReader>();
         services.AddSingleton<IQuarantineStore, FileSystemQuarantine>();

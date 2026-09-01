@@ -827,6 +827,10 @@ public partial class MainWindow : Window
         yield return (() => people.Reassign.IsOpen, people.Reassign.CancelCommand);
         yield return (() => albums.IsEditing, albums.CancelEditCommand);
         yield return (() => albums.IsCreating, albums.CancelCreateCommand);
+        yield return (
+            () => albums.Collections.IsPicking, albums.Collections.CancelPickingCommand);
+        yield return (
+            () => albums.Collections.IsNaming, albums.Collections.CancelNamingCommand);
     }
 
     private void OnDuplicateInspectorKeyDown(object sender, KeyEventArgs e)
@@ -1577,6 +1581,51 @@ public partial class MainWindow : Window
             if (answer)
             {
                 await _viewModel.Albums.DeleteCommand.ExecuteAsync(null);
+            }
+        }
+        finally
+        {
+            _confirming = false;
+        }
+    }
+
+    /// <summary>Asks before taking a collection away.</summary>
+    /// <remarks>
+    /// The same shape as removing an album or a person, and for the same reason:
+    /// no file is touched by any of the three, and all three undo work that
+    /// would have to be done again. Less is lost here than with an album - the
+    /// albums themselves come back on to the wall - so the question says that
+    /// first, and the declining button is still the default one.
+    /// </remarks>
+    private async void OnRemoveCollectionClicked(object sender, RoutedEventArgs e)
+    {
+        if (_confirming || _viewModel.Albums.Collections.Open is not CollectionItem collection)
+        {
+            return;
+        }
+
+        _confirming = true;
+        try
+        {
+            string counted = collection.Summary.AlbumCount switch
+            {
+                0 => "Nothing is on it yet.",
+                1 => "The album on it stays in your library, and is on no collection "
+                     + "afterwards.",
+                int albums => $"The {albums:N0} albums on it stay in your library, and are on "
+                              + "no collection afterwards.",
+            };
+
+            bool answer = AppDialog.Confirm(
+                this,
+                $"Remove \"{collection.Name}\"?",
+                $"{counted}\n\nOnly the collection's name goes, and it cannot be brought back.",
+                confirm: "Remove collection",
+                tone: DialogTone.Caution);
+
+            if (answer)
+            {
+                await _viewModel.Albums.Collections.DeleteCommand.ExecuteAsync(null);
             }
         }
         finally
