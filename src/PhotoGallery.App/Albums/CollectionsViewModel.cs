@@ -111,6 +111,16 @@ public sealed partial class CollectionsViewModel : ObservableObject
     /// </remarks>
     public bool HasAny => All.Count > 0;
 
+    /// <summary>
+    /// How many shelves there are, beside the band's heading.
+    /// </summary>
+    /// <remarks>
+    /// A count rather than a repeat of the word, because the band scrolls
+    /// sideways: what is off the right edge is the one thing the heading can
+    /// say that the row cannot.
+    /// </remarks>
+    public string ShelfCount => All.Count == 1 ? "1 shelf" : $"{All.Count:N0} shelves";
+
     public bool HasOpen => Open is not null;
 
     public string OpenName => Open?.Name ?? string.Empty;
@@ -431,12 +441,13 @@ public sealed partial class CollectionsViewModel : ObservableObject
         All.Clear();
         foreach (CollectionSummary summary in all)
         {
-            All.Add(new CollectionItem(summary, Cover: null));
+            All.Add(new CollectionItem(summary, CollectionItem.NoCovers));
         }
 
         _known = [.. all.Select(summary => summary.Id)];
 
         OnPropertyChanged(nameof(HasAny));
+        OnPropertyChanged(nameof(ShelfCount));
         OnPropertyChanged(nameof(KnownIds));
         Open = All.FirstOrDefault(item => item.Id == wasOpen);
 
@@ -488,12 +499,21 @@ public sealed partial class CollectionsViewModel : ObservableObject
 
     private void Raise(string said) => Changed?.Invoke(this, said);
 
+    /// <summary>
+    /// Decodes each shelf's mosaic, a whole shelf at a time.
+    /// </summary>
+    /// <remarks>
+    /// One report per row rather than one per tile: four separate arrivals would
+    /// replace the same row four times, and each replacement has to carry the
+    /// open shelf across it.
+    /// </remarks>
     private async Task LoadCoversAsync()
     {
         List<CollectionItem> waiting =
         [
             .. All.Where(item =>
-                item.Cover is null && item.Summary.CoverThumbnailName is not null),
+                item.Summary.CoverThumbnailNames.Count > 0
+                && item.Covers.All(cover => cover is null)),
         ];
 
         if (waiting.Count == 0)
@@ -501,31 +521,36 @@ public sealed partial class CollectionsViewModel : ObservableObject
             return;
         }
 
-        var arrived = new Progress<(CollectionItem Item, ImageSource? Picture)>(pair =>
-            Replace(pair.Item, pair.Picture));
+        var arrived = new Progress<(CollectionItem Item, IReadOnlyList<ImageSource?> Mosaic)>(
+            pair => Replace(pair.Item, pair.Mosaic));
 
         await Task.Run(() => Parallel.ForEachAsync(
             waiting,
             new ParallelOptions { MaxDegreeOfParallelism = DecodeParallelism },
             (item, token) =>
             {
-                ImageSource? picture = TileImageLoader.LoadTile(
-                    _store, item.Summary.CoverThumbnailName);
+                var mosaic = new ImageSource?[CollectionItem.MosaicTiles];
+                for (int tile = 0; tile < item.Summary.CoverThumbnailNames.Count; tile++)
+                {
+                    mosaic[tile] = TileImageLoader.LoadTile(
+                        _store, item.Summary.CoverThumbnailNames[tile]);
+                }
 
-                ((IProgress<(CollectionItem, ImageSource?)>)arrived).Report((item, picture));
+                ((IProgress<(CollectionItem, IReadOnlyList<ImageSource?>)>)arrived)
+                    .Report((item, mosaic));
                 return ValueTask.CompletedTask;
             })).ConfigureAwait(true);
     }
 
     /// <summary>
-    /// Puts the decoded cover on the card, carrying the open shelf across it.
+    /// Puts the decoded mosaic on the row, carrying the open shelf across it.
     /// </summary>
     /// <remarks>
-    /// The cards are records, so this replaces one rather than mutating it - and
-    /// without carrying <see cref="Open"/> over, a cover arriving would close
+    /// The rows are records, so this replaces one rather than mutating it - and
+    /// without carrying <see cref="Open"/> over, a mosaic arriving would close
     /// whichever shelf the user had just opened.
     /// </remarks>
-    private void Replace(CollectionItem item, ImageSource? picture)
+    private void Replace(CollectionItem item, IReadOnlyList<ImageSource?> mosaic)
     {
         int at = All.IndexOf(item);
         if (at < 0)
@@ -534,12 +559,12 @@ public sealed partial class CollectionsViewModel : ObservableObject
         }
 
         bool wasOpen = Open == item;
-        CollectionItem withCover = item with { Cover = picture };
-        All[at] = withCover;
+        CollectionItem withCovers = item with { Covers = mosaic };
+        All[at] = withCovers;
 
         if (wasOpen)
         {
-            Open = withCover;
+            Open = withCovers;
         }
     }
 }

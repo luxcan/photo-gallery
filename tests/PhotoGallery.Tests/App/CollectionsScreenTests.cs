@@ -345,6 +345,68 @@ public sealed class CollectionsScreenTests : IDisposable
         Assert.Equal("March 2019", Assert.Single(_albums.Showing).Name);
     }
 
+    /// <summary>
+    /// An empty shelf says it is empty, rather than drawing four blank tiles.
+    /// </summary>
+    /// <remarks>
+    /// The first version of this band gave a collection the album card's own
+    /// 180px cover. On dark, that placeholder is the same colour as the page
+    /// behind it, so an empty shelf was a hole the size of a photograph with a
+    /// name adrift underneath - which is what it looked like in the app.
+    /// </remarks>
+    [Fact]
+    public async Task AnEmptyShelfIsDrawnAsSomewhereToPutSomething()
+    {
+        await _shelves.CreateAsync("Chingay");
+        await _albums.ReloadAsync();
+
+        CollectionItem shelf = Assert.Single(_albums.Collections.All);
+        Assert.False(shelf.HasAlbums);
+        Assert.Equal("Empty - add albums", shelf.Caption);
+        Assert.Equal(CollectionItem.MosaicTiles, shelf.Covers.Count);
+        Assert.All(shelf.Covers, Assert.Null);
+    }
+
+    [Fact]
+    public async Task AFilledShelfCountsItsAlbumsAndItsPhotographs()
+    {
+        int genting = await _albumStore.CreateAsync("Genting");
+        int holiday = await _shelves.CreateAsync("Holiday");
+        await _shelves.SetAlbumsAsync(holiday, [genting]);
+        await _albums.ReloadAsync();
+
+        CollectionItem shelf = Assert.Single(_albums.Collections.All);
+        Assert.True(shelf.HasAlbums);
+        Assert.Equal("1 album · 0 photos", shelf.Caption);
+        Assert.Equal("1 shelf", _albums.Collections.ShelfCount);
+    }
+
+    /// <summary>
+    /// The band draws a row with a mosaic, and the wall draws album cards. The
+    /// shape is the whole of what tells a shelf from an album, so it is worth a
+    /// test that reads the markup.
+    /// </summary>
+    [Fact]
+    public void TheBandIsNotDrawnWithAnAlbumCard()
+    {
+        string markup = File.ReadAllText(AppMarkup.PathTo("Shell", "MainWindow.xaml"));
+
+        // The whole binding, not its opening: Albums.ShowingTheStrip starts with
+        // Albums.Showing and sits above both of these.
+        int band = markup.IndexOf("{Binding Albums.Collections.All}", StringComparison.Ordinal);
+        int wall = markup.IndexOf("{Binding Albums.Showing}", StringComparison.Ordinal);
+        Assert.InRange(band, 1, wall);
+
+        string inTheBand = markup[band..wall];
+        Assert.Contains("ShelfCard", inTheBand, StringComparison.Ordinal);
+        Assert.Contains("{Binding Covers}", inTheBand, StringComparison.Ordinal);
+        Assert.DoesNotContain("AlbumCard", inTheBand, StringComparison.Ordinal);
+
+        // And the wall still draws album cards, so this cannot pass by the band
+        // and the wall having swapped places.
+        Assert.Contains("AlbumCard", markup[wall..], StringComparison.Ordinal);
+    }
+
     private Album Suggested(string name)
     {
         var album = new Album

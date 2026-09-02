@@ -7,6 +7,9 @@ namespace PhotoGallery.Infrastructure.Persistence;
 /// <inheritdoc cref="ICollectionRepository"/>
 public sealed class SqliteCollectionRepository : ICollectionRepository
 {
+    /// <summary>How many covers the band's mosaic can show for one shelf.</summary>
+    private const int MosaicTiles = 4;
+
     private readonly GalleryDbContext _db;
 
     public SqliteCollectionRepository(GalleryDbContext db) => _db = db;
@@ -57,10 +60,12 @@ public sealed class SqliteCollectionRepository : ICollectionRepository
                     shelf.Name,
                     on.Count,
                     on.Sum(album => album.Photos),
-                    on.Where(album => album.Cover != null)
-                        .OrderByDescending(album => album.EndUtc)
-                        .Select(album => album.Cover)
-                        .FirstOrDefault());
+                    [
+                        .. on.Where(album => album.Cover != null)
+                            .OrderByDescending(album => album.EndUtc)
+                            .Select(album => album.Cover!)
+                            .Take(MosaicTiles)
+                    ]);
             })
         ];
     }

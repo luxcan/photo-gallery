@@ -820,8 +820,16 @@
             <StackPanel Grid.Row="1" Margin="0,0,0,4"
                         Visibility="{Binding Albums.ShowingTheBand,
                                      Converter={StaticResource BoolToVisibility}}">
-              <TextBlock Style="{DynamicResource FieldLabel}" Margin="0,0,0,6"
-                         Text="Collections" />
+              <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                <TextBlock Style="{DynamicResource FieldLabel}" Margin="0"
+                           Text="Collections" />
+                <!-- The count, because the band scrolls sideways: what is off
+                     the right edge is the one thing the heading can say that
+                     the row itself cannot. -->
+                <TextBlock Margin="10,0,0,0" FontSize="11.5" VerticalAlignment="Center"
+                           Foreground="{DynamicResource TextDisabled}"
+                           Text="{Binding Albums.Collections.ShelfCount}" />
+              </StackPanel>
               <ScrollViewer VerticalScrollBarVisibility="Disabled"
                             HorizontalScrollBarVisibility="Auto">
                 <ItemsControl ItemsSource="{Binding Albums.Collections.All}" Focusable="False">
@@ -832,34 +840,74 @@
                   </ItemsControl.ItemsPanel>
                   <ItemsControl.ItemTemplate>
                     <DataTemplate>
-                      <!-- The same card an album gets. What tells them apart is
-                           the heading above them, not a badge on every one of
-                           them - a badge that is always there stops being one. -->
-                      <Button Style="{DynamicResource AlbumCard}"
+                      <!-- A row, not a card. Four small covers say what is on
+                           the shelf without pretending to be one photograph,
+                           and the shape is what tells a shelf from an album -
+                           not a badge on every card, which stops being a badge. -->
+                      <Button Style="{DynamicResource ShelfCard}"
                               ToolTip="{Binding Name}"
                               AutomationProperties.Name="{Binding Name}"
                               Command="{Binding DataContext.Albums.Collections.OpenShelfCommand,
                                         RelativeSource={RelativeSource AncestorType=Window}}"
                               CommandParameter="{Binding}">
-                        <StackPanel Width="180">
-                          <Grid Height="120">
-                            <Border Background="{DynamicResource Panel.Background}"
-                                    CornerRadius="{StaticResource Radius.Inner}" />
-                            <Image Source="{Binding Cover}" Stretch="UniformToFill" />
+                        <Grid Width="220">
+                          <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                          </Grid.ColumnDefinitions>
+
+                          <Grid Grid.Column="0" Width="46" Height="46">
+                            <ItemsControl ItemsSource="{Binding Covers}" Focusable="False"
+                                          Visibility="{Binding HasAlbums,
+                                                       Converter={StaticResource BoolToVisibility}}">
+                              <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                  <UniformGrid Rows="2" Columns="2" />
+                                </ItemsPanelTemplate>
+                              </ItemsControl.ItemsPanel>
+                              <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                  <Grid Margin="1">
+                                    <Border Background="{DynamicResource Neutral.3}"
+                                            CornerRadius="{StaticResource Radius.Inner}" />
+                                    <Image Source="{Binding}" Stretch="UniformToFill" />
+                                  </Grid>
+                                </DataTemplate>
+                              </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+
+                            <!-- An outline and a plus rather than four blank
+                                 tiles: blanks read as pictures that failed to
+                                 load, an outline reads as somewhere to put
+                                 something, which is what it is. -->
+                            <Grid Visibility="{Binding HasAlbums,
+                                               Converter={StaticResource InverseBoolToVisibility}}">
+                              <Rectangle Stroke="{DynamicResource Input.Border}"
+                                         StrokeThickness="1" StrokeDashArray="2 2"
+                                         RadiusX="2" RadiusY="2" SnapsToDevicePixels="True" />
+                              <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center"
+                                         FontFamily="Segoe MDL2 Assets" FontSize="13"
+                                         Text="&#xE710;"
+                                         Foreground="{DynamicResource TextDisabled}" />
+                            </Grid>
                           </Grid>
-                          <TextBlock Text="{Binding Name}" Margin="2,8,2,0" FontSize="13"
-                                     FontWeight="SemiBold" TextTrimming="CharacterEllipsis"
-                                     Foreground="{DynamicResource Editor.Foreground}" />
-                          <TextBlock Text="{Binding Caption}" Margin="2,1,2,0" FontSize="11.5"
-                                     TextTrimming="CharacterEllipsis"
-                                     Foreground="{DynamicResource Editor.Placeholder}" />
-                        </StackPanel>
+
+                          <StackPanel Grid.Column="1" Margin="10,0,0,0"
+                                      VerticalAlignment="Center">
+                            <TextBlock Text="{Binding Name}" FontSize="12.5"
+                                       FontWeight="SemiBold" TextTrimming="CharacterEllipsis"
+                                       Foreground="{DynamicResource Editor.Foreground}" />
+                            <TextBlock Text="{Binding Caption}" Margin="0,2,0,0" FontSize="11"
+                                       TextTrimming="CharacterEllipsis"
+                                       Foreground="{DynamicResource Editor.Placeholder}" />
+                          </StackPanel>
+                        </Grid>
                       </Button>
                     </DataTemplate>
                   </ItemsControl.ItemTemplate>
                 </ItemsControl>
               </ScrollViewer>
-              <Border Height="1" Margin="0,10,0,12"
+              <Border Height="1" Margin="0,14,0,14"
                       Background="{DynamicResource Separator}" />
             </StackPanel>
 

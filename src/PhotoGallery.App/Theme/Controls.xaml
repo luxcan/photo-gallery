@@ -1154,6 +1154,47 @@
     </Setter>
   </Style>
 
+  <!--
+    One collection in the band: a short wide row, not a card.
+
+    A shelf and an album open into different worlds - one into more cards, one
+    into photographs - and while both were drawn as a cover with a name under it
+    nothing on the screen said which was which. This carries its own surface and
+    a hairline, so a row of them reads as a strip of somewhere-to-go rather than
+    as more of the wall below.
+  -->
+  <Style x:Key="ShelfCard" TargetType="Button">
+    <!-- The control surface, not the side bar's: against the editor ground a
+         shelf row on SideBar.Background was five steps of grey away from the
+         page and read as loose text rather than as something to press. -->
+    <Setter Property="Background" Value="{DynamicResource Neutral.3}" />
+    <Setter Property="Cursor" Value="Hand" />
+    <Setter Property="Margin" Value="0,0,10,0" />
+    <Setter Property="HorizontalContentAlignment" Value="Left" />
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="Button">
+          <Border x:Name="Root" Background="{TemplateBinding Background}"
+                  BorderBrush="{DynamicResource Separator}" BorderThickness="1"
+                  CornerRadius="{StaticResource Radius.Control}" Padding="8"
+                  SnapsToDevicePixels="True">
+            <ContentPresenter />
+          </Border>
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+              <Setter TargetName="Root" Property="Background"
+                      Value="{DynamicResource List.HoverBackground}" />
+            </Trigger>
+            <Trigger Property="IsKeyboardFocused" Value="True">
+              <Setter TargetName="Root" Property="BorderBrush"
+                      Value="{DynamicResource Focus.Border}" />
+            </Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
   <Style x:Key="GalleryCell" TargetType="Button">
     <Setter Property="Background" Value="{DynamicResource Neutral.3}" />
     <Setter Property="Cursor" Value="Hand" />

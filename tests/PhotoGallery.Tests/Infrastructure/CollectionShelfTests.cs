@@ -241,9 +241,12 @@ public sealed class CollectionShelfTests : IDisposable
             (await _shelves.GetAsync()).Select(shelf => shelf.Name));
     }
 
-    /// <summary>The cover is the most recently taken album's, not the first one on.</summary>
+    /// <summary>
+    /// The mosaic reads newest album first, so a shelf that has just been added
+    /// to shows what was added.
+    /// </summary>
     [Fact]
-    public async Task TheCoverComesFromTheMostRecentAlbumOnTheShelf()
+    public async Task TheMosaicIsMostRecentAlbumFirst()
     {
         int holiday = await _shelves.CreateAsync("Holiday");
 
@@ -255,7 +258,35 @@ public sealed class CollectionShelfTests : IDisposable
         await _shelves.SetAlbumsAsync(holiday, [older, newer]);
         _db.ChangeTracker.Clear();
 
-        Assert.Equal("new.jpg", Assert.Single(await _shelves.GetAsync()).CoverThumbnailName);
+        Assert.Equal(
+            ["new.jpg", "old.jpg"],
+            Assert.Single(await _shelves.GetAsync()).CoverThumbnailNames);
+    }
+
+    /// <summary>Four tiles is what the mosaic has, however many albums are on it.</summary>
+    [Fact]
+    public async Task TheMosaicStopsAtFourCovers()
+    {
+        int holiday = await _shelves.CreateAsync("Holiday");
+        List<int> albums = [];
+
+        for (int day = 1; day <= 6; day++)
+        {
+            int album = Album(
+                $"Trip {day}",
+                ends: new DateTime(2023, 7, day, 0, 0, 0, DateTimeKind.Unspecified));
+            Cover(album, Photo($"cover{day}.jpg", album));
+            albums.Add(album);
+        }
+
+        await _shelves.SetAlbumsAsync(holiday, albums);
+        _db.ChangeTracker.Clear();
+
+        CollectionSummary shelf = Assert.Single(await _shelves.GetAsync());
+        Assert.Equal(6, shelf.AlbumCount);
+        Assert.Equal(
+            ["cover6.jpg", "cover5.jpg", "cover4.jpg", "cover3.jpg"],
+            shelf.CoverThumbnailNames);
     }
 
     [Fact]
@@ -265,7 +296,7 @@ public sealed class CollectionShelfTests : IDisposable
 
         CollectionSummary shelf = Assert.Single(await _shelves.GetAsync());
         Assert.Equal(0, shelf.AlbumCount);
-        Assert.Null(shelf.CoverThumbnailName);
+        Assert.Empty(shelf.CoverThumbnailNames);
     }
 
     [Fact]
