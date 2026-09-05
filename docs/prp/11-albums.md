@@ -155,6 +155,37 @@ Never invent. If the only honest name is a month and a count, that is the name.
 
 ---
 
+## The panel that describes an album
+
+Added 5 September 2026, after the screen had been used.
+
+**One panel makes an album and edits one.** They ask the same questions in the
+same order and refuse the same answers. Two panels meant two copies of that, and
+they had already drifted: only one of them said what a rule was for, and only
+one could put an album on a collection. What the mode changes is the title, the
+word on the button, and whether the panel offers to move originals or remove an
+album that does not exist yet.
+
+**Two columns, and nothing below a fold.** What the album *is* on the left - its
+name, its collection, and everything that can be done to it. What it is *looking
+for* on the right. It was one 480px column, 720px tall, that scrolled, with two
+more scrolling lists inside it, and Save, Move originals, Remove and Cancel all
+under the bottom edge.
+
+**What the rule asks for is shown, not counted.** The people and places in it sit
+above their box as chips carrying the way out; the box below finds what is not in
+it yet and offers nothing while it is empty. The line that used to sit there -
+*"5 people chosen"* - was a symptom rather than a feature: ticking somebody and
+then typing another name left the first ticked and scrolled out of a 120px
+window, and a count is what you write when you cannot show the thing itself.
+
+Both fields work the same way. The first attempt made them different - a standing
+list for the sixteen people, a search for the sixty-nine places, on the ground
+that sixteen fit on screen. Count was the wrong axis: they answer the same kind
+of question and have to feel the same.
+
+---
+
 ## Contracts
 
 ```

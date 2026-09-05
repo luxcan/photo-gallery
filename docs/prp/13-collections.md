@@ -220,6 +220,9 @@ already on disk. This is the cheapest PRP in the document.
 - [ ] A collection can be made, named, and appears in the band.
 - [ ] Albums are put on a shelf by ticking several and pressing Add once.
 - [ ] An album put on a second shelf leaves the first, and the screen says so.
+- [ ] The album's own panel says which collection it is on, and changing it
+      there moves the album and names the shelf it came off.
+- [ ] An album made from inside a collection lands on that collection.
 - [ ] Opening a collection shows its albums side by side; opening one of those
       shows its photographs; back goes album, collection, screen.
 - [ ] Only albums on no shelf appear on the wall below the band.
@@ -259,6 +262,26 @@ follows for a photograph, one level up.
 **`RuleChoice` became `TickChoice`.** Its third use is an album on a shelf
 rather than a person or a place in a rule, and a third use is what made the
 name wrong rather than merely narrow.
+
+**The album's own panel answers the other direction, and the prerequisite this
+document set for it was withdrawn.** From the collection, the question is which
+albums are on this shelf, and the tick list answers it. From the album, the
+question is which shelf this album is on - and answering that by naming the
+whole of the other would take every other album off it. So the panel carries a
+Collection field, `SetAlbumCollectionAsync` is what it calls, and the name of
+the shelf the album came off comes back with it, so a move nobody asked about is
+said out loud.
+
+The paragraph above about the picker warned that a Collection control on that
+panel would be the third of a shape the code says should stop at two, and that
+the pair should become one type first. It is not: a drop-down is a different
+shape from a filter-to-one picker, and the two rule fields beside it are a box
+that adds a chip. Nothing was extracted because nothing needed to be. The app
+had no themed `ComboBox` at all, so one was written - implicitly, so the next
+screen that needs one does not have to ask.
+
+See [11 — Albums](11-albums.md) for what else changed on that panel, which is
+about albums rather than about shelves.
 
 ---
 
