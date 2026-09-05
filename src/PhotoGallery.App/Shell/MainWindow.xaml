@@ -1156,146 +1156,144 @@
               </ListBox>
             </DockPanel>
 
-            <!-- Editing one album. Over the album rather than beside it,
-                 and dimming what is behind, because it is a question with an
-                 answer rather than a panel to live in. -->
+            <!-- Describing an album, whether it exists yet or not. One panel for
+                 both, because making one and editing one ask the same questions
+                 in the same order and refuse the same answers - two panels meant
+                 two copies of that, and they had already drifted apart.
+
+                 Two columns rather than one tall scroller: what the album is on
+                 the left with everything that can be done to it, what it is
+                 looking for on the right. The one column put Save below the fold
+                 of a panel whose bottom the window is often too short to show. -->
             <Grid Grid.Row="0" Grid.RowSpan="3" Margin="-20,-14,-20,-10"
                   Background="{DynamicResource ModalScrim}"
                   Visibility="{Binding Albums.IsEditing,
                                Converter={StaticResource BoolToVisibility}}">
-              <Border Style="{DynamicResource ModalSurface}" Padding="18,16"
-                      MaxWidth="480" MaxHeight="720"
+              <Border Style="{DynamicResource ModalSurface}" Padding="22,20"
+                      MaxWidth="820" MaxHeight="740"
                       HorizontalAlignment="Center" VerticalAlignment="Center">
-                <ScrollViewer VerticalScrollBarVisibility="Auto"
-                              HorizontalScrollBarVisibility="Disabled">
-                  <!-- Clear of the scrollbar, which otherwise sits on the last
-                       word of every line the hints wrap. -->
-                  <StackPanel Margin="0,0,8,0">
-                  <TextBlock Style="{DynamicResource FieldLabel}" Text="This album" />
-                  <TextBlock Style="{DynamicResource HintText}" Margin="0,2,0,12"
-                             TextWrapping="Wrap"
-                             Text="Changing the name or rule does not touch the originals. Moving them is a separate confirmed action below." />
+                <Grid>
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="296" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                  </Grid.ColumnDefinitions>
 
-                  <!-- No Rename button beside the box. One panel, one Save: a
-                       name typed here and then saved used to be thrown away,
-                       because Save took the rule and left the name to a button
-                       the user had no reason to think was still needed. -->
-                  <TextBlock Style="{DynamicResource FieldLabel}" Text="Name" />
-                  <TextBox Style="{DynamicResource InputTextBox}" Margin="0,2,0,0"
-                           AutomationProperties.Name="Name this album"
-                           ToolTip="Your name for it. A scan never writes over it."
-                           Text="{Binding Albums.EditedName,
-                                  UpdateSourceTrigger=PropertyChanged}">
-                    <TextBox.InputBindings>
-                      <KeyBinding Key="Return" Command="{Binding Albums.SaveCommand}" />
-                    </TextBox.InputBindings>
-                  </TextBox>
+                  <DockPanel Grid.Column="0">
+                    <!-- Docked to the bottom, so what the album is stays at the
+                         top of the column however tall the rule beside it
+                         grows. -->
+                    <StackPanel DockPanel.Dock="Bottom">
+                      <StackPanel Visibility="{Binding Albums.PanelOffersProposal,
+                                               Converter={StaticResource BoolToVisibility}}">
+                        <Border Height="1" Margin="0,18,0,14"
+                                Background="{DynamicResource Separator}" />
+                        <TextBlock Style="{DynamicResource FieldLabel}"
+                                   Text="This is a suggestion" />
+                        <TextBlock Style="{DynamicResource HintText}" TextWrapping="Wrap"
+                                   Text="Throwing it away is remembered: neither this occasion nor the photographs in it are suggested for those days again." />
+                        <Button Style="{DynamicResource PrimaryButton}" Margin="0,8,0,0"
+                                HorizontalAlignment="Stretch" Content="Keep this album"
+                                ToolTip="Make it yours, so no scan changes it again"
+                                Command="{Binding Albums.AcceptCommand}" />
+                        <Button Style="{DynamicResource SecondaryButton}" Margin="0,8,0,0"
+                                HorizontalAlignment="Stretch" Content="Not an album"
+                                ToolTip="Throw the suggestion away"
+                                Command="{Binding Albums.DismissCommand}" />
+                      </StackPanel>
 
-                  <ContentControl Margin="0,16,0,0" Content="{Binding Albums}"
-                                  ContentTemplate="{StaticResource AlbumRuleFields}" />
+                      <StackPanel Visibility="{Binding Albums.PanelOffersOriginals,
+                                               Converter={StaticResource BoolToVisibility}}">
+                        <Border Height="1" Margin="0,18,0,14"
+                                Background="{DynamicResource Separator}" />
+                        <TextBlock Style="{DynamicResource FieldLabel}" Text="Original files" />
+                        <!-- The sentence before the button, which is the order
+                             every other field on this panel reads in. -->
+                        <TextBlock Style="{DynamicResource HintText}" TextWrapping="Wrap"
+                                   Text="Choose a folder inside their current photo source. Existing files are never overwritten, and Photo Gallery updates every moved item's library location." />
+                        <Button Style="{DynamicResource SecondaryButton}" Margin="0,8,0,0"
+                                HorizontalAlignment="Stretch"
+                                Content="Move originals to a folder..."
+                                IsEnabled="{Binding Albums.IsIdle}"
+                                Click="OnMoveAlbumClicked" />
+                      </StackPanel>
 
-                  <Button Style="{DynamicResource PrimaryButton}" Margin="0,12,0,0"
-                          HorizontalAlignment="Stretch" Content="Save"
-                          ToolTip="Keep the name and what this album is looking for"
-                          Command="{Binding Albums.SaveCommand}" />
+                      <Border Height="1" Margin="0,18,0,14"
+                              Background="{DynamicResource Separator}" />
 
-                  <!-- A suggestion is a question: keep it or do not. -->
-                  <StackPanel Margin="0,16,0,0"
-                              Visibility="{Binding Albums.SelectedIsProposed,
-                                           Converter={StaticResource BoolToVisibility}}">
-                    <Button Style="{DynamicResource PrimaryButton}" HorizontalAlignment="Stretch"
-                            Content="Keep this album"
-                            ToolTip="Keep it, and no scan will change it again"
-                            Command="{Binding Albums.AcceptCommand}" />
-                    <Button Style="{DynamicResource SecondaryButton}" Margin="0,8,0,0"
-                            HorizontalAlignment="Stretch" Content="Not an album"
-                            ToolTip="Throw it away. It will not be suggested again."
-                            Command="{Binding Albums.DismissCommand}" />
-                    <TextBlock Style="{DynamicResource HintText}" TextWrapping="Wrap"
-                               Text="Throwing it away is remembered: neither this occasion nor the photographs in it are suggested for those days again." />
-                  </StackPanel>
+                      <!-- Removing, saving and cancelling on one row, with the
+                           width of the column between the button that keeps this
+                           album and the one that loses it. Save then Cancel is
+                           the order the app's own dialog uses. -->
+                      <Grid>
+                        <Button Style="{DynamicResource SecondaryButton}"
+                                HorizontalAlignment="Left" Content="Remove album"
+                                ToolTip="Take the album away and leave its photographs in the library"
+                                Visibility="{Binding Albums.PanelOffersOriginals,
+                                             Converter={StaticResource BoolToVisibility}}"
+                                IsEnabled="{Binding Albums.IsIdle}"
+                                Click="OnRemoveAlbumClicked" />
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                          <Button Style="{DynamicResource PrimaryButton}" MinWidth="104"
+                                  Content="{Binding Albums.SaveLabel}"
+                                  Command="{Binding Albums.SaveCommand}" />
+                          <Button Style="{DynamicResource LinkButton}" Margin="16,0,2,0"
+                                  VerticalAlignment="Center" Content="Cancel"
+                                  Command="{Binding Albums.CancelEditCommand}" />
+                        </StackPanel>
+                      </Grid>
+                    </StackPanel>
 
-                  <StackPanel Margin="0,16,0,0"
-                              Visibility="{Binding Albums.SelectedIsMine,
-                                           Converter={StaticResource BoolToVisibility}}">
-                    <TextBlock Style="{DynamicResource FieldLabel}" Text="Original files" />
-                    <Button Style="{DynamicResource SecondaryButton}" Margin="0,4,0,0"
-                            HorizontalAlignment="Stretch"
-                            Content="Move originals to a folder..."
-                            ToolTip="Put this album's photos and videos together inside their current photo source"
-                            IsEnabled="{Binding IsIdle}"
-                            Click="OnMoveAlbumClicked" />
-                    <TextBlock Style="{DynamicResource HintText}" TextWrapping="Wrap"
-                               Text="Choose a folder inside their current photo source. Existing files are never overwritten, and Photo Gallery updates every moved item's library location." />
+                    <StackPanel>
+                      <TextBlock Style="{DynamicResource FieldLabel}"
+                                 Text="{Binding Albums.PanelTitle}" />
+                      <TextBlock Style="{DynamicResource HintText}" Margin="0,2,0,14"
+                                 TextWrapping="Wrap" Text="{Binding Albums.PanelHint}" />
 
-                    <!-- Asked for before it happens, which is why this is a click
-                         rather than the command: removing an album throws away
-                         a name and a rule somebody wrote. IsEnabled says what
-                         CanDelete would have, the panel itself being shown only
-                         for an album of the user's own. -->
-                    <Button Style="{DynamicResource SecondaryButton}" Margin="0,16,0,0"
-                            HorizontalAlignment="Stretch" Content="Remove this album"
-                            ToolTip="Remove it. Your photographs stay where they are."
-                            IsEnabled="{Binding Albums.IsIdle}"
-                            Click="OnRemoveAlbumClicked" />
-                  </StackPanel>
+                      <TextBlock Style="{DynamicResource FieldLabel}" Text="Name" />
+                      <TextBox Style="{DynamicResource InputTextBox}" Margin="0,2,0,0"
+                               AutomationProperties.Name="Name this album"
+                               ToolTip="What to call it. A scan never writes over your name."
+                               Text="{Binding Albums.EditedName,
+                                      UpdateSourceTrigger=PropertyChanged}">
+                        <TextBox.InputBindings>
+                          <KeyBinding Key="Return" Command="{Binding Albums.SaveCommand}" />
+                        </TextBox.InputBindings>
+                      </TextBox>
 
-                  <Button Style="{DynamicResource LinkButton}" Margin="0,14,0,0"
-                          HorizontalAlignment="Center" Content="Cancel"
-                          Command="{Binding Albums.CancelEditCommand}" />
-                  </StackPanel>
-                </ScrollViewer>
-              </Border>
-            </Grid>
+                      <TextBlock Style="{DynamicResource FieldLabel}" Margin="0,16,0,0"
+                                 Text="Collection" />
+                      <!-- An ItemTemplate rather than DisplayMemberPath. The
+                           path reaches the rows in the list and not the closed
+                           box, which renders SelectionBoxItem through
+                           SelectionBoxItemTemplate - so the field sat there
+                           reading "CollectionOption { Id = 0, Name = ... }". -->
+                      <ComboBox Margin="0,2,0,0"
+                                AutomationProperties.Name="Collection"
+                                ToolTip="Which shelf this album stands on"
+                                ItemsSource="{Binding Albums.CollectionOptions}"
+                                SelectedItem="{Binding Albums.EditedCollection, Mode=TwoWay}">
+                        <ComboBox.ItemTemplate>
+                          <DataTemplate>
+                            <TextBlock Text="{Binding Name}"
+                                       TextTrimming="CharacterEllipsis" />
+                          </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                      </ComboBox>
+                      <TextBlock Style="{DynamicResource HintText}" TextWrapping="Wrap"
+                                 Text="An album is on one collection. Choosing another takes it off the first." />
+                    </StackPanel>
+                  </DockPanel>
 
-            <!-- Describing a new album. The same panel as editing one, asking
-                 the same three things, because an album the user is about to
-                 make and an album they are correcting are the same object at
-                 two moments - and being asked different questions at each would
-                 be the surprise. Scrolls: the two directories can be long, and
-                 on a short window the Create button is the part that would have
-                 gone off the bottom. -->
-            <Grid Grid.Row="0" Grid.RowSpan="3" Margin="-20,-14,-20,-10"
-                  Background="{DynamicResource ModalScrim}"
-                  Visibility="{Binding Albums.IsCreating,
-                               Converter={StaticResource BoolToVisibility}}">
-              <Border Style="{DynamicResource ModalSurface}" Padding="18,16"
-                      MaxWidth="480" MaxHeight="720"
-                      HorizontalAlignment="Center" VerticalAlignment="Center">
-                <ScrollViewer VerticalScrollBarVisibility="Auto"
-                              HorizontalScrollBarVisibility="Disabled">
-                  <!-- Clear of the scrollbar, as in the panel above. -->
-                  <StackPanel Margin="0,0,8,0">
-                    <TextBlock Style="{DynamicResource FieldLabel}" Text="New album" />
-                    <TextBlock Style="{DynamicResource HintText}" Margin="0,2,0,12"
-                               TextWrapping="Wrap"
-                               Text="Only the name is needed. Everything under it is optional, and is what Find photos that fit will go looking for afterwards." />
+                  <Border Grid.Column="1" Width="1" Margin="22,0"
+                          Background="{DynamicResource Separator}" />
 
-                    <TextBlock Style="{DynamicResource FieldLabel}" Text="Name" />
-                    <TextBox Style="{DynamicResource InputTextBox}" Margin="0,2,0,0"
-                             AutomationProperties.Name="Name this album"
-                             ToolTip="What to call it. A scan never writes over your name."
-                             Text="{Binding Albums.NewName,
-                                    UpdateSourceTrigger=PropertyChanged}">
-                      <TextBox.InputBindings>
-                        <KeyBinding Key="Return"
-                                    Command="{Binding Albums.CreateAlbumCommand}" />
-                      </TextBox.InputBindings>
-                    </TextBox>
-
-                    <ContentControl Margin="0,16,0,0" Content="{Binding Albums}"
+                  <ScrollViewer Grid.Column="2" VerticalScrollBarVisibility="Auto"
+                                HorizontalScrollBarVisibility="Disabled">
+                    <ContentControl Margin="0,0,8,0" Content="{Binding Albums}"
                                     ContentTemplate="{StaticResource AlbumRuleFields}" />
-
-                    <Button Style="{DynamicResource PrimaryButton}" Margin="0,16,0,0"
-                            HorizontalAlignment="Stretch" Content="Create album"
-                            ToolTip="Make it, and open it"
-                            Command="{Binding Albums.CreateAlbumCommand}" />
-
-                    <Button Style="{DynamicResource LinkButton}" Margin="0,14,0,0"
-                            HorizontalAlignment="Center" Content="Cancel"
-                            Command="{Binding Albums.CancelCreateCommand}" />
-                  </StackPanel>
-                </ScrollViewer>
+                  </ScrollViewer>
+                </Grid>
               </Border>
             </Grid>
 

@@ -164,6 +164,96 @@ public sealed class EditAlbumTests : IDisposable
             "Command=\"{Binding Albums.SaveCommand}\"", markup, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// One panel answers both questions, in the two modes.
+    /// </summary>
+    /// <remarks>
+    /// Making an album and editing one ask the same things in the same order and
+    /// refuse the same answers. Two panels meant two copies of that, and they had
+    /// already drifted - only one of them said what a rule was for.
+    /// </remarks>
+    [Fact]
+    public async Task TheSamePanelMakesAnAlbumAndEditsOne()
+    {
+        await _albums.StartCreatingCommand.ExecuteAsync(null);
+
+        Assert.True(_albums.IsEditing);
+        Assert.True(_albums.IsNewAlbum);
+        Assert.False(_albums.IsExistingAlbum);
+        Assert.Equal("New album", _albums.PanelTitle);
+        Assert.Equal("Create album", _albums.SaveLabel);
+        Assert.Equal(string.Empty, _albums.EditedName);
+
+        await OpenForEditAsync(Mine);
+
+        Assert.True(_albums.IsEditing);
+        Assert.False(_albums.IsNewAlbum);
+        Assert.Equal("This album", _albums.PanelTitle);
+        Assert.Equal("Save", _albums.SaveLabel);
+    }
+
+    /// <summary>
+    /// A panel describing an album that does not exist offers nothing that can
+    /// only be done to one that does.
+    /// </summary>
+    [Fact]
+    public async Task ANewAlbumIsOfferedNothingToMoveOrRemove()
+    {
+        await _albums.StartCreatingCommand.ExecuteAsync(null);
+
+        Assert.False(_albums.PanelOffersOriginals);
+        Assert.False(_albums.PanelOffersProposal);
+
+        await OpenForEditAsync(Mine);
+
+        Assert.True(_albums.PanelOffersOriginals);
+    }
+
+    /// <summary>
+    /// The panel's two halves and its one action row, read off the markup.
+    /// </summary>
+    /// <remarks>
+    /// Layout is not behaviour, so nothing else here would catch the panel going
+    /// back to one tall column with Save under the fold of it.
+    /// </remarks>
+    [Fact]
+    public void ThePanelIsOneColumnOfIdentityAndOneOfRule()
+    {
+        string markup = File.ReadAllText(AppMarkup.PathTo("Shell", "MainWindow.xaml"));
+
+        Assert.DoesNotContain("Albums.IsCreating", markup, StringComparison.Ordinal);
+        Assert.DoesNotContain("Albums.NewName", markup, StringComparison.Ordinal);
+
+        int panel = markup.IndexOf(
+            "Visibility=\"{Binding Albums.IsEditing", StringComparison.Ordinal);
+        Assert.InRange(panel, 1, markup.Length);
+
+        string inThePanel = markup[panel..];
+        Assert.Contains("Albums.PanelTitle", inThePanel, StringComparison.Ordinal);
+        Assert.Contains("Albums.SaveLabel", inThePanel, StringComparison.Ordinal);
+        Assert.Contains("Albums.CollectionOptions", inThePanel, StringComparison.Ordinal);
+        Assert.Contains("AlbumRuleFields", inThePanel, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Original files reads label, then the sentence, then the button - the order
+    /// every other field on this panel uses.
+    /// </summary>
+    [Fact]
+    public void TheSentenceComesBeforeTheButtonItExplains()
+    {
+        string markup = File.ReadAllText(AppMarkup.PathTo("Shell", "MainWindow.xaml"));
+
+        int label = markup.IndexOf("Text=\"Original files\"", StringComparison.Ordinal);
+        int sentence = markup.IndexOf(
+            "Choose a folder inside their current photo source", StringComparison.Ordinal);
+        int button = markup.IndexOf(
+            "Content=\"Move originals to a folder...\"", StringComparison.Ordinal);
+
+        Assert.InRange(label, 1, sentence);
+        Assert.InRange(sentence, label, button);
+    }
+
     /// <summary>Loads the wall, opens one album, and opens its edit panel.</summary>
     private async Task OpenForEditAsync(int albumId)
     {

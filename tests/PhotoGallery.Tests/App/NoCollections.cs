@@ -34,4 +34,15 @@ internal sealed class NoCollections : ICollectionRepository
         IReadOnlyList<int> albumIds,
         CancellationToken cancellationToken = default) =>
         throw new NotSupportedException();
+
+    /// <summary>
+    /// Answers rather than throws, because the album panel calls this whenever
+    /// its Collection field changed - and in a library with no shelves the
+    /// honest answer is that it did not.
+    /// </summary>
+    public Task<string?> SetAlbumCollectionAsync(
+        int albumId,
+        int? collectionId,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult<string?>(null);
 }

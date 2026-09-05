@@ -407,6 +407,116 @@ public sealed class CollectionsScreenTests : IDisposable
         Assert.Contains("AlbumCard", markup[wall..], StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task TheAlbumPanelOffersEveryShelfAndNone()
+    {
+        int genting = await _albumStore.CreateAsync("Genting");
+        int holiday = await _shelves.CreateAsync("Holiday");
+        await _shelves.CreateAsync("Weekends");
+        await _shelves.SetAlbumsAsync(holiday, [genting]);
+        await _albums.ReloadAsync();
+
+        // Inside the shelf, because that is where an album standing on one is.
+        _albums.Collections.OpenShelfCommand.Execute(
+            _albums.Collections.All.Single(item => item.Id == holiday));
+        _albums.Selected = _albums.Wall.Single();
+        await _albums.EditCommand.ExecuteAsync(null);
+
+        Assert.Equal(
+            ["Not on a collection", "Holiday", "Weekends"],
+            _albums.CollectionOptions.Select(option => option.Name));
+        Assert.Equal("Holiday", _albums.EditedCollection.Name);
+    }
+
+    /// <summary>
+    /// The other direction of the tick list: from the album, choosing a shelf
+    /// moves it, and the panel says which one it came off.
+    /// </summary>
+    [Fact]
+    public async Task ChoosingACollectionMovesTheAlbumAndSaysWhichItLeft()
+    {
+        int genting = await _albumStore.CreateAsync("Genting");
+        int holiday = await _shelves.CreateAsync("Holiday");
+        int weekends = await _shelves.CreateAsync("Weekends");
+        await _shelves.SetAlbumsAsync(holiday, [genting]);
+        await _albums.ReloadAsync();
+
+        _albums.Collections.OpenShelfCommand.Execute(
+            _albums.Collections.All.Single(item => item.Id == holiday));
+        _albums.Selected = _albums.Wall.Single();
+        await _albums.EditCommand.ExecuteAsync(null);
+
+        _albums.EditedCollection =
+            _albums.CollectionOptions.Single(option => option.Id == weekends);
+        await _albums.SaveCommand.ExecuteAsync(null);
+
+        Assert.False(_albums.IsEditing);
+        Assert.Contains("Taken off \"Holiday\"", _albums.Status, StringComparison.Ordinal);
+        Assert.Equal(
+            weekends,
+            await _db.Albums.Where(a => a.Id == genting)
+                .Select(a => a.CollectionId).SingleAsync());
+    }
+
+    [Fact]
+    public async Task TakingAnAlbumOffEveryShelfPutsItBackOnTheWall()
+    {
+        int genting = await _albumStore.CreateAsync("Genting");
+        int holiday = await _shelves.CreateAsync("Holiday");
+        await _shelves.SetAlbumsAsync(holiday, [genting]);
+        await _albums.ReloadAsync();
+
+        _albums.Collections.OpenShelfCommand.Execute(_albums.Collections.All.Single());
+        _albums.Selected = _albums.Wall.Single();
+        await _albums.EditCommand.ExecuteAsync(null);
+
+        _albums.EditedCollection = _albums.CollectionOptions.First();
+        await _albums.SaveCommand.ExecuteAsync(null);
+
+        Assert.Null(
+            await _db.Albums.Where(a => a.Id == genting)
+                .Select(a => a.CollectionId).SingleAsync());
+    }
+
+    /// <summary>
+    /// New album, pressed from inside a shelf, means an album on that shelf.
+    /// </summary>
+    /// <remarks>
+    /// The alternative is making one and immediately going to find it on the
+    /// wall outside, which is the procedure the whole screen is arranged to
+    /// avoid.
+    /// </remarks>
+    [Fact]
+    public async Task AnAlbumMadeInsideACollectionLandsOnIt()
+    {
+        int holiday = await _shelves.CreateAsync("Holiday");
+        await _albums.ReloadAsync();
+        _albums.Collections.OpenShelfCommand.Execute(_albums.Collections.All.Single());
+
+        await _albums.StartCreatingCommand.ExecuteAsync(null);
+
+        Assert.Equal("Holiday", _albums.EditedCollection.Name);
+
+        _albums.EditedName = "Genting";
+        await _albums.SaveCommand.ExecuteAsync(null);
+
+        Assert.Equal(
+            holiday,
+            await _db.Albums.Where(a => a.Name == "Genting")
+                .Select(a => a.CollectionId).SingleAsync());
+    }
+
+    [Fact]
+    public async Task AnAlbumMadeAtTheTopLevelIsOnNoCollection()
+    {
+        await _shelves.CreateAsync("Holiday");
+        await _albums.ReloadAsync();
+
+        await _albums.StartCreatingCommand.ExecuteAsync(null);
+
+        Assert.Equal("Not on a collection", _albums.EditedCollection.Name);
+    }
+
     private Album Suggested(string name)
     {
         var album = new Album

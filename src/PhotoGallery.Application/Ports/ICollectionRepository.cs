@@ -52,4 +52,24 @@ public interface ICollectionRepository
         int collectionId,
         IReadOnlyList<int> albumIds,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Puts one album on one collection, or on none, and answers with the name
+    /// of the collection it came off.
+    /// </summary>
+    /// <remarks>
+    /// The other direction of <see cref="SetAlbumsAsync"/>, for the album's own
+    /// panel: there the question is "which shelf is this album on", and naming
+    /// the whole shelf to answer it would take every other album off.
+    ///
+    /// <para>Null for <paramref name="collectionId"/> takes it off whatever it
+    /// was on. The name that comes back is what the screen says about a move
+    /// nobody asked for - an album is on one collection, so choosing this one is
+    /// leaving that one, and the same rule the photographs follow is said out
+    /// loud rather than enforced in silence.</para>
+    /// </remarks>
+    Task<string?> SetAlbumCollectionAsync(
+        int albumId,
+        int? collectionId,
+        CancellationToken cancellationToken = default);
 }

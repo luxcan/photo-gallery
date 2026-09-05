@@ -209,4 +209,45 @@ public sealed class SqliteCollectionRepository : ICollectionRepository
 
         return new CollectionFillResult(added, removed, kept, from);
     }
+
+    public async Task<string?> SetAlbumCollectionAsync(
+        int albumId,
+        int? collectionId,
+        CancellationToken cancellationToken = default)
+    {
+        Album? album = await _db.Albums
+            .FirstOrDefaultAsync(row => row.Id == albumId, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (album is null || album.CollectionId == collectionId)
+        {
+            return null;
+        }
+
+        if (collectionId is int wanted
+            && !await _db.Collections
+                .AnyAsync(row => row.Id == wanted, cancellationToken)
+                .ConfigureAwait(false))
+        {
+            return null;
+        }
+
+        // Read before the column is overwritten. A shelf this album has never
+        // heard of is not a shelf it left - the screen reads a dangling id as no
+        // collection, so saying it came off one would be a sentence about a row
+        // that is not there.
+        string? left = album.CollectionId is int was
+            ? await _db.Collections
+                .AsNoTracking()
+                .Where(collection => collection.Id == was)
+                .Select(collection => collection.Name)
+                .FirstOrDefaultAsync(cancellationToken)
+                .ConfigureAwait(false)
+            : null;
+
+        album.CollectionId = collectionId;
+        await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+
+        return left;
+    }
 }

@@ -1019,11 +1019,33 @@
                   BorderThickness="{TemplateBinding BorderThickness}"
                   CornerRadius="{StaticResource Radius.Control}"
                   SnapsToDevicePixels="True">
-            <ScrollViewer x:Name="PART_ContentHost"
-                          Margin="{TemplateBinding Padding}"
-                          VerticalAlignment="Center" />
+            <Grid>
+              <!-- What the box is for, while it is empty. A box with nothing in
+                   it and nothing on it says nothing at all - which is what the
+                   album panel's two Add boxes were, once the standing lists that
+                   used to explain them were taken away.
+
+                   Carried on Tag rather than a new attached property: it is the
+                   one thing a TextBox already has spare, and the only two places
+                   in the app that put anything on a Tag are buttons. -->
+              <TextBlock x:Name="Placeholder" Margin="{TemplateBinding Padding}"
+                         VerticalAlignment="Center" IsHitTestVisible="False"
+                         TextTrimming="CharacterEllipsis"
+                         Foreground="{DynamicResource Editor.Placeholder}"
+                         Text="{TemplateBinding Tag}" Visibility="Collapsed" />
+              <ScrollViewer x:Name="PART_ContentHost"
+                            Margin="{TemplateBinding Padding}"
+                            VerticalAlignment="Center" />
+            </Grid>
           </Border>
           <ControlTemplate.Triggers>
+            <MultiTrigger>
+              <MultiTrigger.Conditions>
+                <Condition Property="Text" Value="" />
+                <Condition Property="IsKeyboardFocusWithin" Value="False" />
+              </MultiTrigger.Conditions>
+              <Setter TargetName="Placeholder" Property="Visibility" Value="Visible" />
+            </MultiTrigger>
             <Trigger Property="IsKeyboardFocusWithin" Value="True">
               <Setter TargetName="Root" Property="BorderBrush"
                       Value="{DynamicResource Focus.Border}" />
@@ -1147,6 +1169,177 @@
             <Trigger Property="IsKeyboardFocused" Value="True">
               <Setter TargetName="Root" Property="BorderBrush"
                       Value="{DynamicResource Focus.Border}" />
+            </Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
+  <!--
+    A drop-down, themed once and implicitly, so the next screen that needs one
+    does not have to remember to ask for a style. The app had none: the album
+    panel's Collection field is the first place one-of-a-handful had to be
+    answered, and a segmented row does not scale past three.
+  -->
+  <Style TargetType="ComboBox">
+    <Setter Property="FontFamily" Value="{StaticResource Font.Ui}" />
+    <Setter Property="FontSize" Value="13" />
+    <Setter Property="Foreground" Value="{DynamicResource Editor.Foreground}" />
+    <Setter Property="Background" Value="{DynamicResource Input.Background}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource Input.Border}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="SnapsToDevicePixels" Value="True" />
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="ComboBox">
+          <Grid>
+            <Border x:Name="Root" Background="{TemplateBinding Background}"
+                    BorderBrush="{TemplateBinding BorderBrush}"
+                    BorderThickness="{TemplateBinding BorderThickness}"
+                    CornerRadius="{StaticResource Radius.Control}"
+                    SnapsToDevicePixels="True" />
+
+            <!-- A transparent hit area over the whole field. A ToggleButton with
+                 its own chrome would paint a second button inside this one. -->
+            <ToggleButton Focusable="False" ClickMode="Press" Background="Transparent"
+                          IsChecked="{Binding IsDropDownOpen, Mode=TwoWay,
+                                      RelativeSource={RelativeSource TemplatedParent}}">
+              <ToggleButton.Template>
+                <ControlTemplate TargetType="ToggleButton">
+                  <Border Background="Transparent" />
+                </ControlTemplate>
+              </ToggleButton.Template>
+            </ToggleButton>
+
+            <ContentPresenter Margin="10,7,30,7" IsHitTestVisible="False"
+                              VerticalAlignment="Center"
+                              Content="{TemplateBinding SelectionBoxItem}"
+                              ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}" />
+
+            <TextBlock HorizontalAlignment="Right" VerticalAlignment="Center"
+                       Margin="0,0,10,0" IsHitTestVisible="False"
+                       FontFamily="Segoe MDL2 Assets" FontSize="10" Text="&#xE70D;"
+                       Foreground="{DynamicResource Editor.Placeholder}" />
+
+            <Popup Placement="Bottom" AllowsTransparency="True" Focusable="False"
+                   PopupAnimation="None"
+                   IsOpen="{TemplateBinding IsDropDownOpen}">
+              <Border Background="{DynamicResource Panel.Background}"
+                      BorderBrush="{DynamicResource Input.Border}" BorderThickness="1"
+                      CornerRadius="{StaticResource Radius.Control}" Padding="2"
+                      MaxHeight="260" SnapsToDevicePixels="True"
+                      MinWidth="{Binding ActualWidth,
+                                 RelativeSource={RelativeSource TemplatedParent}}">
+                <ScrollViewer VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Disabled">
+                  <ItemsPresenter />
+                </ScrollViewer>
+              </Border>
+            </Popup>
+          </Grid>
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+              <Setter TargetName="Root" Property="BorderBrush"
+                      Value="{DynamicResource ControlBorderHover}" />
+            </Trigger>
+            <Trigger Property="IsKeyboardFocusWithin" Value="True">
+              <Setter TargetName="Root" Property="BorderBrush"
+                      Value="{DynamicResource Focus.Border}" />
+            </Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
+  <Style TargetType="ComboBoxItem">
+    <Setter Property="FontFamily" Value="{StaticResource Font.Ui}" />
+    <Setter Property="FontSize" Value="12.5" />
+    <Setter Property="Foreground" Value="{DynamicResource Editor.Foreground}" />
+    <Setter Property="Padding" Value="10,6" />
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="ComboBoxItem">
+          <Border x:Name="Root" Background="Transparent" Padding="{TemplateBinding Padding}"
+                  CornerRadius="{StaticResource Radius.Inner}" SnapsToDevicePixels="True">
+            <ContentPresenter />
+          </Border>
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsHighlighted" Value="True">
+              <Setter TargetName="Root" Property="Background"
+                      Value="{DynamicResource List.HoverBackground}" />
+            </Trigger>
+            <Trigger Property="IsSelected" Value="True">
+              <Setter TargetName="Root" Property="Background"
+                      Value="{DynamicResource List.ActiveSelection}" />
+            </Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
+  <!--
+    One answer already given, with the way to take it back on it.
+
+    The rule's two open questions used to be answered by ticks inside a list
+    that could only show four rows at a time, so the answer was reported as a
+    count underneath - "5 people chosen" - while the five were scrolled out of
+    sight. A count is what you write when you cannot show the thing itself.
+  -->
+  <Style x:Key="Chip" TargetType="Button">
+    <Setter Property="FontFamily" Value="{StaticResource Font.Ui}" />
+    <Setter Property="FontSize" Value="11.5" />
+    <Setter Property="Foreground" Value="{DynamicResource Editor.Foreground}" />
+    <Setter Property="Cursor" Value="Hand" />
+    <Setter Property="Margin" Value="0,0,6,6" />
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="Button">
+          <Border x:Name="Root" Background="{DynamicResource SelectionBackground}"
+                  CornerRadius="{StaticResource Radius.Control}" Padding="9,4,7,4"
+                  SnapsToDevicePixels="True">
+            <StackPanel Orientation="Horizontal">
+              <ContentPresenter VerticalAlignment="Center" />
+              <TextBlock Margin="6,0,0,0" VerticalAlignment="Center"
+                         FontFamily="Segoe MDL2 Assets" FontSize="9" Text="&#xE711;"
+                         Foreground="{DynamicResource Editor.Placeholder}" />
+            </StackPanel>
+          </Border>
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+              <Setter TargetName="Root" Property="Background"
+                      Value="{DynamicResource SelectionBackgroundHover}" />
+            </Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
+  <!--
+    One name offered under the box that is being typed into. A row rather than a
+    tick, because the box is what adds it: a tick beside something the list only
+    shows while you are typing is two ways to say the same thing.
+  -->
+  <Style x:Key="SuggestionRow" TargetType="Button">
+    <Setter Property="FontFamily" Value="{StaticResource Font.Ui}" />
+    <Setter Property="FontSize" Value="12.5" />
+    <Setter Property="Foreground" Value="{DynamicResource Editor.Foreground}" />
+    <Setter Property="Cursor" Value="Hand" />
+    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="Button">
+          <Border x:Name="Root" Background="Transparent" Padding="10,6"
+                  CornerRadius="{StaticResource Radius.Inner}" SnapsToDevicePixels="True">
+            <ContentPresenter />
+          </Border>
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+              <Setter TargetName="Root" Property="Background"
+                      Value="{DynamicResource List.HoverBackground}" />
             </Trigger>
           </ControlTemplate.Triggers>
         </ControlTemplate>
@@ -2257,47 +2450,89 @@
                  Visibility="{Binding HasRuleProblem,
                               Converter={StaticResource BoolToVisibility}}" />
 
-      <TextBlock Style="{DynamicResource FieldLabel}" Margin="0,14,0,0" Text="Anyone in it" />
-      <TextBlock Style="{DynamicResource HintText}" Margin="0,0,0,4" TextWrapping="Wrap"
-                 Text="Any one of the people ticked - a photograph does not have to hold all of them." />
+      <!--
+        The two open questions, answered the same way: what is already in the
+        rule sits at the top as chips, and one box underneath finds what is not.
+
+        Both used to be a standing list of everybody and everywhere, ticked in
+        place inside a 120px window - so the answer was reported as a count
+        underneath while the ticked names were scrolled out of sight. A count is
+        what you write when you cannot show the thing itself.
+      -->
+      <TextBlock Style="{DynamicResource FieldLabel}" Margin="0,18,0,0" Text="Anyone in it" />
+      <TextBlock Style="{DynamicResource HintText}" Margin="0,0,0,6" TextWrapping="Wrap"
+                 Text="Any one of these - a photograph does not have to hold all of them." />
+
+      <ItemsControl ItemsSource="{Binding ChosenPeople}" Focusable="False"
+                    Visibility="{Binding HasChosenPeople,
+                                 Converter={StaticResource BoolToVisibility}}">
+        <ItemsControl.ItemsPanel>
+          <ItemsPanelTemplate>
+            <WrapPanel Orientation="Horizontal" />
+          </ItemsPanelTemplate>
+        </ItemsControl.ItemsPanel>
+        <ItemsControl.ItemTemplate>
+          <DataTemplate>
+            <Button Style="{DynamicResource Chip}" Content="{Binding Name}"
+                    ToolTip="Take this one out of the rule"
+                    AutomationProperties.Name="{Binding Name}"
+                    Command="{Binding DataContext.Albums.DropPersonCommand,
+                              RelativeSource={RelativeSource AncestorType=Window}}"
+                    CommandParameter="{Binding}" />
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+
       <StackPanel Visibility="{Binding HasPeopleToPick,
                                Converter={StaticResource BoolToVisibility}}">
-        <TextBox Style="{DynamicResource InputTextBox}" Margin="0,0,4,0"
-                 AutomationProperties.Name="Type a person's name"
-                 ToolTip="Type a name and press Enter to add them, or tick from the list"
+        <TextBox Style="{DynamicResource InputTextBox}" Margin="0,2,0,0"
+                 AutomationProperties.Name="Add someone to the rule"
+                 Tag="{Binding PeoplePrompt}"
                  Text="{Binding PeopleFilter, UpdateSourceTrigger=PropertyChanged}">
           <TextBox.InputBindings>
             <KeyBinding Key="Return" Command="{Binding ChoosePersonCommand}" />
           </TextBox.InputBindings>
         </TextBox>
-        <TextBlock Style="{DynamicResource HintText}" Margin="0,2,0,4" TextWrapping="Wrap"
+
+        <TextBlock Style="{DynamicResource HintText}" Margin="0,4,0,0" TextWrapping="Wrap"
                    Foreground="{DynamicResource Status.Caution}"
                    Text="Nobody in this library goes by that name. A rule can only ask for somebody whose face you have already named."
                    Visibility="{Binding NobodyByThatName,
                                 Converter={StaticResource BoolToVisibility}}" />
-        <ScrollViewer MaxHeight="120" VerticalScrollBarVisibility="Auto"
-                      HorizontalScrollBarVisibility="Disabled">
-          <ItemsControl ItemsSource="{Binding ShownPeople}" Focusable="False">
-            <ItemsControl.ItemTemplate>
-              <DataTemplate>
-                <ToggleButton Style="{DynamicResource CheckRow}" Margin="0,1,0,1"
-                              HorizontalAlignment="Stretch"
-                              IsChecked="{Binding IsChosen, Mode=TwoWay}">
-                  <StackPanel Orientation="Horizontal">
-                    <TextBlock Text="{Binding Name}" FontSize="12.5" />
-                    <TextBlock Text="{Binding Caption}" FontSize="11" Margin="8,0,0,0"
-                               VerticalAlignment="Center"
-                               Foreground="{DynamicResource Editor.Placeholder}" />
-                  </StackPanel>
-                </ToggleButton>
-              </DataTemplate>
-            </ItemsControl.ItemTemplate>
-          </ItemsControl>
-        </ScrollViewer>
-        <TextBlock Style="{DynamicResource HintText}" Margin="0,2,0,0"
-                   Foreground="{DynamicResource Status.Info}"
-                   Text="{Binding PeopleChosen}" />
+
+        <!-- Only while something is typed. A list that is always there is what
+             this replaced, and it was both the tallest thing on the panel and
+             the reason the chosen names had nowhere to be. -->
+        <Border Margin="0,4,0,0" Background="{DynamicResource Panel.Background}"
+                BorderBrush="{DynamicResource Input.Border}" BorderThickness="1"
+                CornerRadius="{StaticResource Radius.Control}" Padding="2"
+                SnapsToDevicePixels="True"
+                Visibility="{Binding HasPeopleSuggestions,
+                             Converter={StaticResource BoolToVisibility}}">
+          <ScrollViewer MaxHeight="150" VerticalScrollBarVisibility="Auto"
+                        HorizontalScrollBarVisibility="Disabled">
+            <ItemsControl ItemsSource="{Binding ShownPeople}" Focusable="False">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                  <Button Style="{DynamicResource SuggestionRow}"
+                          AutomationProperties.Name="{Binding Name}"
+                          Command="{Binding DataContext.Albums.AddPersonCommand,
+                                    RelativeSource={RelativeSource AncestorType=Window}}"
+                          CommandParameter="{Binding}">
+                    <Grid>
+                      <TextBlock Text="{Binding Name}" HorizontalAlignment="Left" />
+                      <TextBlock Text="{Binding Caption}" HorizontalAlignment="Right"
+                                 FontSize="11" VerticalAlignment="Center"
+                                 Foreground="{DynamicResource Editor.Placeholder}" />
+                    </Grid>
+                  </Button>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </ScrollViewer>
+        </Border>
       </StackPanel>
+
       <!-- Why there is no box here: with nobody named there is nothing a typed
            name could resolve to, and a rule asking for a name the library
            cannot match is one that quietly finds nothing. -->
@@ -2306,47 +2541,77 @@
                  Visibility="{Binding HasPeopleToPick,
                               Converter={StaticResource InverseBoolToVisibility}}" />
 
-      <TextBlock Style="{DynamicResource FieldLabel}" Margin="0,14,0,0" Text="Taken in" />
-      <TextBlock Style="{DynamicResource HintText}" Margin="0,0,0,4" TextWrapping="Wrap"
-                 Text="Any one of the places ticked - a photograph was only taken in one of them." />
+      <TextBlock Style="{DynamicResource FieldLabel}" Margin="0,18,0,0" Text="Taken in" />
+      <TextBlock Style="{DynamicResource HintText}" Margin="0,0,0,6" TextWrapping="Wrap"
+                 Text="Any one of these. Only about one photograph in nine carries a place, so this narrows less than it looks." />
+
+      <ItemsControl ItemsSource="{Binding ChosenPlaces}" Focusable="False"
+                    Visibility="{Binding HasChosenPlaces,
+                                 Converter={StaticResource BoolToVisibility}}">
+        <ItemsControl.ItemsPanel>
+          <ItemsPanelTemplate>
+            <WrapPanel Orientation="Horizontal" />
+          </ItemsPanelTemplate>
+        </ItemsControl.ItemsPanel>
+        <ItemsControl.ItemTemplate>
+          <DataTemplate>
+            <Button Style="{DynamicResource Chip}" Content="{Binding Name}"
+                    ToolTip="Take this one out of the rule"
+                    AutomationProperties.Name="{Binding Name}"
+                    Command="{Binding DataContext.Albums.DropPlaceCommand,
+                              RelativeSource={RelativeSource AncestorType=Window}}"
+                    CommandParameter="{Binding}" />
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+
       <StackPanel Visibility="{Binding HasPlacesToPick,
                                Converter={StaticResource BoolToVisibility}}">
-        <TextBox Style="{DynamicResource InputTextBox}" Margin="0,0,4,0"
-                 AutomationProperties.Name="Type a place name"
-                 ToolTip="Type a place and press Enter to add it, or tick from the list"
+        <TextBox Style="{DynamicResource InputTextBox}" Margin="0,2,0,0"
+                 AutomationProperties.Name="Add a place to the rule"
+                 Tag="{Binding PlacesPrompt}"
                  Text="{Binding PlacesFilter, UpdateSourceTrigger=PropertyChanged}">
           <TextBox.InputBindings>
             <KeyBinding Key="Return" Command="{Binding ChoosePlaceCommand}" />
           </TextBox.InputBindings>
         </TextBox>
-        <TextBlock Style="{DynamicResource HintText}" Margin="0,2,0,4" TextWrapping="Wrap"
+
+        <TextBlock Style="{DynamicResource HintText}" Margin="0,4,0,0" TextWrapping="Wrap"
                    Foreground="{DynamicResource Status.Caution}"
-                   Text="No photograph in this library was taken anywhere by that name. Places come from the coordinates in the file, not from typing."
+                   Text="Nowhere in this library goes by that name. A place comes from the coordinates in a photograph, so a rule can only ask for one a scan has already worked out."
                    Visibility="{Binding NowhereByThatName,
                                 Converter={StaticResource BoolToVisibility}}" />
-        <ScrollViewer MaxHeight="120" VerticalScrollBarVisibility="Auto"
-                      HorizontalScrollBarVisibility="Disabled">
-          <ItemsControl ItemsSource="{Binding ShownPlaces}" Focusable="False">
-            <ItemsControl.ItemTemplate>
-              <DataTemplate>
-                <ToggleButton Style="{DynamicResource CheckRow}" Margin="0,1,0,1"
-                              HorizontalAlignment="Stretch"
-                              IsChecked="{Binding IsChosen, Mode=TwoWay}">
-                  <StackPanel Orientation="Horizontal">
-                    <TextBlock Text="{Binding Name}" FontSize="12.5" />
-                    <TextBlock Text="{Binding Caption}" FontSize="11" Margin="8,0,0,0"
-                               VerticalAlignment="Center"
-                               Foreground="{DynamicResource Editor.Placeholder}" />
-                  </StackPanel>
-                </ToggleButton>
-              </DataTemplate>
-            </ItemsControl.ItemTemplate>
-          </ItemsControl>
-        </ScrollViewer>
-        <TextBlock Style="{DynamicResource HintText}" Margin="0,2,0,0"
-                   Foreground="{DynamicResource Status.Info}"
-                   Text="{Binding PlacesChosen}" />
+
+        <Border Margin="0,4,0,0" Background="{DynamicResource Panel.Background}"
+                BorderBrush="{DynamicResource Input.Border}" BorderThickness="1"
+                CornerRadius="{StaticResource Radius.Control}" Padding="2"
+                SnapsToDevicePixels="True"
+                Visibility="{Binding HasPlaceSuggestions,
+                             Converter={StaticResource BoolToVisibility}}">
+          <ScrollViewer MaxHeight="150" VerticalScrollBarVisibility="Auto"
+                        HorizontalScrollBarVisibility="Disabled">
+            <ItemsControl ItemsSource="{Binding ShownPlaces}" Focusable="False">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                  <Button Style="{DynamicResource SuggestionRow}"
+                          AutomationProperties.Name="{Binding Name}"
+                          Command="{Binding DataContext.Albums.AddPlaceCommand,
+                                    RelativeSource={RelativeSource AncestorType=Window}}"
+                          CommandParameter="{Binding}">
+                    <Grid>
+                      <TextBlock Text="{Binding Name}" HorizontalAlignment="Left" />
+                      <TextBlock Text="{Binding Caption}" HorizontalAlignment="Right"
+                                 FontSize="11" VerticalAlignment="Center"
+                                 Foreground="{DynamicResource Editor.Placeholder}" />
+                    </Grid>
+                  </Button>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </ScrollViewer>
+        </Border>
       </StackPanel>
+
       <TextBlock Style="{DynamicResource HintText}" TextWrapping="Wrap"
                  Text="No photograph has a place yet, so there is nowhere to ask for. Places come from the coordinates in the file, and a scan is what works them out."
                  Visibility="{Binding HasPlacesToPick,

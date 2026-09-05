@@ -63,7 +63,7 @@ public sealed partial class AlbumsViewModel : ObservableObject
     /// </remarks>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsIdle))]
-    [NotifyCanExecuteChangedFor(nameof(CreateAlbumCommand), nameof(AcceptCommand),
+    [NotifyCanExecuteChangedFor(nameof(AcceptCommand),
         nameof(DismissCommand), nameof(DeleteCommand),
         nameof(SaveCommand), nameof(SuggestCommand), nameof(EditCommand),
         nameof(StartCreatingCommand))]
@@ -93,18 +93,14 @@ public sealed partial class AlbumsViewModel : ObservableObject
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasSelected), nameof(SelectedIsProposed),
         nameof(SelectedIsMine), nameof(SelectedName), nameof(ShowingTheStrip),
-        nameof(ShowingOneCollection), nameof(ShowingTheBand))]
+        nameof(ShowingOneCollection), nameof(ShowingTheBand),
+        nameof(PanelOffersProposal), nameof(PanelOffersOriginals))]
     [NotifyCanExecuteChangedFor(nameof(AcceptCommand), nameof(DismissCommand),
         nameof(DeleteCommand), nameof(EditCommand),
         nameof(SaveCommand), nameof(SuggestCommand))]
     private AlbumItem? _selected;
 
-    /// <summary>The name being typed for a new album.</summary>
-    [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(CreateAlbumCommand))]
-    private string _newName = string.Empty;
-
-    /// <summary>The album's name as the edit panel currently has it.</summary>
+    /// <summary>The album's name as the panel currently has it.</summary>
     /// <remarks>
     /// Typed over the existing name rather than beside it: the panel has one
     /// Save, and this is one of the things it saves. It had its own Rename
@@ -119,7 +115,7 @@ public sealed partial class AlbumsViewModel : ObservableObject
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsAnyDay), nameof(IsOneDay), nameof(IsDateRange),
         nameof(RuleProblem), nameof(HasRuleProblem))]
-    [NotifyCanExecuteChangedFor(nameof(SaveCommand), nameof(CreateAlbumCommand))]
+    [NotifyCanExecuteChangedFor(nameof(SaveCommand))]
     private AlbumDateMode _dateMode;
 
     /// <summary>The one day the rule admits, when it asks for a single day.</summary>
@@ -136,12 +132,12 @@ public sealed partial class AlbumsViewModel : ObservableObject
     /// </remarks>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(RuleProblem), nameof(HasRuleProblem))]
-    [NotifyCanExecuteChangedFor(nameof(SaveCommand), nameof(CreateAlbumCommand))]
+    [NotifyCanExecuteChangedFor(nameof(SaveCommand))]
     private DateTime? _ruleFromDate;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(RuleProblem), nameof(HasRuleProblem))]
-    [NotifyCanExecuteChangedFor(nameof(SaveCommand), nameof(CreateAlbumCommand))]
+    [NotifyCanExecuteChangedFor(nameof(SaveCommand))]
     private DateTime? _ruleToDate;
 
     /// <summary>What has been typed to narrow the list of people.</summary>
@@ -153,7 +149,7 @@ public sealed partial class AlbumsViewModel : ObservableObject
     private string _placesFilter = string.Empty;
 
     /// <summary>
-    /// True while the album is being edited.
+    /// True while the panel that describes an album is open.
     /// </summary>
     /// <remarks>
     /// The renaming box and the keep-or-throw-away buttons live behind one quiet
@@ -165,16 +161,28 @@ public sealed partial class AlbumsViewModel : ObservableObject
     private bool _isEditing;
 
     /// <summary>
-    /// True while a new album is being described, before it exists.
+    /// True while the album being described does not exist yet.
     /// </summary>
     /// <remarks>
-    /// The same three questions the rule panel asks, asked before the album is
-    /// made rather than after. Naming an album and saying what it is for is one
-    /// thought, and splitting it in two made the second half easy never to do -
-    /// leaving an album that Find photos that fit can say nothing about.
+    /// A mode of the one panel rather than a second panel. Making an album and
+    /// editing one ask the same questions in the same order and refuse the same
+    /// answers; two panels meant two copies of that, and they had already drifted
+    /// - only one of them offered a Collection, and only one of them said what a
+    /// rule was for.
+    ///
+    /// <para>What the mode changes is small and honest: the title, the word on
+    /// the button, and whether the panel offers to move originals or remove an
+    /// album that is not there yet.</para>
     /// </remarks>
     [ObservableProperty]
-    private bool _isCreating;
+    [NotifyPropertyChangedFor(nameof(PanelTitle), nameof(PanelHint), nameof(SaveLabel),
+        nameof(IsExistingAlbum), nameof(PanelOffersProposal), nameof(PanelOffersOriginals))]
+    [NotifyCanExecuteChangedFor(nameof(SaveCommand))]
+    private bool _isNewAlbum;
+
+    /// <summary>Which collection the panel currently says the album is on.</summary>
+    [ObservableProperty]
+    private CollectionOption _editedCollection = CollectionOption.None;
 
     public AlbumsViewModel(IServiceScopeFactory scopeFactory, IThumbnailStore store)
     {
@@ -294,6 +302,76 @@ public sealed partial class AlbumsViewModel : ObservableObject
 
     public bool HasNone => Showing.Count == 0;
 
+    /// <summary>True while the panel is describing an album that already exists.</summary>
+    /// <remarks>
+    /// What gates the half of the panel that can only act on a row: an album
+    /// that has not been made has no originals to move and nothing to remove.
+    /// </remarks>
+    public bool IsExistingAlbum => !IsNewAlbum;
+
+    public string PanelTitle => IsNewAlbum ? "New album" : "This album";
+
+    public string PanelHint => IsNewAlbum
+        ? "Only the name is needed. Everything else is optional, and is what Find photos "
+          + "that fit will go looking for afterwards."
+        : "Changing the name, the collection or the rule does not touch the originals.";
+
+    public string SaveLabel => IsNewAlbum ? "Create album" : "Save";
+
+    /// <summary>Whether the panel may offer to keep or throw away a proposal.</summary>
+    /// <remarks>
+    /// Both of these read the open album as well as the mode. An album that does
+    /// not exist cannot be kept, thrown away, moved or removed, and the panel
+    /// must not offer any of it while it is describing one.
+    /// </remarks>
+    public bool PanelOffersProposal => IsExistingAlbum && SelectedIsProposed;
+
+    /// <summary>Whether the panel may offer to move originals, or remove it.</summary>
+    public bool PanelOffersOriginals => IsExistingAlbum && SelectedIsMine;
+
+    /// <summary>The collections this album may stand on, and the line for none.</summary>
+    public ObservableCollection<CollectionOption> CollectionOptions { get; } = [];
+
+    /// <summary>
+    /// The people the rule is asking for, as something to take back off.
+    /// </summary>
+    /// <remarks>
+    /// The answer, on screen, rather than counted underneath a list that cannot
+    /// show it. Ticking somebody and then typing another name left the first one
+    /// chosen and scrolled out of view, and the sentence that used to sit here
+    /// ("5 people chosen") existed only because of that - a count is what you
+    /// write when you cannot show the thing itself.
+    /// </remarks>
+    public ObservableCollection<TickChoice> ChosenPeople { get; } = [];
+
+    /// <summary>The places the rule is asking for, on the same terms.</summary>
+    public ObservableCollection<TickChoice> ChosenPlaces { get; } = [];
+
+    public bool HasChosenPeople => ChosenPeople.Count > 0;
+
+    public bool HasChosenPlaces => ChosenPlaces.Count > 0;
+
+    /// <summary>
+    /// Whether the people box has anything to offer under it.
+    /// </summary>
+    /// <remarks>
+    /// Only while something is typed. A standing list of everybody is what the
+    /// panel used to open with, and it was both the tallest thing on the screen
+    /// and the reason the chosen names had nowhere to be.
+    /// </remarks>
+    public bool HasPeopleSuggestions => ShownPeople.Count > 0;
+
+    public bool HasPlaceSuggestions => ShownPlaces.Count > 0;
+
+    /// <summary>How many people the library has put a name to, said in the box.</summary>
+    public string PeoplePrompt => People.Count == 1
+        ? "Add someone - 1 person named"
+        : $"Add someone - {People.Count:N0} people named";
+
+    public string PlacesPrompt => Places.Count == 1
+        ? "Add a place - 1 place known"
+        : $"Add a place - {Places.Count:N0} places known";
+
     /// <summary>Everybody who has been named, to build a rule from.</summary>
     /// <remarks>
     /// The whole directory, ticks and all - the rule is read off this rather
@@ -314,18 +392,6 @@ public sealed partial class AlbumsViewModel : ObservableObject
     public bool HasPeopleToPick => People.Count > 0;
 
     public bool HasPlacesToPick => Places.Count > 0;
-
-    /// <summary>
-    /// How many are ticked, said out loud beside each list.
-    /// </summary>
-    /// <remarks>
-    /// Because the filter box can hide one. Ticking Ana, then typing "Ben",
-    /// leaves Ana chosen and off the screen, and without this the panel would
-    /// look like it was asking for Ben alone.
-    /// </remarks>
-    public string PeopleChosen => Chosen(People, "person", "people");
-
-    public string PlacesChosen => Chosen(Places, "place", "places");
 
     /// <summary>
     /// True when what has been typed matches nobody.
@@ -439,12 +505,40 @@ public sealed partial class AlbumsViewModel : ObservableObject
             return;
         }
 
+        IsNewAlbum = false;
         EditedName = SelectedName;
         Status = string.Empty;
         IsEditing = true;
+        ShowCollections(album.Summary.CollectionId);
 
         await LoadRuleAsync(album.Id).ConfigureAwait(true);
     }
+
+    /// <summary>
+    /// Fills the Collection list, and marks the one the album is on.
+    /// </summary>
+    /// <remarks>
+    /// Read off the band the screen has already loaded rather than asked for
+    /// again: it is the same handful of rows, and a panel that opens should not
+    /// wait on a query the screen behind it has already run.
+    /// </remarks>
+    private void ShowCollections(int? current)
+    {
+        CollectionOptions.Clear();
+        CollectionOptions.Add(CollectionOption.None);
+
+        foreach (CollectionItem shelf in Collections.All)
+        {
+            CollectionOptions.Add(new CollectionOption(shelf.Id, shelf.Name));
+        }
+
+        EditedCollection =
+            CollectionOptions.FirstOrDefault(option => option.Id == (current ?? 0))
+            ?? CollectionOption.None;
+    }
+
+    /// <summary>Which collection the panel is asking for, or null for none.</summary>
+    private int? ChosenCollection => EditedCollection.Id == 0 ? null : EditedCollection.Id;
 
     /// <summary>Reads one album's rule into the panel.</summary>
     private async Task LoadRuleAsync(int albumId)
@@ -563,10 +657,17 @@ public sealed partial class AlbumsViewModel : ObservableObject
         return choice;
     }
 
+    /// <summary>
+    /// Puts a tick's answer back on the screen: on the chips, and out of what is
+    /// still being offered underneath.
+    /// </summary>
     private void RefreshChosenCounts()
     {
-        OnPropertyChanged(nameof(PeopleChosen));
-        OnPropertyChanged(nameof(PlacesChosen));
+        RefreshChosen();
+        Narrow(People, ShownPeople, PeopleFilter);
+        Narrow(Places, ShownPlaces, PlacesFilter);
+        OnPropertyChanged(nameof(HasPeopleSuggestions));
+        OnPropertyChanged(nameof(HasPlaceSuggestions));
     }
 
     /// <summary>What the three rule fields currently say.</summary>
@@ -629,7 +730,9 @@ public sealed partial class AlbumsViewModel : ObservableObject
     /// adopt a name the app chose.</para>
     /// </remarks>
     [RelayCommand(CanExecute = nameof(CanSave))]
-    private async Task SaveAsync()
+    private Task SaveAsync() => IsNewAlbum ? MakeAlbumAsync() : UpdateAlbumAsync();
+
+    private async Task UpdateAlbumAsync()
     {
         if (Selected is not AlbumItem album)
         {
@@ -639,6 +742,8 @@ public sealed partial class AlbumsViewModel : ObservableObject
         AlbumRule rule = TypedRule();
         string name = EditedName.Trim();
         bool renaming = !string.Equals(name, album.Name, StringComparison.Ordinal);
+        bool reshelving = ChosenCollection != album.Summary.CollectionId;
+        string? left = null;
 
         IsBusy = true;
         try
@@ -654,14 +759,18 @@ public sealed partial class AlbumsViewModel : ObservableObject
                 }
 
                 await albums.SetRuleAsync(album.Id, rule).ConfigureAwait(true);
+
+                if (reshelving)
+                {
+                    left = await scope.ServiceProvider
+                        .GetRequiredService<ICollectionRepository>()
+                        .SetAlbumCollectionAsync(album.Id, ChosenCollection)
+                        .ConfigureAwait(true);
+                }
             }
 
             IsEditing = false;
-
-            string saved = renaming ? $"Saved as \"{name}\"." : "Saved.";
-            Status = rule.IsSomething
-                ? $"{saved} Choose Find photos that fit to see what matches."
-                : $"{saved} This album has no rule, so nothing is looked for.";
+            Status = Saved(renaming ? $"Saved as \"{name}\"." : "Saved.", rule, left);
         }
         catch (Exception ex) when (ex is IOException or InvalidOperationException)
         {
@@ -672,9 +781,9 @@ public sealed partial class AlbumsViewModel : ObservableObject
             IsBusy = false;
         }
 
-        // The wall carries the name, so it has to be read again after one
-        // changes - and the shell's counts with it.
-        if (renaming)
+        // The wall carries the name and reads the shelf, so either one changing
+        // means reading it again - and the shell's counts with it.
+        if (renaming || reshelving)
         {
             await ReloadAsync().ConfigureAwait(true);
             LibraryChanged?.Invoke(this, EventArgs.Empty);
@@ -682,10 +791,94 @@ public sealed partial class AlbumsViewModel : ObservableObject
     }
 
     /// <summary>
+    /// Makes the album the panel describes, with everything it was told at once.
+    /// </summary>
+    /// <remarks>
+    /// The name, the shelf and the rule are written in one breath, and the album
+    /// is then opened, so Find photos that fit is under the hand of somebody who
+    /// has just said what the album is for.
+    ///
+    /// <para>What it does <em>not</em> do is go and find them: a rule can match
+    /// hundreds, and which of those belong is a question for the user rather
+    /// than a consequence of naming something.</para>
+    /// </remarks>
+    private async Task MakeAlbumAsync()
+    {
+        string name = EditedName.Trim();
+        AlbumRule rule = TypedRule();
+        int? shelf = ChosenCollection;
+        int made = 0;
+
+        IsBusy = true;
+        try
+        {
+            using (IServiceScope scope = _scopeFactory.CreateScope())
+            {
+                IAlbumRepository albums = scope.ServiceProvider
+                    .GetRequiredService<IAlbumRepository>();
+
+                made = await albums.CreateAsync(name).ConfigureAwait(true);
+
+                if (rule.IsSomething)
+                {
+                    await albums.SetRuleAsync(made, rule).ConfigureAwait(true);
+                }
+
+                if (shelf is not null)
+                {
+                    await scope.ServiceProvider
+                        .GetRequiredService<ICollectionRepository>()
+                        .SetAlbumCollectionAsync(made, shelf)
+                        .ConfigureAwait(true);
+                }
+            }
+
+            IsEditing = false;
+            Status = rule.IsSomething
+                ? $"\"{name}\" is ready. Choose Find photos that fit to see what matches."
+                : $"\"{name}\" is ready. Open a picture and choose Add to an album.";
+            ShowMine = true;
+        }
+        catch (Exception ex) when (ex is IOException or InvalidOperationException)
+        {
+            Status = $"That album could not be made: {ex.Message}";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+
+        await ReloadAsync().ConfigureAwait(true);
+
+        // After the lists have been read again, or the album just made is not
+        // among them to open.
+        if (made > 0)
+        {
+            Selected = Wall.FirstOrDefault(item => item.Id == made)
+                       ?? Mine.FirstOrDefault(item => item.Id == made);
+        }
+
+        LibraryChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>What to say about a save, including a move nobody asked about.</summary>
+    private static string Saved(string saved, AlbumRule rule, string? left)
+    {
+        string said = rule.IsSomething
+            ? $"{saved} Choose Find photos that fit to see what matches."
+            : $"{saved} This album has no rule, so nothing is looked for.";
+
+        return left is null ? said : $"{said} Taken off \"{left}\".";
+    }
+
+    /// <summary>
     /// An album may not be saved without a name, whatever else the panel holds.
     /// </summary>
     private bool CanSave() =>
-        IsIdle && HasSelected && !HasRuleProblem && EditedName.Trim().Length > 0;
+        IsIdle
+        && (IsNewAlbum || HasSelected)
+        && !HasRuleProblem
+        && EditedName.Trim().Length > 0;
 
     /// <summary>Looks for photographs that fit, and offers them.</summary>
     /// <remarks>
@@ -942,27 +1135,94 @@ public sealed partial class AlbumsViewModel : ObservableObject
         }
     }
 
-    private static string Chosen(IEnumerable<TickChoice> all, string one, string many)
-    {
-        int count = all.Count(choice => choice.IsChosen);
-        return count switch
-        {
-            0 => string.Empty,
-            1 => $"1 {one} chosen",
-            _ => $"{count:N0} {many} chosen",
-        };
-    }
-
     partial void OnPeopleFilterChanged(string value)
     {
         Narrow(People, ShownPeople, value);
         OnPropertyChanged(nameof(NobodyByThatName));
+        OnPropertyChanged(nameof(HasPeopleSuggestions));
     }
 
     partial void OnPlacesFilterChanged(string value)
     {
         Narrow(Places, ShownPlaces, value);
         OnPropertyChanged(nameof(NowhereByThatName));
+        OnPropertyChanged(nameof(HasPlaceSuggestions));
+    }
+
+    /// <summary>Puts one of the offered names into the rule.</summary>
+    /// <remarks>
+    /// The box empties afterwards, which closes the list under it and leaves the
+    /// new chip as the only thing that changed. Typing a name then has an end -
+    /// the name is in the rule and can be seen to be.
+    /// </remarks>
+    [RelayCommand]
+    private void AddPerson(TickChoice? person)
+    {
+        if (person is null)
+        {
+            return;
+        }
+
+        person.IsChosen = true;
+        PeopleFilter = string.Empty;
+    }
+
+    [RelayCommand]
+    private void AddPlace(TickChoice? place)
+    {
+        if (place is null)
+        {
+            return;
+        }
+
+        place.IsChosen = true;
+        PlacesFilter = string.Empty;
+    }
+
+    /// <summary>Takes one back out of the rule, from its chip.</summary>
+    [RelayCommand]
+    private void DropPerson(TickChoice? person)
+    {
+        if (person is not null)
+        {
+            person.IsChosen = false;
+        }
+    }
+
+    [RelayCommand]
+    private void DropPlace(TickChoice? place)
+    {
+        if (place is not null)
+        {
+            place.IsChosen = false;
+        }
+    }
+
+    /// <summary>
+    /// Rebuilds the two rows of chips from what is ticked.
+    /// </summary>
+    /// <remarks>
+    /// Driven off the same objects the rule is read from rather than kept beside
+    /// them, so the chips cannot disagree with what is saved - the failure the
+    /// old count line could not have, and the reason it was a count.
+    /// </remarks>
+    private void RefreshChosen()
+    {
+        Restate(People, ChosenPeople);
+        Restate(Places, ChosenPlaces);
+
+        OnPropertyChanged(nameof(HasChosenPeople));
+        OnPropertyChanged(nameof(HasChosenPlaces));
+    }
+
+    private static void Restate(
+        IEnumerable<TickChoice> all, ObservableCollection<TickChoice> chosen)
+    {
+        chosen.Clear();
+        foreach (TickChoice choice in all.Where(choice => choice.IsChosen))
+        {
+            chosen.Add(choice);
+        }
     }
 
     /// <summary>
@@ -1000,16 +1260,31 @@ public sealed partial class AlbumsViewModel : ObservableObject
     }
 
     /// <summary>Puts the ones whose name contains what was typed on the screen.</summary>
+    /// <summary>
+    /// Puts under the box the ones whose name contains what was typed, and are
+    /// not already in the rule.
+    /// </summary>
+    /// <remarks>
+    /// Nothing while the box is empty, which is the whole difference between a
+    /// box that finds something and a list that is always there. The ones
+    /// already chosen are left out because they are on screen above it, as
+    /// chips - offering them again would be offering to do what has been done.
+    /// </remarks>
     private static void Narrow(
         IEnumerable<TickChoice> all, ObservableCollection<TickChoice> shown, string typed)
     {
         string wanted = typed.Trim();
 
         shown.Clear();
+        if (wanted.Length == 0)
+        {
+            return;
+        }
+
         foreach (TickChoice choice in all)
         {
-            if (wanted.Length == 0
-                || choice.Name.Contains(wanted, StringComparison.CurrentCultureIgnoreCase))
+            if (!choice.IsChosen
+                && choice.Name.Contains(wanted, StringComparison.CurrentCultureIgnoreCase))
             {
                 shown.Add(choice);
             }
@@ -1118,89 +1393,29 @@ public sealed partial class AlbumsViewModel : ObservableObject
             (repository, id) => repository.DeleteAsync(id),
             $"\"{SelectedName}\" is gone. Its photographs are still in your library.");
 
-    /// <summary>Opens the panel that describes an album before making it.</summary>
+    /// <summary>Opens the same panel, for an album that does not exist yet.</summary>
+    /// <remarks>
+    /// A new album defaults on to whichever collection is open, because that is
+    /// where somebody standing inside a shelf pressing New album means to put
+    /// it. At the top level it defaults to none.
+    /// </remarks>
     [RelayCommand(CanExecute = nameof(IsIdle))]
     private async Task StartCreatingAsync()
     {
-        NewName = string.Empty;
+        IsNewAlbum = true;
+        EditedName = string.Empty;
         Status = string.Empty;
-        IsCreating = true;
+        IsEditing = true;
+        ShowCollections(Collections.Open?.Id);
 
-        // An empty rule, which is also what clears whatever the last panel to
-        // open left in the fields.
+        // An empty rule, which is also what clears whatever the last time the
+        // panel opened left in the fields.
         await ShowRuleAsync(AlbumRule.None).ConfigureAwait(true);
-    }
-
-    [RelayCommand]
-    private void CancelCreate() => IsCreating = false;
-
-    /// <summary>Makes an album of the user's own, with whatever it was told to look for.</summary>
-    /// <remarks>
-    /// The rule is written in the same breath as the name, and the album is then
-    /// opened, so Edit and Find photos that fit are under the hand of somebody
-    /// who has just said what the album is for.
-    ///
-    /// <para>What it does <em>not</em> do is go and find them: a rule can match
-    /// hundreds, and which of those belong is a question for the user rather
-    /// than a consequence of naming something. The button is one press away on
-    /// the album that just opened.</para>
-    /// </remarks>
-    [RelayCommand(CanExecute = nameof(CanCreate))]
-    private async Task CreateAlbumAsync()
-    {
-        string name = NewName.Trim();
-        AlbumRule rule = TypedRule();
-        int created = 0;
-
-        IsBusy = true;
-        try
-        {
-            using (IServiceScope scope = _scopeFactory.CreateScope())
-            {
-                IAlbumRepository albums = scope.ServiceProvider
-                    .GetRequiredService<IAlbumRepository>();
-
-                created = await albums.CreateAsync(name).ConfigureAwait(true);
-
-                if (rule.IsSomething)
-                {
-                    await albums.SetRuleAsync(created, rule).ConfigureAwait(true);
-                }
-            }
-
-            NewName = string.Empty;
-            IsCreating = false;
-            Status = rule.IsSomething
-                ? $"\"{name}\" is ready. Choose Find photos that fit to see what matches."
-                : $"\"{name}\" is ready. Open a picture and choose Add to an album.";
-            ShowMine = true;
-        }
-        catch (Exception ex) when (ex is IOException or InvalidOperationException)
-        {
-            Status = $"That album could not be made: {ex.Message}";
-        }
-        finally
-        {
-            IsBusy = false;
-        }
-
-        await ReloadAsync().ConfigureAwait(true);
-
-        // After the lists have been read again, or the album just made is not
-        // among them to open.
-        if (created > 0)
-        {
-            Selected = Mine.FirstOrDefault(item => item.Id == created);
-        }
-
-        LibraryChanged?.Invoke(this, EventArgs.Empty);
     }
 
     private bool CanAnswer() => IsIdle && SelectedIsProposed;
 
     private bool CanDelete() => IsIdle && SelectedIsMine;
-
-    private bool CanCreate() => IsIdle && NewName.Trim().Length > 0 && !HasRuleProblem;
 
     /// <summary>Does one thing to the open album, then reads the lists again.</summary>
     private async Task AnswerAsync(

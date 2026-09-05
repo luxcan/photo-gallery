@@ -55,7 +55,7 @@ public sealed class NewAlbumTests : IDisposable
     {
         await _albums.StartCreatingCommand.ExecuteAsync(null);
 
-        Assert.True(_albums.IsCreating);
+        Assert.True(_albums.IsEditing);
 
         // Any day to begin with, so a new album asks nothing about the date
         // until somebody says it should.
@@ -73,9 +73,13 @@ public sealed class NewAlbumTests : IDisposable
         // album can be told to look for.
         Assert.Equal(Genting, Assert.Single(_albums.Places).Id);
 
-        // Both lists start unfiltered, so the panel opens showing everything.
-        Assert.Equal(2, _albums.ShownPeople.Count);
-        Assert.Single(_albums.ShownPlaces);
+        // Nothing is offered until something is typed. A standing list of
+        // everybody was the tallest thing on the panel, and the reason the names
+        // already in the rule had nowhere to be.
+        Assert.Empty(_albums.ShownPeople);
+        Assert.Empty(_albums.ShownPlaces);
+        Assert.Empty(_albums.ChosenPeople);
+        Assert.Empty(_albums.ChosenPlaces);
     }
 
     [Fact]
@@ -86,13 +90,14 @@ public sealed class NewAlbumTests : IDisposable
 
         _albums.PeopleFilter = "dia";
 
-        // Ana is off the screen, but she is still in the rule - and the count
-        // beside the list is what says so.
+        // Ana is not in what the box offers - she is already in the rule, and
+        // her chip is what says so. The count line this used to read instead
+        // existed only because a filtered list could not show her.
         Assert.Equal("Diana", Assert.Single(_albums.ShownPeople).Name);
-        Assert.Equal("1 person chosen", _albums.PeopleChosen);
+        Assert.Equal("Ana Lim", Assert.Single(_albums.ChosenPeople).Name);
 
-        _albums.NewName = "Whoever";
-        await _albums.CreateAlbumCommand.ExecuteAsync(null);
+        _albums.EditedName = "Whoever";
+        await _albums.SaveCommand.ExecuteAsync(null);
 
         Assert.Equal(Ana, Assert.Single(Assert.Single(_repository.RulesSet).Rule.PersonIds));
     }
@@ -107,10 +112,66 @@ public sealed class NewAlbumTests : IDisposable
 
         Assert.True(_albums.People.Single(choice => choice.Id == Ana).IsChosen);
 
-        // Emptied, so the whole list comes back with the new tick visible on it
-        // rather than leaving a filtered list that looks like nothing happened.
+        // Emptied, which closes the list under it and leaves the new chip as
+        // the only thing that changed - rather than a filtered list that looks
+        // like nothing happened.
         Assert.Equal(string.Empty, _albums.PeopleFilter);
-        Assert.Equal(2, _albums.ShownPeople.Count);
+        Assert.Empty(_albums.ShownPeople);
+        Assert.Equal("Ana Lim", Assert.Single(_albums.ChosenPeople).Name);
+    }
+
+    [Fact]
+    public async Task AddingSomeoneMakesAChipAndClearsTheBox()
+    {
+        await _albums.StartCreatingCommand.ExecuteAsync(null);
+
+        _albums.PeopleFilter = "ana";
+        TickChoice offered = _albums.ShownPeople.First();
+
+        _albums.AddPersonCommand.Execute(offered);
+
+        Assert.Same(offered, Assert.Single(_albums.ChosenPeople));
+        Assert.True(_albums.HasChosenPeople);
+        Assert.Equal(string.Empty, _albums.PeopleFilter);
+        Assert.Empty(_albums.ShownPeople);
+    }
+
+    /// <summary>The chip is the way back out, which is why it is a button.</summary>
+    [Fact]
+    public async Task TakingTheChipOffTakesThemOutOfTheRule()
+    {
+        await _albums.StartCreatingCommand.ExecuteAsync(null);
+        _albums.PeopleFilter = "ana";
+        _albums.AddPersonCommand.Execute(_albums.ShownPeople.First());
+
+        TickChoice chip = Assert.Single(_albums.ChosenPeople);
+        _albums.DropPersonCommand.Execute(chip);
+
+        Assert.Empty(_albums.ChosenPeople);
+        Assert.False(_albums.HasChosenPeople);
+        Assert.False(chip.IsChosen);
+    }
+
+    /// <summary>
+    /// Somebody already in the rule is not offered again by the box.
+    /// </summary>
+    /// <remarks>
+    /// Their chip is above it. Offering them a second time would be offering to
+    /// do what has been done - and it is what left the old list unable to show
+    /// its own answer.
+    /// </remarks>
+    [Fact]
+    public async Task SomebodyAlreadyInTheRuleIsNotOfferedAgain()
+    {
+        await _albums.StartCreatingCommand.ExecuteAsync(null);
+        _albums.PeopleFilter = "ana";
+        TickChoice first = _albums.ShownPeople.First();
+        _albums.AddPersonCommand.Execute(first);
+
+        _albums.PeopleFilter = "ana";
+
+        Assert.DoesNotContain(first, _albums.ShownPeople);
+        Assert.Same(first, Assert.Single(_albums.ChosenPeople));
     }
 
     [Fact]
@@ -163,18 +224,18 @@ public sealed class NewAlbumTests : IDisposable
         await _albums.StartCreatingCommand.ExecuteAsync(null);
 
         Assert.Equal(string.Empty, _albums.PeopleFilter);
-        Assert.Equal(2, _albums.ShownPeople.Count);
+        Assert.Empty(_albums.ShownPeople);
     }
 
     [Fact]
     public async Task OneDay_IsStoredAsARangeOfOne()
     {
         await _albums.StartCreatingCommand.ExecuteAsync(null);
-        _albums.NewName = "That Tuesday";
+        _albums.EditedName = "That Tuesday";
         _albums.IsOneDay = true;
         _albums.RuleDay = new DateTime(2019, 3, 3);
 
-        await _albums.CreateAlbumCommand.ExecuteAsync(null);
+        await _albums.SaveCommand.ExecuteAsync(null);
 
         AlbumRule rule = Assert.Single(_repository.RulesSet).Rule;
         Assert.Equal(new DateOnly(2019, 3, 3), rule.From);
@@ -185,7 +246,7 @@ public sealed class NewAlbumTests : IDisposable
     public async Task ChoosingAnyDay_ForgetsWhateverWasPicked()
     {
         await _albums.StartCreatingCommand.ExecuteAsync(null);
-        _albums.NewName = "Odds and ends";
+        _albums.EditedName = "Odds and ends";
         _albums.IsDateRange = true;
         _albums.RuleFromDate = new DateTime(2019, 3, 3);
         _albums.RuleToDate = new DateTime(2019, 3, 5);
@@ -194,7 +255,7 @@ public sealed class NewAlbumTests : IDisposable
         // must not quietly keep asking about them.
         _albums.IsAnyDay = true;
 
-        await _albums.CreateAlbumCommand.ExecuteAsync(null);
+        await _albums.SaveCommand.ExecuteAsync(null);
 
         Assert.Empty(_repository.RulesSet);
     }
@@ -204,14 +265,14 @@ public sealed class NewAlbumTests : IDisposable
     {
         await _albums.StartCreatingCommand.ExecuteAsync(null);
 
-        _albums.NewName = "Genting, at last";
+        _albums.EditedName = "Genting, at last";
         _albums.IsDateRange = true;
         _albums.RuleFromDate = new DateTime(2019, 3, 3);
         _albums.RuleToDate = new DateTime(2019, 3, 5);
         _albums.People.Single(choice => choice.Id == Ana).IsChosen = true;
         _albums.Places.Single(choice => choice.Id == Genting).IsChosen = true;
 
-        await _albums.CreateAlbumCommand.ExecuteAsync(null);
+        await _albums.SaveCommand.ExecuteAsync(null);
 
         Assert.Equal("Genting, at last", _repository.Created);
 
@@ -228,11 +289,11 @@ public sealed class NewAlbumTests : IDisposable
         // The id comes back from the create, and a rule written against anything
         // else would be silently attached to somebody else's album.
         await _albums.StartCreatingCommand.ExecuteAsync(null);
-        _albums.NewName = "A weekend away";
+        _albums.EditedName = "A weekend away";
         _albums.IsOneDay = true;
         _albums.RuleDay = new DateTime(2019, 3, 3);
 
-        await _albums.CreateAlbumCommand.ExecuteAsync(null);
+        await _albums.SaveCommand.ExecuteAsync(null);
 
         Assert.Equal(_repository.CreatedId, Assert.Single(_repository.RulesSet).AlbumId);
     }
@@ -241,9 +302,9 @@ public sealed class NewAlbumTests : IDisposable
     public async Task CreatingWithNothingButAName_WritesNoRuleAtAll()
     {
         await _albums.StartCreatingCommand.ExecuteAsync(null);
-        _albums.NewName = "Odds and ends";
+        _albums.EditedName = "Odds and ends";
 
-        await _albums.CreateAlbumCommand.ExecuteAsync(null);
+        await _albums.SaveCommand.ExecuteAsync(null);
 
         // Not an empty rule written over the top: an album that asks for nothing
         // and an album never given a rule are the same album, and writing one
@@ -255,11 +316,11 @@ public sealed class NewAlbumTests : IDisposable
     public async Task Creating_ClosesThePanelAndOpensTheAlbum()
     {
         await _albums.StartCreatingCommand.ExecuteAsync(null);
-        _albums.NewName = "Genting, at last";
+        _albums.EditedName = "Genting, at last";
 
-        await _albums.CreateAlbumCommand.ExecuteAsync(null);
+        await _albums.SaveCommand.ExecuteAsync(null);
 
-        Assert.False(_albums.IsCreating);
+        Assert.False(_albums.IsEditing);
 
         // Open, so Edit and Find photos that fit are under the hand of somebody
         // who has just said what the album is for. Both are gated on an album
@@ -274,52 +335,52 @@ public sealed class NewAlbumTests : IDisposable
     public async Task TheLastDayBeforeTheFirst_StopsTheAlbumBeingMade()
     {
         await _albums.StartCreatingCommand.ExecuteAsync(null);
-        _albums.NewName = "Genting, at last";
+        _albums.EditedName = "Genting, at last";
         _albums.IsDateRange = true;
         _albums.RuleFromDate = new DateTime(2019, 3, 5);
         _albums.RuleToDate = new DateTime(2019, 3, 3);
 
         Assert.True(_albums.HasRuleProblem);
-        Assert.False(_albums.CreateAlbumCommand.CanExecute(null));
+        Assert.False(_albums.SaveCommand.CanExecute(null));
 
         // And it comes back the moment the pair is the right way round, rather
         // than staying dead for the rest of the session.
         _albums.RuleToDate = new DateTime(2019, 3, 7);
         Assert.False(_albums.HasRuleProblem);
-        Assert.True(_albums.CreateAlbumCommand.CanExecute(null));
+        Assert.True(_albums.SaveCommand.CanExecute(null));
     }
 
     [Fact]
     public async Task TheSameDayInBothBoxes_IsAllowed()
     {
         await _albums.StartCreatingCommand.ExecuteAsync(null);
-        _albums.NewName = "That Tuesday";
+        _albums.EditedName = "That Tuesday";
         _albums.IsDateRange = true;
         _albums.RuleFromDate = new DateTime(2019, 3, 3);
         _albums.RuleToDate = new DateTime(2019, 3, 3);
 
         Assert.False(_albums.HasRuleProblem);
-        Assert.True(_albums.CreateAlbumCommand.CanExecute(null));
+        Assert.True(_albums.SaveCommand.CanExecute(null));
     }
 
     [Fact]
     public async Task AnAlbumWithNoName_CannotBeMade()
     {
         await _albums.StartCreatingCommand.ExecuteAsync(null);
-        _albums.NewName = "   ";
+        _albums.EditedName = "   ";
 
-        Assert.False(_albums.CreateAlbumCommand.CanExecute(null));
+        Assert.False(_albums.SaveCommand.CanExecute(null));
     }
 
     [Fact]
     public async Task Cancelling_MakesNothing()
     {
         await _albums.StartCreatingCommand.ExecuteAsync(null);
-        _albums.NewName = "Never made";
+        _albums.EditedName = "Never made";
 
-        _albums.CancelCreateCommand.Execute(null);
+        _albums.CancelEditCommand.Execute(null);
 
-        Assert.False(_albums.IsCreating);
+        Assert.False(_albums.IsEditing);
         Assert.Null(_repository.Created);
     }
 

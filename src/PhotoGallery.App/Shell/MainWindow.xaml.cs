@@ -825,8 +825,8 @@ public partial class MainWindow : Window
         yield return (() => gallery.Picker.IsOpen, gallery.Picker.CancelCommand);
         yield return (() => gallery.Albums.IsOpen, gallery.Albums.CancelCommand);
         yield return (() => people.Reassign.IsOpen, people.Reassign.CancelCommand);
+        // One entry, because making an album and editing one are one panel now.
         yield return (() => albums.IsEditing, albums.CancelEditCommand);
-        yield return (() => albums.IsCreating, albums.CancelCreateCommand);
         yield return (
             () => albums.Collections.IsPicking, albums.Collections.CancelPickingCommand);
         yield return (
