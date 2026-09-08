@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using PhotoGallery.App.Albums;
 using PhotoGallery.Application.Ports;
 using PhotoGallery.Domain.Albums;
+using PhotoGallery.Domain.People;
 using PhotoGallery.Infrastructure.Persistence;
 using PhotoGallery.Infrastructure.Storage;
 
@@ -37,15 +38,28 @@ public sealed class CollectionsScreenTests : IDisposable
                 .Options);
         _db.Database.Migrate();
 
+        // Somebody for the rule half of the album panel to find. An empty
+        // directory reads the same whether it was asked for or never reached, so
+        // a library with nobody in it cannot tell a panel that opened from one
+        // that gave up half way and left the reason in Status.
+        _db.People.Add(new Person { DisplayName = "Aunt Mei" });
+        _db.SaveChanges();
+        _db.ChangeTracker.Clear();
+
         var workingFolder = new WorkingFolder(_root);
         workingFolder.EnsureCreated();
 
         _albumStore = new SqliteAlbumRepository(_db);
         _shelves = new SqliteCollectionRepository(_db);
 
+        // The album panel reads the people and the places as well as the rule,
+        // so a container answering only the two repositories opens half a panel
+        // and every assertion here is about the half that was already filled.
         _services = new ServiceCollection()
             .AddSingleton(_albumStore)
             .AddSingleton(_shelves)
+            .AddSingleton<IPeopleReader>(new SqlitePeopleReader(_db))
+            .AddSingleton<IPlaceReader>(new SqlitePlaceReader(_db))
             .BuildServiceProvider();
 
         _albums = new AlbumsViewModel(
@@ -426,6 +440,11 @@ public sealed class CollectionsScreenTests : IDisposable
             ["Not on a collection", "Holiday", "Weekends"],
             _albums.CollectionOptions.Select(option => option.Name));
         Assert.Equal("Holiday", _albums.EditedCollection.Name);
+
+        // The rule half is read first and the shelf half above is filled only
+        // once it has arrived, so what is left to say is that what arrived was
+        // this library's directory rather than an empty one.
+        Assert.Equal("Aunt Mei", Assert.Single(_albums.People).Name);
     }
 
     /// <summary>
@@ -497,6 +516,10 @@ public sealed class CollectionsScreenTests : IDisposable
 
         Assert.Equal("Holiday", _albums.EditedCollection.Name);
 
+        // The other way into the panel, which reads the rule before it fills
+        // the collection in the same order.
+        Assert.Equal("Aunt Mei", Assert.Single(_albums.People).Name);
+
         _albums.EditedName = "Genting";
         await _albums.SaveCommand.ExecuteAsync(null);
 
@@ -504,6 +527,49 @@ public sealed class CollectionsScreenTests : IDisposable
             holiday,
             await _db.Albums.Where(a => a.Name == "Genting")
                 .Select(a => a.CollectionId).SingleAsync());
+    }
+
+    /// <summary>
+    /// And the header of an open collection offers New album, so the album that
+    /// lands on the shelf can be made from inside one.
+    /// </summary>
+    /// <remarks>
+    /// The test above passes on a screen with no way to reach it: it opens the
+    /// shelf and calls the command itself, and no view model can be asked
+    /// whether a button is bound to it. The strip carries the same command and
+    /// the strip is hidden while a collection is open, so the header is the only
+    /// place this button can be.
+    /// </remarks>
+    [Fact]
+    public void TheOpenCollectionOffersNewAlbum()
+    {
+        string markup = File.ReadAllText(AppMarkup.PathTo("Shell", "MainWindow.xaml"));
+
+        int header = markup.IndexOf(
+            "{Binding Albums.ShowingOneCollection,", StringComparison.Ordinal);
+        int band = markup.IndexOf(
+            "{Binding Albums.ShowingTheBand,", StringComparison.Ordinal);
+        Assert.InRange(header, 1, band);
+
+        string inTheHeader = markup[header..band];
+        Assert.Contains(
+            "Command=\"{Binding Albums.StartCreatingCommand}\"",
+            inTheHeader,
+            StringComparison.Ordinal);
+
+        // Not New collection, which is one segment away from it and would draw
+        // and do nothing in its place.
+        Assert.DoesNotContain(
+            "Albums.Collections.StartCreatingCommand",
+            inTheHeader,
+            StringComparison.Ordinal);
+
+        // And the strip keeps its own, so this cannot pass by the button having
+        // moved off the top level.
+        Assert.Contains(
+            "Command=\"{Binding Albums.StartCreatingCommand}\"",
+            markup[..header],
+            StringComparison.Ordinal);
     }
 
     [Fact]

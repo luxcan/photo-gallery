@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using PhotoGallery.Application.Ports;
 using PhotoGallery.Domain.Albums;
 
@@ -119,6 +120,15 @@ public sealed class SqliteCollectionRepository : ICollectionRepository
             return;
         }
 
+        // One transaction over the clearing and the tombstone. ExecuteUpdate
+        // commits a statement of its own, so without this a failure between the
+        // two - a lock, a full disk, a cancelled screen - would leave the shelf
+        // standing with every album already taken off it and nothing anywhere
+        // saying which they were. Taking a shelf away is one thing somebody did,
+        // and half of it is not a smaller version of it.
+        await using IDbContextTransaction transaction =
+            await _db.Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+
         // Ignoring the filter on purpose. An album that has been removed still
         // holds the shelf it was on, and it is out of every query in the app
         // until somebody restores it - at which point it would come back
@@ -133,6 +143,7 @@ public sealed class SqliteCollectionRepository : ICollectionRepository
 
         collection.DeletedUtc = DateTime.UtcNow;
         await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<CollectionFillResult> SetAlbumsAsync(
@@ -246,6 +257,17 @@ public sealed class SqliteCollectionRepository : ICollectionRepository
             : null;
 
         album.CollectionId = collectionId;
+
+        // Putting a suggestion on a shelf is keeping it, the same decision the
+        // tick list makes, and in the same write so the two cannot come apart.
+        // A proposal is still a question as far as a rebuild is concerned, and
+        // a rebuild removes a question nobody answered - taking the album off
+        // the shelf somebody filled with it, and its photographs with it.
+        if (collectionId is not null && album.Origin == AlbumOrigin.Proposed)
+        {
+            album.Origin = AlbumOrigin.Accepted;
+        }
+
         await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
 
         return left;

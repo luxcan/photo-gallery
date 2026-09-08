@@ -695,8 +695,8 @@
 
             <!-- The strip: what this screen is, and the two tabs. Hidden while a
                  collection is open, which brings its own header in its place -
-                 the tabs and New album belong to the whole library rather than
-                 to one shelf. -->
+                 the tabs belong to the whole library rather than to one shelf,
+                 and New album is offered again there, for that shelf. -->
             <Grid Grid.Row="0" Margin="0,0,0,12"
                   Visibility="{Binding Albums.ShowingTheStrip,
                                Converter={StaticResource BoolToVisibility}}">
@@ -800,6 +800,16 @@
                         MinWidth="110" Content="Add albums"
                         ToolTip="Tick the albums that belong on this collection"
                         Command="{Binding Albums.Collections.StartPickingCommand}" />
+
+                <!-- Beside Add albums, because both put an album on this shelf:
+                     one that already exists, or one made here. It is the strip's
+                     own command, and the strip is hidden while a collection is
+                     open - so this is the only way to make an album on a shelf. -->
+                <Button Style="{DynamicResource SecondaryButton}" Margin="0,0,8,0"
+                        MinWidth="110" Content="New album"
+                        ToolTip="Name an album, and it goes on this collection"
+                        Command="{Binding Albums.StartCreatingCommand}" />
+
                 <Button Style="{DynamicResource SecondaryButton}" Margin="0,0,8,0"
                         MinWidth="90" Content="Rename"
                         ToolTip="Call this collection something else"
@@ -1182,8 +1192,10 @@
                   <DockPanel Grid.Column="0">
                     <!-- Docked to the bottom, so what the album is stays at the
                          top of the column however tall the rule beside it
-                         grows. -->
-                    <StackPanel DockPanel.Dock="Bottom">
+                         grows. The gutter is the one the half above keeps for
+                         its scrollbar, so the column has one right edge whether
+                         that scrollbar is drawn or not. -->
+                    <StackPanel DockPanel.Dock="Bottom" Margin="0,0,8,0">
                       <StackPanel Visibility="{Binding Albums.PanelOffersProposal,
                                                Converter={StaticResource BoolToVisibility}}">
                         <Border Height="1" Margin="0,18,0,14"
@@ -1244,45 +1256,57 @@
                       </Grid>
                     </StackPanel>
 
-                    <StackPanel>
-                      <TextBlock Style="{DynamicResource FieldLabel}"
-                                 Text="{Binding Albums.PanelTitle}" />
-                      <TextBlock Style="{DynamicResource HintText}" Margin="0,2,0,14"
-                                 TextWrapping="Wrap" Text="{Binding Albums.PanelHint}" />
+                    <!-- Scrolled, because the row docked below is measured first
+                         and this half is given whatever height is left over. A
+                         bare stack asks for its full height regardless, so on a
+                         short window the panel wanted more than the space it is
+                         centred in - which put its top edge above the top of the
+                         screen and took the name and the collection with it,
+                         with nothing anywhere to scroll them back. -->
+                    <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled">
+                      <!-- Clear of the scrollbar, which otherwise sits on the
+                           last word of every line the hints wrap. -->
+                      <StackPanel Margin="0,0,8,0">
+                        <TextBlock Style="{DynamicResource FieldLabel}"
+                                   Text="{Binding Albums.PanelTitle}" />
+                        <TextBlock Style="{DynamicResource HintText}" Margin="0,2,0,14"
+                                   TextWrapping="Wrap" Text="{Binding Albums.PanelHint}" />
 
-                      <TextBlock Style="{DynamicResource FieldLabel}" Text="Name" />
-                      <TextBox Style="{DynamicResource InputTextBox}" Margin="0,2,0,0"
-                               AutomationProperties.Name="Name this album"
-                               ToolTip="What to call it. A scan never writes over your name."
-                               Text="{Binding Albums.EditedName,
-                                      UpdateSourceTrigger=PropertyChanged}">
-                        <TextBox.InputBindings>
-                          <KeyBinding Key="Return" Command="{Binding Albums.SaveCommand}" />
-                        </TextBox.InputBindings>
-                      </TextBox>
+                        <TextBlock Style="{DynamicResource FieldLabel}" Text="Name" />
+                        <TextBox Style="{DynamicResource InputTextBox}" Margin="0,2,0,0"
+                                 AutomationProperties.Name="Name this album"
+                                 ToolTip="What to call it. A scan never writes over your name."
+                                 Text="{Binding Albums.EditedName,
+                                        UpdateSourceTrigger=PropertyChanged}">
+                          <TextBox.InputBindings>
+                            <KeyBinding Key="Return" Command="{Binding Albums.SaveCommand}" />
+                          </TextBox.InputBindings>
+                        </TextBox>
 
-                      <TextBlock Style="{DynamicResource FieldLabel}" Margin="0,16,0,0"
-                                 Text="Collection" />
-                      <!-- An ItemTemplate rather than DisplayMemberPath. The
-                           path reaches the rows in the list and not the closed
-                           box, which renders SelectionBoxItem through
-                           SelectionBoxItemTemplate - so the field sat there
-                           reading "CollectionOption { Id = 0, Name = ... }". -->
-                      <ComboBox Margin="0,2,0,0"
-                                AutomationProperties.Name="Collection"
-                                ToolTip="Which shelf this album stands on"
-                                ItemsSource="{Binding Albums.CollectionOptions}"
-                                SelectedItem="{Binding Albums.EditedCollection, Mode=TwoWay}">
-                        <ComboBox.ItemTemplate>
-                          <DataTemplate>
-                            <TextBlock Text="{Binding Name}"
-                                       TextTrimming="CharacterEllipsis" />
-                          </DataTemplate>
-                        </ComboBox.ItemTemplate>
-                      </ComboBox>
-                      <TextBlock Style="{DynamicResource HintText}" TextWrapping="Wrap"
-                                 Text="An album is on one collection. Choosing another takes it off the first." />
-                    </StackPanel>
+                        <TextBlock Style="{DynamicResource FieldLabel}" Margin="0,16,0,0"
+                                   Text="Collection" />
+                        <!-- An ItemTemplate rather than DisplayMemberPath. The
+                             path reaches the rows in the list and not the closed
+                             box, which renders SelectionBoxItem through
+                             SelectionBoxItemTemplate - so the field sat there
+                             reading "CollectionOption { Id = 0, Name = ... }". -->
+                        <ComboBox Margin="0,2,0,0"
+                                  AutomationProperties.Name="Collection"
+                                  ToolTip="Which shelf this album stands on"
+                                  ItemsSource="{Binding Albums.CollectionOptions}"
+                                  SelectedItem="{Binding Albums.EditedCollection, Mode=TwoWay}">
+                          <ComboBox.ItemTemplate>
+                            <DataTemplate>
+                              <TextBlock Text="{Binding Name}"
+                                         TextTrimming="CharacterEllipsis" />
+                            </DataTemplate>
+                          </ComboBox.ItemTemplate>
+                        </ComboBox>
+                        <TextBlock Style="{DynamicResource HintText}" TextWrapping="Wrap"
+                                   Text="An album is on one collection. Choosing another takes it off the first." />
+                      </StackPanel>
+                    </ScrollViewer>
                   </DockPanel>
 
                   <Border Grid.Column="1" Width="1" Margin="22,0"

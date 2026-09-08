@@ -76,6 +76,16 @@ public sealed class SqliteAlbumRepository : IAlbumRepository
         foreach (Album stale in existing.Where(album =>
             album.ProposalKey is null || !offered.Contains(album.ProposalKey)))
         {
+            // An answered question is not a stale one. A proposal that carries
+            // a shelf was put there by somebody, and this removal is a delete
+            // rather than a tombstone - so removing it would take an album off
+            // a collection the user filled and leave nothing to restore.
+            if (stale.CollectionId is not null)
+            {
+                stale.Origin = AlbumOrigin.Accepted;
+                continue;
+            }
+
             _db.Albums.Remove(stale);
         }
 

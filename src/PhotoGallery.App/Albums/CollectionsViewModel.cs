@@ -4,6 +4,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.DependencyInjection;
 using PhotoGallery.App.Imaging;
+using PhotoGallery.App.Shell;
 using PhotoGallery.Application.Ports;
 using PhotoGallery.Domain.Albums;
 
@@ -193,22 +194,50 @@ public sealed partial class CollectionsViewModel : ObservableObject
     private void Close() => Open = null;
 
     [RelayCommand]
-    private void StartCreating()
-    {
-        _naming = 0;
-        TypedName = string.Empty;
-        OnPropertyChanged(nameof(NamingTitle));
-        IsNaming = true;
-    }
+    private void StartCreating() => StartNaming(0, string.Empty);
 
+    /// <summary>Whether there is an open shelf, and time to do something to it.</summary>
+    /// <remarks>
+    /// Every command that answers to this reads <see cref="Open"/> again in its
+    /// own body rather than trusting that this was true. Remove is a Click
+    /// handler with a question in front of it rather than a command binding, so
+    /// it runs whether or not this still agrees - and the question is a modal
+    /// window, which pumps messages for as long as it is up. A reload finishing
+    /// behind it re-points <see cref="Open"/> at whatever it finds, and at
+    /// nothing when the shelf has gone.
+    /// </remarks>
     private bool CanEditOpen => IsIdle && HasOpen;
 
     [RelayCommand(CanExecute = nameof(CanEditOpen))]
     private void StartRenaming()
     {
-        _naming = Open!.Id;
-        TypedName = Open.Name;
+        if (Open is not CollectionItem collection)
+        {
+            return;
+        }
+
+        StartNaming(collection.Id, collection.Name);
+    }
+
+    /// <summary>Opens the naming panel, on one shelf or on none for a new one.</summary>
+    /// <remarks>
+    /// Both commands come through here because the field saying which shelf is
+    /// being named is a plain one: the title, the problem line and the Save
+    /// button all read it, and none of them hears about it moving. The panel
+    /// keeps whatever was last typed in it, so opening it on a shelf whose name
+    /// is already in the box writes the string the box already holds, which
+    /// announces nothing either - and the panel came up refusing the name of the
+    /// very shelf it had been opened to rename, with Save dead until a key was
+    /// pressed.
+    /// </remarks>
+    private void StartNaming(int shelf, string name)
+    {
+        _naming = shelf;
+        TypedName = name;
         OnPropertyChanged(nameof(NamingTitle));
+        OnPropertyChanged(nameof(NameProblem));
+        OnPropertyChanged(nameof(HasNameProblem));
+        SaveNameCommand.NotifyCanExecuteChanged();
         IsNaming = true;
     }
 
@@ -249,8 +278,7 @@ public sealed partial class CollectionsViewModel : ObservableObject
             Open = All.FirstOrDefault(item => item.Id == naming);
             Raise($"Saved \"{name}\".");
         }
-        catch (Exception ex) when (ex is IOException or InvalidOperationException
-                                      or UnauthorizedAccessException)
+        catch (Exception ex) when (LibraryFailure.IsExpected(ex))
         {
             Raise($"That could not be saved: {ex.Message}");
         }
@@ -271,7 +299,12 @@ public sealed partial class CollectionsViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanEditOpen))]
     private async Task StartPickingAsync()
     {
-        int shelf = Open!.Id;
+        if (Open is not CollectionItem collection)
+        {
+            return;
+        }
+
+        int shelf = collection.Id;
 
         IsBusy = true;
         try
@@ -283,6 +316,19 @@ public sealed partial class CollectionsViewModel : ObservableObject
                     .GetRequiredService<IAlbumRepository>()
                     .GetAsync()
                     .ConfigureAwait(true);
+            }
+
+            // Only the shelf still open may raise the list, the way the viewer
+            // only lets the picture still open fill in its details. Nothing
+            // covers the screen while this reads, so the back chevron beside the
+            // name stays live, and a list raised for a shelf that has been left
+            // behind has a blank heading, ticks describing somewhere else, and a
+            // Save that wants an open shelf and so can never light up. By id
+            // rather than by row, because a mosaic arriving replaces the row it
+            // lands on.
+            if (Open?.Id != shelf)
+            {
+                return;
             }
 
             // Every album, including the ones standing on another shelf. An
@@ -310,8 +356,7 @@ public sealed partial class CollectionsViewModel : ObservableObject
             OnPropertyChanged(nameof(Chosen));
             IsPicking = true;
         }
-        catch (Exception ex) when (ex is IOException or InvalidOperationException
-                                      or UnauthorizedAccessException)
+        catch (Exception ex) when (LibraryFailure.IsExpected(ex))
         {
             Raise($"The albums could not be read: {ex.Message}");
         }
@@ -359,8 +404,13 @@ public sealed partial class CollectionsViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanEditOpen))]
     private async Task SavePickAsync()
     {
-        int shelf = Open!.Id;
-        string name = Open.Name;
+        if (Open is not CollectionItem collection)
+        {
+            return;
+        }
+
+        int shelf = collection.Id;
+        string name = collection.Name;
         List<int> ticked = [.. Choices.Where(choice => choice.IsChosen).Select(choice => choice.Id)];
 
         IsBusy = true;
@@ -380,8 +430,7 @@ public sealed partial class CollectionsViewModel : ObservableObject
             Open = All.FirstOrDefault(item => item.Id == shelf);
             Raise(Told(result, name));
         }
-        catch (Exception ex) when (ex is IOException or InvalidOperationException
-                                      or UnauthorizedAccessException)
+        catch (Exception ex) when (LibraryFailure.IsExpected(ex))
         {
             Raise($"That could not be saved: {ex.Message}");
         }
@@ -395,8 +444,13 @@ public sealed partial class CollectionsViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanEditOpen))]
     private async Task DeleteAsync()
     {
-        string name = Open!.Name;
-        int shelf = Open.Id;
+        if (Open is not CollectionItem collection)
+        {
+            return;
+        }
+
+        string name = collection.Name;
+        int shelf = collection.Id;
 
         IsBusy = true;
         try
@@ -413,8 +467,7 @@ public sealed partial class CollectionsViewModel : ObservableObject
             await ReloadAsync().ConfigureAwait(true);
             Raise($"Removed \"{name}\". Every album that was on it is back on the wall.");
         }
-        catch (Exception ex) when (ex is IOException or InvalidOperationException
-                                      or UnauthorizedAccessException)
+        catch (Exception ex) when (LibraryFailure.IsExpected(ex))
         {
             Raise($"That could not be removed: {ex.Message}");
         }
@@ -459,43 +512,50 @@ public sealed partial class CollectionsViewModel : ObservableObject
     /// The kept count is said out loud rather than folded into the added one.
     /// Keeping a suggestion is a change to the library that outlives this
     /// screen - a kept album is one no later pass may rewrite - and it was not
-    /// what the user pressed the button to do.
+    /// what the user pressed the button to do. It is also why nothing joining
+    /// and nothing leaving is not enough to call a shelf unchanged: a proposal
+    /// already standing on it is accepted by this save too.
+    ///
+    /// <para>Each clause carries the shelf's name itself rather than sharing one
+    /// hung on the end of them all. "Added" and "taken off" do not take the same
+    /// preposition, so a single ending fits only whichever clause happens to
+    /// come last. The second clause of a save that did both drops the noun,
+    /// because the first one has already said it.</para>
     /// </remarks>
     private static string Told(CollectionFillResult result, string name)
     {
-        if (result.Added == 0 && result.Removed == 0)
+        if (result.Added == 0 && result.Removed == 0 && result.Kept == 0)
         {
             return $"\"{name}\" is unchanged.";
         }
 
-        List<string> parts = [];
-
-        if (result.Added > 0)
+        string said = (result.Added, result.Removed) switch
         {
-            parts.Add(result.Added == 1 ? "1 album added" : $"{result.Added:N0} albums added");
-        }
+            (0, 0) => $"Nothing joined or left \"{name}\".",
+            (0, int off) => $"{Counted(off)} taken off \"{name}\".",
+            (int on, 0) => $"{Counted(on)} added to \"{name}\".",
+            (int on, int off) =>
+                $"{Counted(on)} added to \"{name}\", and {off:N0} taken off.",
+        };
 
-        if (result.Removed > 0)
-        {
-            parts.Add(result.Removed == 1
-                ? "1 taken off"
-                : $"{result.Removed:N0} taken off");
-        }
-
-        string said = $"{string.Join(", ", parts)} to \"{name}\".";
-
-        if (result.From.Count > 0)
-        {
-            said = $"{said} Taken out of {string.Join(" and ", result.From)}.";
-        }
-
-        return result.Kept switch
+        // Before where they came from, so "it" is the shelf just named rather
+        // than the last collection in that list.
+        said = result.Kept switch
         {
             0 => said,
-            1 => $"{said} One of them was a suggestion, and is now yours to keep.",
-            int kept => $"{said} {kept:N0} of them were suggestions, and are now yours to keep.",
+            1 => $"{said} One album on it was a suggestion, and is now yours to keep.",
+            int kept => $"{said} {kept:N0} albums on it were suggestions, and are now "
+                        + "yours to keep.",
         };
+
+        return result.From.Count == 0
+            ? said
+            : $"{said} Taken out of {string.Join(" and ", result.From)}.";
     }
+
+    /// <summary>Albums by the number, the way the band's rows count them.</summary>
+    private static string Counted(int albums) =>
+        albums == 1 ? "1 album" : $"{albums:N0} albums";
 
     private void Raise(string said) => Changed?.Invoke(this, said);
 

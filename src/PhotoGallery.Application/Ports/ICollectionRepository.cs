@@ -67,6 +67,10 @@ public interface ICollectionRepository
     /// nobody asked for - an album is on one collection, so choosing this one is
     /// leaving that one, and the same rule the photographs follow is said out
     /// loud rather than enforced in silence.</para>
+    ///
+    /// <para>A suggestion put on a shelf is kept on the way in, exactly as one
+    /// ticked on <see cref="SetAlbumsAsync"/>'s list is: a rebuild removes a
+    /// proposal nobody answered, and choosing a shelf for it is answering.</para>
     /// </remarks>
     Task<string?> SetAlbumCollectionAsync(
         int albumId,

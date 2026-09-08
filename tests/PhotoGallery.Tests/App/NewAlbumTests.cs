@@ -28,6 +28,7 @@ public sealed class NewAlbumTests : IDisposable
     private readonly string _root;
     private readonly ServiceProvider _services;
     private readonly FakeAlbums _repository = new();
+    private readonly TwoPeople _people = new();
     private readonly AlbumsViewModel _albums;
 
     public NewAlbumTests()
@@ -41,7 +42,7 @@ public sealed class NewAlbumTests : IDisposable
         _services = new ServiceCollection()
             .AddSingleton<IAlbumRepository>(_repository)
             .AddSingleton<ICollectionRepository, NoCollections>()
-            .AddSingleton<IPeopleReader, TwoPeople>()
+            .AddSingleton<IPeopleReader>(_people)
             .AddSingleton<IPlaceReader, OnePlaceAndOneCountry>()
             .BuildServiceProvider();
 
@@ -80,6 +81,34 @@ public sealed class NewAlbumTests : IDisposable
         Assert.Empty(_albums.ShownPlaces);
         Assert.Empty(_albums.ChosenPeople);
         Assert.Empty(_albums.ChosenPlaces);
+    }
+
+    /// <summary>
+    /// The number in each box is read again every time the panel opens.
+    /// </summary>
+    /// <remarks>
+    /// It counts a list that is only filled when a panel opens, and nothing
+    /// announced it - so the box read the count once, when it was first drawn,
+    /// and naming more faces under People and coming back here still showed the
+    /// old number. The second open is the half that failed, which is why this
+    /// opens the panel twice.
+    /// </remarks>
+    [Fact]
+    public async Task ReopeningThePanel_SaysHowManyNamesAndPlacesThereAreNow()
+    {
+        await _albums.StartCreatingCommand.ExecuteAsync(null);
+
+        List<string> announced = [];
+        _albums.PropertyChanged += (_, e) => announced.Add(e.PropertyName ?? string.Empty);
+
+        await _albums.StartCreatingCommand.ExecuteAsync(null);
+
+        Assert.Contains(nameof(AlbumsViewModel.PeoplePrompt), announced);
+        Assert.Contains(nameof(AlbumsViewModel.PlacesPrompt), announced);
+
+        // Two people and one exact place, each said the way its own count reads.
+        Assert.Equal("Add someone - 2 people named", _albums.PeoplePrompt);
+        Assert.Equal("Add a place - 1 place known", _albums.PlacesPrompt);
     }
 
     [Fact]
@@ -174,6 +203,69 @@ public sealed class NewAlbumTests : IDisposable
         Assert.Same(first, Assert.Single(_albums.ChosenPeople));
     }
 
+    /// <summary>
+    /// The line under the box is about the library, not about the list.
+    /// </summary>
+    /// <remarks>
+    /// Add somebody, then type their name again. The box offers nothing, because
+    /// they are already in the rule - and the caution about names nobody has
+    /// would be printed two rows under that person's own chip.
+    /// </remarks>
+    [Fact]
+    public async Task TypingTheNameOfSomebodyAlreadyInTheRule_SaysSoRatherThanThatNobodyHasIt()
+    {
+        await _albums.StartCreatingCommand.ExecuteAsync(null);
+        _albums.PeopleFilter = "dia";
+        _albums.AddPersonCommand.Execute(_albums.ShownPeople.First());
+
+        _albums.PeopleFilter = "dia";
+
+        Assert.Empty(_albums.ShownPeople);
+        Assert.Equal("Diana", Assert.Single(_albums.ChosenPeople).Name);
+        Assert.StartsWith(
+            "They are already in the rule",
+            _albums.PeopleFilterNote,
+            StringComparison.Ordinal);
+
+        // And the caution is still there for a name the library really does not
+        // have, chip or no chip.
+        _albums.PeopleFilter = "Nobody At All";
+
+        Assert.StartsWith(
+            "Nobody in this library goes by that name",
+            _albums.PeopleFilterNote,
+            StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Taking the chip off hands the name back to the box, and the line above it
+    /// is told.
+    /// </summary>
+    /// <remarks>
+    /// A property assertion alone cannot catch this: the getter recomputes, so
+    /// it is the notification that was missing. Dropping a chip re-ran the
+    /// filter and announced only the list, which left the line standing over the
+    /// very name it had just handed back.
+    /// </remarks>
+    [Fact]
+    public async Task TakingTheChipOffWhileTheirNameIsTyped_TakesTheLineWithIt()
+    {
+        await _albums.StartCreatingCommand.ExecuteAsync(null);
+        _albums.PeopleFilter = "dia";
+        _albums.AddPersonCommand.Execute(_albums.ShownPeople.First());
+        _albums.PeopleFilter = "dia";
+
+        List<string> announced = [];
+        _albums.PropertyChanged += (_, e) => announced.Add(e.PropertyName ?? string.Empty);
+
+        _albums.DropPersonCommand.Execute(_albums.ChosenPeople.Single());
+
+        Assert.Equal("Diana", Assert.Single(_albums.ShownPeople).Name);
+        Assert.Equal(string.Empty, _albums.PeopleFilterNote);
+        Assert.Contains(nameof(AlbumsViewModel.PeopleFilterNote), announced);
+        Assert.Contains(nameof(AlbumsViewModel.HasPeopleFilterNote), announced);
+    }
+
     [Fact]
     public async Task TypingAPlaceAndPressingEnter_AddsIt()
     {
@@ -187,13 +279,33 @@ public sealed class NewAlbumTests : IDisposable
     }
 
     [Fact]
+    public async Task TypingThePlaceAlreadyInTheRule_SaysSoRatherThanThatNowhereHasIt()
+    {
+        await _albums.StartCreatingCommand.ExecuteAsync(null);
+        _albums.PlacesFilter = "gent";
+        _albums.AddPlaceCommand.Execute(_albums.ShownPlaces.First());
+
+        _albums.PlacesFilter = "gent";
+
+        Assert.Empty(_albums.ShownPlaces);
+        Assert.StartsWith(
+            "That place is already in the rule",
+            _albums.PlacesFilterNote,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task ANameNobodyHasBeenGiven_SaysSoAndAddsNothing()
     {
         await _albums.StartCreatingCommand.ExecuteAsync(null);
 
         _albums.PeopleFilter = "Nobody At All";
 
-        Assert.True(_albums.NobodyByThatName);
+        Assert.True(_albums.HasPeopleFilterNote);
+        Assert.StartsWith(
+            "Nobody in this library goes by that name",
+            _albums.PeopleFilterNote,
+            StringComparison.Ordinal);
         Assert.Empty(_albums.ShownPeople);
 
         // Enter on a name that matches nobody must not tick something else.
@@ -203,6 +315,34 @@ public sealed class NewAlbumTests : IDisposable
         Assert.Equal("Nobody At All", _albums.PeopleFilter);
     }
 
+    /// <summary>
+    /// The line under each box says what the panel says, not a sentence of its
+    /// own.
+    /// </summary>
+    /// <remarks>
+    /// Read as text because a binding to a property that no longer exists fails
+    /// silently, and this one fails the wrong way round: the Visibility binding
+    /// falls back to Visible, so a caution nothing can switch off would be
+    /// printed under the box for good.
+    /// </remarks>
+    [Fact]
+    public void TheLineUnderEachBoxSaysWhatThePanelSays()
+    {
+        string controls = File.ReadAllText(AppMarkup.PathTo("Theme", "Controls.xaml"));
+
+        Assert.DoesNotContain("NobodyByThatName", controls, StringComparison.Ordinal);
+        Assert.DoesNotContain("NowhereByThatName", controls, StringComparison.Ordinal);
+
+        Assert.Contains(
+            "Text=\"{Binding PeopleFilterNote}\"", controls, StringComparison.Ordinal);
+        Assert.Contains(
+            "Visibility=\"{Binding HasPeopleFilterNote,", controls, StringComparison.Ordinal);
+        Assert.Contains(
+            "Text=\"{Binding PlacesFilterNote}\"", controls, StringComparison.Ordinal);
+        Assert.Contains(
+            "Visibility=\"{Binding HasPlacesFilterNote,", controls, StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task AnEmptyBox_AddsNothingOnEnter()
     {
@@ -210,7 +350,7 @@ public sealed class NewAlbumTests : IDisposable
 
         _albums.ChoosePersonCommand.Execute(null);
 
-        Assert.False(_albums.NobodyByThatName);
+        Assert.False(_albums.HasPeopleFilterNote);
         Assert.All(_albums.People, choice => Assert.False(choice.IsChosen));
     }
 
@@ -225,6 +365,39 @@ public sealed class NewAlbumTests : IDisposable
 
         Assert.Equal(string.Empty, _albums.PeopleFilter);
         Assert.Empty(_albums.ShownPeople);
+    }
+
+    /// <summary>
+    /// A directory that cannot be read leaves no panel to make an album from.
+    /// </summary>
+    /// <remarks>
+    /// The same panel describes a new album, and it used to open before the two
+    /// directories behind it were read. A read that failed left whatever the
+    /// album before it had put in the fields, so Create made an album carrying a
+    /// rule nobody had typed for it.
+    /// </remarks>
+    [Fact]
+    public async Task PeopleThatCannotBeRead_LeaveNoPanelToMakeAnAlbumFrom()
+    {
+        await _albums.StartCreatingCommand.ExecuteAsync(null);
+        _albums.People.Single(choice => choice.Id == Ana).IsChosen = true;
+        _albums.IsOneDay = true;
+        _albums.RuleDay = new DateTime(2019, 3, 20);
+        _albums.CancelEditCommand.Execute(null);
+
+        _people.Unreadable = true;
+        await _albums.StartCreatingCommand.ExecuteAsync(null);
+
+        Assert.False(_albums.IsEditing);
+        Assert.Contains("could not be read", _albums.Status, StringComparison.Ordinal);
+
+        // Nothing to create from, so nothing is created - and certainly not an
+        // album carrying the rule typed for the one before it.
+        _albums.EditedName = "Whatever comes next";
+        await _albums.SaveCommand.ExecuteAsync(null);
+
+        Assert.Null(_repository.Created);
+        Assert.Empty(_repository.RulesSet);
     }
 
     [Fact]
@@ -489,13 +662,19 @@ public sealed class NewAlbumTests : IDisposable
 
     private sealed class TwoPeople : IPeopleReader
     {
+        /// <summary>True once the directory is to refuse to be read.</summary>
+        public bool Unreadable { get; set; }
+
         public Task<IReadOnlyList<PersonDirectoryEntry>> GetDirectoryAsync(
             CancellationToken cancellationToken = default) =>
-            Task.FromResult<IReadOnlyList<PersonDirectoryEntry>>(
-            [
-                new PersonDirectoryEntry(Ana, "Ana Lim", 120),
-                new PersonDirectoryEntry(2, "Diana", 1),
-            ]);
+            Unreadable
+                ? Task.FromException<IReadOnlyList<PersonDirectoryEntry>>(
+                    new IOException("the library is busy"))
+                : Task.FromResult<IReadOnlyList<PersonDirectoryEntry>>(
+                [
+                    new PersonDirectoryEntry(Ana, "Ana Lim", 120),
+                    new PersonDirectoryEntry(2, "Diana", 1),
+                ]);
 
         public Task<IReadOnlyList<FaceRecord>> GetFacesAsync(
             bool confirmedOnly, CancellationToken cancellationToken = default) =>

@@ -12,10 +12,11 @@ namespace PhotoGallery.Tests.Infrastructure;
 /// applied.
 /// </summary>
 /// <remarks>
-/// Two of these are claims about the database rather than about a handler - an
-/// album is on one collection because it is one column, and two collections
-/// cannot share a name because of a filtered unique index. Neither would be
-/// proved by an in-memory model.
+/// Three of these are claims about the database rather than about a handler -
+/// an album is on one collection because it is one column, two collections
+/// cannot share a name because of a filtered unique index, and a removal that
+/// fails halfway puts nothing back because the pair of writes is one
+/// transaction. None of them would be proved by an in-memory model.
 /// </remarks>
 public sealed class CollectionShelfTests : IDisposable
 {
@@ -147,9 +148,77 @@ public sealed class CollectionShelfTests : IDisposable
         _db.ChangeTracker.Clear();
 
         Assert.Equal(1, result.Kept);
-        Assert.Equal(
-            AlbumOrigin.Accepted,
-            await _db.Albums.Where(a => a.Id == proposed).Select(a => a.Origin).SingleAsync());
+        Assert.Equal(AlbumOrigin.Accepted, await OriginOf(proposed));
+    }
+
+    /// <summary>
+    /// The album's own panel is the other way on to a shelf, and it keeps a
+    /// suggestion for the same reason the tick list does.
+    /// </summary>
+    [Fact]
+    public async Task PuttingASuggestionOnAShelfFromItsOwnPanelKeepsIt()
+    {
+        int holiday = await _shelves.CreateAsync("Holiday");
+        int proposed = Album("March 2019", "2019-03-20..2019-03-20");
+
+        await _shelves.SetAlbumCollectionAsync(proposed, holiday);
+        _db.ChangeTracker.Clear();
+
+        Assert.Equal(holiday, await ShelfOf(proposed));
+        Assert.Equal(AlbumOrigin.Accepted, await OriginOf(proposed));
+    }
+
+    /// <summary>
+    /// A rebuild removes a proposal nobody answered, and putting an album on a
+    /// shelf is answering. The removal is a delete rather than a tombstone, so
+    /// getting this wrong loses the album outright.
+    /// </summary>
+    [Fact]
+    public async Task AnAlbumShelvedFromItsOwnPanelSurvivesTheNextScan()
+    {
+        int holiday = await _shelves.CreateAsync("Holiday");
+        int proposed = Album("March 2019", "2019-03-20..2019-03-20");
+
+        await _shelves.SetAlbumCollectionAsync(proposed, holiday);
+        _db.ChangeTracker.Clear();
+
+        await new SqliteAlbumRepository(_db).SaveProposalsAsync([]);
+        _db.ChangeTracker.Clear();
+
+        Assert.True(
+            await _db.Albums.IgnoreQueryFilters().AnyAsync(album => album.Id == proposed));
+        Assert.Equal(holiday, await ShelfOf(proposed));
+    }
+
+    /// <summary>An album that was already the user's is not re-decided.</summary>
+    [Fact]
+    public async Task ShelvingAnAlbumTheUserMadeLeavesItTheirs()
+    {
+        int holiday = await _shelves.CreateAsync("Holiday");
+        int genting = Album("Genting");
+
+        await _shelves.SetAlbumCollectionAsync(genting, holiday);
+        _db.ChangeTracker.Clear();
+
+        Assert.Equal(AlbumOrigin.Made, await OriginOf(genting));
+    }
+
+    /// <summary>
+    /// Taking an album off a shelf is not deciding to keep it - the same line
+    /// the tick list draws, where only an album named on the shelf is kept.
+    /// </summary>
+    [Fact]
+    public async Task TakingASuggestionOffAShelfDoesNotKeepIt()
+    {
+        int holiday = await _shelves.CreateAsync("Holiday");
+        int proposed = Album("March 2019", "2019-03-20..2019-03-20");
+        Shelve(proposed, holiday);
+
+        await _shelves.SetAlbumCollectionAsync(proposed, null);
+        _db.ChangeTracker.Clear();
+
+        Assert.Null(await ShelfOf(proposed));
+        Assert.Equal(AlbumOrigin.Proposed, await OriginOf(proposed));
     }
 
     [Fact]
@@ -198,6 +267,40 @@ public sealed class CollectionShelfTests : IDisposable
         Assert.Empty(await _db.Collections.ToListAsync());
         Assert.NotNull(
             await _db.Collections.IgnoreQueryFilters().SingleAsync(c => c.Id == holiday));
+    }
+
+    /// <summary>
+    /// Removing a shelf is two writes - the albums come off it, then it is
+    /// tombstoned - and ExecuteUpdate commits a statement of its own. Without
+    /// one transaction over the pair, a failure on the second leaves the albums
+    /// already stripped off a shelf that is still standing, and nothing left
+    /// saying which albums they were.
+    /// </summary>
+    /// <remarks>
+    /// The failure is a trigger rather than a stub, because the claim is about
+    /// what the file is left holding: only a real statement failing halfway
+    /// through a real removal shows that the first write went back with it.
+    /// </remarks>
+    [Fact]
+    public async Task ARemovalThatFailsHalfwayLeavesTheShelfExactlyAsItWas()
+    {
+        int holiday = await _shelves.CreateAsync("Holiday");
+        int genting = Album("Genting");
+        await _shelves.SetAlbumsAsync(holiday, [genting]);
+        _db.ChangeTracker.Clear();
+
+        _db.Database.ExecuteSqlRaw(
+            """
+            CREATE TRIGGER RefuseTheTombstone
+            BEFORE UPDATE OF "DeletedUtc" ON "Collections"
+            BEGIN SELECT RAISE(ABORT, 'the shelf refuses to be tombstoned'); END;
+            """);
+
+        await Assert.ThrowsAnyAsync<DbUpdateException>(() => _shelves.DeleteAsync(holiday));
+        _db.ChangeTracker.Clear();
+
+        Assert.Equal(holiday, await ShelfOf(genting));
+        Assert.Equal(1, Assert.Single(await _shelves.GetAsync()).AlbumCount);
     }
 
     [Fact]
@@ -313,6 +416,9 @@ public sealed class CollectionShelfTests : IDisposable
     private async Task<int?> ShelfOf(int albumId) =>
         await _db.Albums.Where(a => a.Id == albumId).Select(a => a.CollectionId).SingleAsync();
 
+    private async Task<AlbumOrigin> OriginOf(int albumId) =>
+        await _db.Albums.Where(a => a.Id == albumId).Select(a => a.Origin).SingleAsync();
+
     private int Album(string name, string? proposalKey = null, DateTime? ends = null)
     {
         var album = new Album
@@ -362,6 +468,18 @@ public sealed class CollectionShelfTests : IDisposable
     {
         Album album = _db.Albums.Single(a => a.Id == albumId);
         album.CoverAssetId = assetId;
+        _db.SaveChanges();
+        _db.ChangeTracker.Clear();
+    }
+
+    /// <summary>
+    /// A shelved proposal written straight to the column, which is the state a
+    /// library filled before the panel kept what it shelved already holds.
+    /// </summary>
+    private void Shelve(int albumId, int collectionId)
+    {
+        Album album = _db.Albums.Single(a => a.Id == albumId);
+        album.CollectionId = collectionId;
         _db.SaveChanges();
         _db.ChangeTracker.Clear();
     }

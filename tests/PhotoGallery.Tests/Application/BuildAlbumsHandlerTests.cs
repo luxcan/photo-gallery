@@ -168,6 +168,58 @@ public sealed class BuildAlbumsHandlerTests : IDisposable
         Assert.DoesNotContain(proposed.Members, m => taken.Contains(m.AssetId));
     }
 
+    /// <summary>
+    /// A suggestion found on a shelf is kept by the next rebuild rather than
+    /// removed, and is the user's from then on.
+    /// </summary>
+    /// <remarks>
+    /// Putting an album on a shelf accepts it on the way in, so nothing writes
+    /// a row like this any more - but a library published before that rule
+    /// existed already holds them, and no migration can tell them apart from a
+    /// proposal nobody answered. The rebuild is where they are healed, because
+    /// the removal below is a delete rather than a tombstone: without this, the
+    /// next scan takes an album off the collection somebody filled and leaves
+    /// nothing to put back. Written directly for that reason - the way it came
+    /// about is a version of the app that is no longer here.
+    /// </remarks>
+    [Fact]
+    public async Task ASuggestionOnAShelfIsKeptByARebuildRatherThanRemoved()
+    {
+        var holiday = new Collection
+        {
+            Name = "Holiday",
+            CreatedUtc = DateTime.UtcNow,
+            NamedUtc = DateTime.UtcNow,
+        };
+
+        _db.Collections.Add(holiday);
+        _db.SaveChanges();
+
+        var shelved = new Album
+        {
+            Name = "March 2019",
+            StartUtc = Trip,
+            EndUtc = Trip,
+            Kind = AlbumKind.Period,
+            Origin = AlbumOrigin.Proposed,
+            ProposalKey = "2019-03-03..2019-03-03",
+            BuiltUtc = DateTime.UtcNow,
+            CollectionId = holiday.Id,
+        };
+
+        _db.Albums.Add(shelved);
+        _db.SaveChanges();
+        _db.ChangeTracker.Clear();
+
+        // Nothing offered, so its key is one the clusterer no longer makes.
+        await Repository().SaveProposalsAsync([]);
+        _db.ChangeTracker.Clear();
+
+        Album kept = await _db.Albums.SingleAsync(c => c.Id == shelved.Id);
+        Assert.Equal(holiday.Id, kept.CollectionId);
+        Assert.Equal(AlbumOrigin.Accepted, kept.Origin);
+    }
+
     [Fact]
     public async Task ANameTheUserTypedSurvivesARebuild()
     {

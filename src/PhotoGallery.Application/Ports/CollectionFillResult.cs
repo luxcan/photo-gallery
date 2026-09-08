@@ -8,11 +8,12 @@ namespace PhotoGallery.Application.Ports;
 /// say that it did.
 /// </param>
 /// <param name="Kept">
-/// How many of the albums that joined were suggestions, and were kept on the
-/// way in. Putting a proposal on a shelf is a person deciding it is worth
-/// keeping, so it is accepted rather than left in the queue of questions - and
-/// that is a change to somebody's library, which must be said rather than done
-/// quietly.
+/// How many suggestions were kept: every proposal left standing on the shelf,
+/// not only the ones that just joined. An album can reach a shelf while it is
+/// still proposed, and the save that names it is what accepts it. Putting a
+/// proposal on a shelf is a person deciding it is worth keeping, so it is
+/// accepted rather than left in the queue of questions - and that is a change
+/// to somebody's library, which must be said rather than done quietly.
 /// </param>
 /// <param name="From">
 /// The collections albums were taken off to get here, named. An album is on at

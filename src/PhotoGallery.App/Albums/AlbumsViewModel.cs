@@ -5,6 +5,7 @@ using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.DependencyInjection;
 using PhotoGallery.App.Gallery;
 using PhotoGallery.App.Imaging;
+using PhotoGallery.App.Shell;
 using PhotoGallery.Application.Ports;
 using PhotoGallery.Application.UseCases.Gallery;
 
@@ -50,6 +51,31 @@ public sealed partial class AlbumsViewModel : ObservableObject
     /// themselves every time the screen refreshed.
     /// </remarks>
     private bool _rebuilding;
+
+    /// <summary>
+    /// Which request to open the description panel is the current one.
+    /// </summary>
+    /// <remarks>
+    /// The rule and the two directories are read before the panel opens, and
+    /// during that read the user can go back and ask for a different album, or
+    /// for a new one. Both fill the same fields, so without this whichever read
+    /// finished last would win - and the panel would stand open on one album
+    /// holding another album's rule, which Save then writes.
+    /// </remarks>
+    private int _panelRequest;
+
+    /// <summary>
+    /// Which shelf the wall is standing in, as the band last reported it.
+    /// </summary>
+    /// <remarks>
+    /// The id rather than the row, because the row is not the question. The
+    /// band's rows are records, and it hands back a new one for the same shelf
+    /// every time it is read and again when that shelf's mosaic arrives - so
+    /// <see cref="CollectionsViewModel.Open"/> changes while the reader has not
+    /// gone anywhere. Reading that as having gone somewhere closed the album
+    /// they had open every time anything was saved.
+    /// </remarks>
+    private int? _openShelf;
 
     /// <summary>
     /// True while this screen is reading or writing.
@@ -156,8 +182,14 @@ public sealed partial class AlbumsViewModel : ObservableObject
     /// Edit button rather than along the top of the album. Laid out on the strip
     /// they shouted at somebody who had only come to look at their photographs -
     /// and looking is what this screen is for.
+    ///
+    /// <para>It is also what says the fields underneath mean anything. They are
+    /// filled as the panel opens and read again by Save, so Save is listed here:
+    /// with the panel shut they hold the last album's answers rather than
+    /// anybody's.</para>
     /// </remarks>
     [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(SaveCommand))]
     private bool _isEditing;
 
     /// <summary>
@@ -394,19 +426,62 @@ public sealed partial class AlbumsViewModel : ObservableObject
     public bool HasPlacesToPick => Places.Count > 0;
 
     /// <summary>
-    /// True when what has been typed matches nobody.
+    /// What the people box says when it is offering nothing.
     /// </summary>
     /// <remarks>
-    /// Said rather than left as an empty list, because a rule can only ask for
-    /// somebody the library has already put a name to: a face nobody has named
-    /// is not a person yet, and a name typed at this box cannot make it one.
-    /// Silence here reads as "still loading" rather than "there is no such
-    /// person".
+    /// Two answers, because the list under the box empties for two reasons and
+    /// only one of them is a mistake. A name the library cannot match is a
+    /// caution: a rule can only ask for somebody the library has already put a
+    /// name to, and a name typed at this box cannot make one. A name it can
+    /// match but is not offering is the opposite - that person is already in
+    /// the rule, and the caution would be printed two rows under their own
+    /// chip.
+    ///
+    /// <para>Silence is not the third answer. An empty list under a box that
+    /// will not take the name on Enter either reads as "still loading" rather
+    /// than as a reply.</para>
     /// </remarks>
-    public bool NobodyByThatName => PeopleFilter.Trim().Length > 0 && ShownPeople.Count == 0;
+    public string PeopleFilterNote
+    {
+        get
+        {
+            string wanted = PeopleFilter.Trim();
+            if (wanted.Length == 0 || ShownPeople.Count > 0)
+            {
+                return string.Empty;
+            }
 
-    /// <summary>True when what has been typed matches nowhere.</summary>
-    public bool NowhereByThatName => PlacesFilter.Trim().Length > 0 && ShownPlaces.Count == 0;
+            return People.Any(choice => Matches(choice, wanted))
+                ? "They are already in the rule - their name is above the box, and "
+                  + "pressing it takes them back out."
+                : "Nobody in this library goes by that name. A rule can only ask for "
+                  + "somebody whose face you have already named.";
+        }
+    }
+
+    public bool HasPeopleFilterNote => PeopleFilterNote.Length > 0;
+
+    /// <summary>What the places box says when it is offering nothing.</summary>
+    public string PlacesFilterNote
+    {
+        get
+        {
+            string wanted = PlacesFilter.Trim();
+            if (wanted.Length == 0 || ShownPlaces.Count > 0)
+            {
+                return string.Empty;
+            }
+
+            return Places.Any(choice => Matches(choice, wanted))
+                ? "That place is already in the rule - its name is above the box, and "
+                  + "pressing it takes it back out."
+                : "Nowhere in this library goes by that name. A place comes from the "
+                  + "coordinates in a photograph, so a rule can only ask for one a scan "
+                  + "has already worked out.";
+        }
+    }
+
+    public bool HasPlacesFilterNote => PlacesFilterNote.Length > 0;
 
     public bool IsAnyDay
     {
@@ -497,6 +572,13 @@ public sealed partial class AlbumsViewModel : ObservableObject
     }
 
     /// <summary>Opens the panel that renames, keeps or throws this one away.</summary>
+    /// <remarks>
+    /// Opened last, on a rule that has actually been read. Opening it first and
+    /// filling it in behind the read looked the same for as long as the read
+    /// succeeded; when it failed, the panel stood open on this album showing the
+    /// last one's dates, people and places - and Save, which reads those same
+    /// fields, wrote the last album's rule onto this one.
+    /// </remarks>
     [RelayCommand(CanExecute = nameof(HasSelected))]
     private async Task EditAsync()
     {
@@ -505,13 +587,24 @@ public sealed partial class AlbumsViewModel : ObservableObject
             return;
         }
 
-        IsNewAlbum = false;
-        EditedName = SelectedName;
+        int request = Interlocked.Increment(ref _panelRequest);
         Status = string.Empty;
-        IsEditing = true;
-        ShowCollections(album.Summary.CollectionId);
 
-        await LoadRuleAsync(album.Id).ConfigureAwait(true);
+        // Still the same album, asked by id rather than by the row itself: a
+        // cover finishing its decode replaces the row it lands on, so the album
+        // that is open is very often a different object by the time a read
+        // started before it comes back.
+        if (!await LoadRuleAsync(album.Id, request).ConfigureAwait(true)
+            || Selected is not AlbumItem open
+            || open.Id != album.Id)
+        {
+            return;
+        }
+
+        IsNewAlbum = false;
+        EditedName = open.Name;
+        ShowCollections(open.Summary.CollectionId);
+        IsEditing = true;
     }
 
     /// <summary>
@@ -541,7 +634,8 @@ public sealed partial class AlbumsViewModel : ObservableObject
     private int? ChosenCollection => EditedCollection.Id == 0 ? null : EditedCollection.Id;
 
     /// <summary>Reads one album's rule into the panel.</summary>
-    private async Task LoadRuleAsync(int albumId)
+    /// <returns>Whether the fields now describe this album's rule.</returns>
+    private async Task<bool> LoadRuleAsync(int albumId, int request)
     {
         AlbumRule rule;
 
@@ -553,13 +647,13 @@ public sealed partial class AlbumsViewModel : ObservableObject
                 .GetRuleAsync(albumId)
                 .ConfigureAwait(true);
         }
-        catch (Exception ex) when (ex is IOException or InvalidOperationException)
+        catch (Exception ex) when (LibraryFailure.IsExpected(ex))
         {
             Status = $"The rule could not be read: {ex.Message}";
-            return;
+            return false;
         }
 
-        await ShowRuleAsync(rule).ConfigureAwait(true);
+        return await ShowRuleAsync(rule, request).ConfigureAwait(true);
     }
 
     /// <summary>
@@ -575,7 +669,8 @@ public sealed partial class AlbumsViewModel : ObservableObject
     /// a fourth part added to a rule has to reach both, or they quietly disagree
     /// about what an album can be.</para>
     /// </remarks>
-    private async Task ShowRuleAsync(AlbumRule rule)
+    /// <returns>Whether the fields now describe the rule that was asked for.</returns>
+    private async Task<bool> ShowRuleAsync(AlbumRule rule, int request)
     {
         IReadOnlyList<PersonDirectoryEntry> people;
         IReadOnlyList<PlaceDirectoryEntry> places;
@@ -593,10 +688,18 @@ public sealed partial class AlbumsViewModel : ObservableObject
                 .GetDirectoryAsync()
                 .ConfigureAwait(true);
         }
-        catch (Exception ex) when (ex is IOException or InvalidOperationException)
+        catch (Exception ex) when (LibraryFailure.IsExpected(ex))
         {
             Status = $"The people and places could not be read: {ex.Message}";
-            return;
+            return false;
+        }
+
+        // Only the request the user is waiting on may fill these in. Going back
+        // and asking for another album, or for a new one, starts a second read
+        // over the same fields, and whichever finished last would otherwise win.
+        if (request != Volatile.Read(ref _panelRequest))
+        {
+            return false;
         }
 
         ShowDates(rule);
@@ -613,6 +716,12 @@ public sealed partial class AlbumsViewModel : ObservableObject
 
         OnPropertyChanged(nameof(HasPeopleToPick));
 
+        // Said separately from the list it counts: a binding to a property
+        // nothing announces is read once, when the panel is first realised, so
+        // the number in the box would otherwise be the first one it ever saw for
+        // the life of the window.
+        OnPropertyChanged(nameof(PeoplePrompt));
+
         Places.Clear();
 
         // Exact places only. A rule that admitted a whole country would be
@@ -628,14 +737,15 @@ public sealed partial class AlbumsViewModel : ObservableObject
         }
 
         OnPropertyChanged(nameof(HasPlacesToPick));
+        OnPropertyChanged(nameof(PlacesPrompt));
 
-        // Both filter boxes start empty, so this is what puts the full lists on
-        // the screen as well as what clears the last panel's typing.
+        // Emptied before the refresh below reads them, rather than relying on
+        // the change to do it: they are usually already empty, and an assignment
+        // that changes nothing raises nothing.
         PeopleFilter = string.Empty;
         PlacesFilter = string.Empty;
-        Narrow(People, ShownPeople, string.Empty);
-        Narrow(Places, ShownPlaces, string.Empty);
         RefreshChosenCounts();
+        return true;
     }
 
     /// <summary>One tickable line, counted the way both lists count.</summary>
@@ -664,10 +774,8 @@ public sealed partial class AlbumsViewModel : ObservableObject
     private void RefreshChosenCounts()
     {
         RefreshChosen();
-        Narrow(People, ShownPeople, PeopleFilter);
-        Narrow(Places, ShownPlaces, PlacesFilter);
-        OnPropertyChanged(nameof(HasPeopleSuggestions));
-        OnPropertyChanged(nameof(HasPlaceSuggestions));
+        NarrowPeople(PeopleFilter);
+        NarrowPlaces(PlacesFilter);
     }
 
     /// <summary>What the three rule fields currently say.</summary>
@@ -730,7 +838,18 @@ public sealed partial class AlbumsViewModel : ObservableObject
     /// adopt a name the app chose.</para>
     /// </remarks>
     [RelayCommand(CanExecute = nameof(CanSave))]
-    private Task SaveAsync() => IsNewAlbum ? MakeAlbumAsync() : UpdateAlbumAsync();
+    private Task SaveAsync()
+    {
+        // The guard the button is gated on, said again here the way every other
+        // command on this screen says it: what this writes is read off the
+        // panel's fields, and with the panel shut those belong to nothing.
+        if (!IsEditing)
+        {
+            return Task.CompletedTask;
+        }
+
+        return IsNewAlbum ? MakeAlbumAsync() : UpdateAlbumAsync();
+    }
 
     private async Task UpdateAlbumAsync()
     {
@@ -772,7 +891,7 @@ public sealed partial class AlbumsViewModel : ObservableObject
             IsEditing = false;
             Status = Saved(renaming ? $"Saved as \"{name}\"." : "Saved.", rule, left);
         }
-        catch (Exception ex) when (ex is IOException or InvalidOperationException)
+        catch (Exception ex) when (LibraryFailure.IsExpected(ex))
         {
             Status = $"That could not be saved: {ex.Message}";
         }
@@ -839,7 +958,7 @@ public sealed partial class AlbumsViewModel : ObservableObject
                 : $"\"{name}\" is ready. Open a picture and choose Add to an album.";
             ShowMine = true;
         }
-        catch (Exception ex) when (ex is IOException or InvalidOperationException)
+        catch (Exception ex) when (LibraryFailure.IsExpected(ex))
         {
             Status = $"That album could not be made: {ex.Message}";
         }
@@ -874,8 +993,14 @@ public sealed partial class AlbumsViewModel : ObservableObject
     /// <summary>
     /// An album may not be saved without a name, whatever else the panel holds.
     /// </summary>
+    /// <remarks>
+    /// And not at all with the panel shut. Everything Save writes is read off
+    /// the panel's fields, and those describe an album only while the panel that
+    /// was filled for it is open.
+    /// </remarks>
     private bool CanSave() =>
         IsIdle
+        && IsEditing
         && (IsNewAlbum || HasSelected)
         && !HasRuleProblem
         && EditedName.Trim().Length > 0;
@@ -940,7 +1065,7 @@ public sealed partial class AlbumsViewModel : ObservableObject
 
             await DecodeSuggestionsAsync().ConfigureAwait(true);
         }
-        catch (Exception ex) when (ex is IOException or InvalidOperationException)
+        catch (Exception ex) when (LibraryFailure.IsExpected(ex))
         {
             SuggestionNote = $"Nothing could be looked for: {ex.Message}";
         }
@@ -992,7 +1117,7 @@ public sealed partial class AlbumsViewModel : ObservableObject
                 await albums.RemoveAsync(album.Id, one).ConfigureAwait(true);
             }
         }
-        catch (Exception ex) when (ex is IOException or InvalidOperationException)
+        catch (Exception ex) when (LibraryFailure.IsExpected(ex))
         {
             SuggestionNote = $"That one could not be answered: {ex.Message}";
             return false;
@@ -1086,7 +1211,7 @@ public sealed partial class AlbumsViewModel : ObservableObject
                 ? "1 photograph added."
                 : $"{keeping.Length:N0} photographs added.";
         }
-        catch (Exception ex) when (ex is IOException or InvalidOperationException)
+        catch (Exception ex) when (LibraryFailure.IsExpected(ex))
         {
             SuggestionNote = $"They could not be added: {ex.Message}";
         }
@@ -1135,18 +1260,34 @@ public sealed partial class AlbumsViewModel : ObservableObject
         }
     }
 
-    partial void OnPeopleFilterChanged(string value)
+    partial void OnPeopleFilterChanged(string value) => NarrowPeople(value);
+
+    partial void OnPlacesFilterChanged(string value) => NarrowPlaces(value);
+
+    /// <summary>
+    /// Reads the people box again, and says everything that answers to it.
+    /// </summary>
+    /// <remarks>
+    /// One place, because the list under the box and the line above it are two
+    /// views of the same reading. They were narrowed from three call sites with
+    /// a different set of announcements each, which is how the line came to
+    /// outlive the list it belonged to: taking a chip off hands the name back to
+    /// the box, and only the list was told.
+    /// </remarks>
+    private void NarrowPeople(string typed)
     {
-        Narrow(People, ShownPeople, value);
-        OnPropertyChanged(nameof(NobodyByThatName));
+        Narrow(People, ShownPeople, typed);
         OnPropertyChanged(nameof(HasPeopleSuggestions));
+        OnPropertyChanged(nameof(PeopleFilterNote));
+        OnPropertyChanged(nameof(HasPeopleFilterNote));
     }
 
-    partial void OnPlacesFilterChanged(string value)
+    private void NarrowPlaces(string typed)
     {
-        Narrow(Places, ShownPlaces, value);
-        OnPropertyChanged(nameof(NowhereByThatName));
+        Narrow(Places, ShownPlaces, typed);
         OnPropertyChanged(nameof(HasPlaceSuggestions));
+        OnPropertyChanged(nameof(PlacesFilterNote));
+        OnPropertyChanged(nameof(HasPlacesFilterNote));
     }
 
     /// <summary>Puts one of the offered names into the rule.</summary>
@@ -1259,7 +1400,6 @@ public sealed partial class AlbumsViewModel : ObservableObject
         }
     }
 
-    /// <summary>Puts the ones whose name contains what was typed on the screen.</summary>
     /// <summary>
     /// Puts under the box the ones whose name contains what was typed, and are
     /// not already in the rule.
@@ -1283,13 +1423,22 @@ public sealed partial class AlbumsViewModel : ObservableObject
 
         foreach (TickChoice choice in all)
         {
-            if (!choice.IsChosen
-                && choice.Name.Contains(wanted, StringComparison.CurrentCultureIgnoreCase))
+            if (!choice.IsChosen && Matches(choice, wanted))
             {
                 shown.Add(choice);
             }
         }
     }
+
+    /// <summary>
+    /// Whether one name answers what was typed.
+    /// </summary>
+    /// <remarks>
+    /// One reading of the box, so the list under it and the line above it cannot
+    /// disagree about whether the library knows the name at all.
+    /// </remarks>
+    private static bool Matches(TickChoice choice, string wanted) =>
+        choice.Name.Contains(wanted, StringComparison.CurrentCultureIgnoreCase);
 
     private async Task DecodeSuggestionsAsync()
     {
@@ -1342,8 +1491,7 @@ public sealed partial class AlbumsViewModel : ObservableObject
             await Collections.ReloadAsync().ConfigureAwait(true);
             Apply(all);
         }
-        catch (Exception ex) when (ex is IOException or InvalidOperationException
-                                      or UnauthorizedAccessException)
+        catch (Exception ex) when (LibraryFailure.IsExpected(ex))
         {
             Status = $"The albums could not be read: {ex.Message}";
         }
@@ -1402,15 +1550,22 @@ public sealed partial class AlbumsViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(IsIdle))]
     private async Task StartCreatingAsync()
     {
-        IsNewAlbum = true;
-        EditedName = string.Empty;
+        int request = Interlocked.Increment(ref _panelRequest);
         Status = string.Empty;
-        IsEditing = true;
-        ShowCollections(Collections.Open?.Id);
 
         // An empty rule, which is also what clears whatever the last time the
-        // panel opened left in the fields.
-        await ShowRuleAsync(AlbumRule.None).ConfigureAwait(true);
+        // panel opened left in the fields. The panel opens after it, so a
+        // directory that cannot be read leaves no panel rather than one holding
+        // the last album's answers for Create to write.
+        if (!await ShowRuleAsync(AlbumRule.None, request).ConfigureAwait(true))
+        {
+            return;
+        }
+
+        IsNewAlbum = true;
+        EditedName = string.Empty;
+        ShowCollections(Collections.Open?.Id);
+        IsEditing = true;
     }
 
     private bool CanAnswer() => IsIdle && SelectedIsProposed;
@@ -1440,7 +1595,7 @@ public sealed partial class AlbumsViewModel : ObservableObject
             Status = said;
             EditedName = string.Empty;
         }
-        catch (Exception ex) when (ex is IOException or InvalidOperationException)
+        catch (Exception ex) when (LibraryFailure.IsExpected(ex))
         {
             Status = $"That could not be done: {ex.Message}";
         }
@@ -1574,6 +1729,17 @@ public sealed partial class AlbumsViewModel : ObservableObject
             return;
         }
 
+        // Which shelf, not which row. Only a different shelf is somewhere the
+        // reader has gone; a row replaced under them is the band re-reading
+        // itself, and nothing on the wall below moved.
+        int? shelf = Collections.Open?.Id;
+        if (shelf == _openShelf)
+        {
+            return;
+        }
+
+        _openShelf = shelf;
+
         OnPropertyChanged(nameof(ShowingTheStrip));
         OnPropertyChanged(nameof(ShowingOneCollection));
         OnPropertyChanged(nameof(ShowingTheBand));
@@ -1694,6 +1860,13 @@ public sealed partial class AlbumsViewModel : ObservableObject
     /// The rows are records, so this is a replacement rather than a mutation -
     /// and the selection has to be carried across it, or decoding a cover would
     /// close whatever the user had open.
+    ///
+    /// <para>The carry happens under the same guard as the swap, because it is
+    /// the wall re-pointing at the album that is already open rather than the
+    /// user opening a different one. Unguarded it runs what opening one runs:
+    /// the name box is filled from the album again, over a rename the user is
+    /// half way through typing, and the photographs are read a second time,
+    /// which clears the grid's rows and loses where they had scrolled to.</para>
     /// </remarks>
     private void Replace(
         ObservableCollection<AlbumItem> list, AlbumItem item, ImageSource? picture)
@@ -1711,15 +1884,15 @@ public sealed partial class AlbumsViewModel : ObservableObject
         try
         {
             list[at] = withCover;
+
+            if (wasOpen)
+            {
+                Selected = withCover;
+            }
         }
         finally
         {
             _rebuilding = false;
-        }
-
-        if (wasOpen)
-        {
-            Selected = withCover;
         }
     }
 }
