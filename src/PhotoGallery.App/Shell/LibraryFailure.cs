@@ -23,10 +23,13 @@ namespace PhotoGallery.App.Shell;
 /// app itself is wrong - those still reach that handler, and still leave a
 /// record of why.</para>
 ///
-/// <para>This asks one question for the whole album and collection feature. The
-/// filters elsewhere in the app that name only IOException are not oversights to
-/// sweep up: most of them guard a read of a file on disk, where a database fault
-/// is not among the things that can happen.</para>
+/// <para>This asks one question wherever the album and collection work touches
+/// the library, which includes three filters outside those two screens: the
+/// counts re-read after a library change, and the two that settle a move of an
+/// album's originals. The filters left naming only IOException guard a read of a
+/// file on disk, where a database fault is not among the things that can happen -
+/// but that is a claim about each one, not a rule, so widen the next one that
+/// turns out to touch the library rather than reading it as already answered.</para>
 /// </remarks>
 internal static class LibraryFailure
 {

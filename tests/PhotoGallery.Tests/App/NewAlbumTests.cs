@@ -28,7 +28,8 @@ public sealed class NewAlbumTests : IDisposable
     private readonly string _root;
     private readonly ServiceProvider _services;
     private readonly FakeAlbums _repository = new();
-    private readonly TwoPeople _people = new();
+    private readonly NamedPeople _people = new();
+    private readonly KnownPlaces _places = new();
     private readonly AlbumsViewModel _albums;
 
     public NewAlbumTests()
@@ -43,7 +44,7 @@ public sealed class NewAlbumTests : IDisposable
             .AddSingleton<IAlbumRepository>(_repository)
             .AddSingleton<ICollectionRepository, NoCollections>()
             .AddSingleton<IPeopleReader>(_people)
-            .AddSingleton<IPlaceReader, OnePlaceAndOneCountry>()
+            .AddSingleton<IPlaceReader>(_places)
             .BuildServiceProvider();
 
         _albums = new AlbumsViewModel(
@@ -91,24 +92,84 @@ public sealed class NewAlbumTests : IDisposable
     /// announced it - so the box read the count once, when it was first drawn,
     /// and naming more faces under People and coming back here still showed the
     /// old number. The second open is the half that failed, which is why this
-    /// opens the panel twice.
+    /// opens the panel twice, against a directory that grew in between.
+    ///
+    /// <para>The sentences are collected as they are announced rather than read
+    /// off the view model afterwards. Read afterwards they prove nothing: the
+    /// property counts the list every time it is asked, so it is right whether
+    /// or not anything ever told the box to ask again - which is the bug.</para>
     /// </remarks>
     [Fact]
     public async Task ReopeningThePanel_SaysHowManyNamesAndPlacesThereAreNow()
     {
         await _albums.StartCreatingCommand.ExecuteAsync(null);
 
-        List<string> announced = [];
-        _albums.PropertyChanged += (_, e) => announced.Add(e.PropertyName ?? string.Empty);
-
-        await _albums.StartCreatingCommand.ExecuteAsync(null);
-
-        Assert.Contains(nameof(AlbumsViewModel.PeoplePrompt), announced);
-        Assert.Contains(nameof(AlbumsViewModel.PlacesPrompt), announced);
-
         // Two people and one exact place, each said the way its own count reads.
         Assert.Equal("Add someone - 2 people named", _albums.PeoplePrompt);
         Assert.Equal("Add a place - 1 place known", _albums.PlacesPrompt);
+
+        _people.Add(new PersonDirectoryEntry(3, "Kesh Nadar", 12));
+        _places.Add(new PlaceDirectoryEntry(PlaceFilter.Exactly(78), "Cameron Highlands", 61));
+
+        List<string> people = [];
+        List<string> places = [];
+        _albums.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(AlbumsViewModel.PeoplePrompt))
+            {
+                people.Add(_albums.PeoplePrompt);
+            }
+            else if (e.PropertyName == nameof(AlbumsViewModel.PlacesPrompt))
+            {
+                places.Add(_albums.PlacesPrompt);
+            }
+        };
+
+        await _albums.StartCreatingCommand.ExecuteAsync(null);
+
+        Assert.Contains("Add someone - 3 people named", people);
+        Assert.Contains("Add a place - 2 places known", places);
+    }
+
+    /// <summary>
+    /// Editing an album says the numbers again on the same terms.
+    /// </summary>
+    /// <remarks>
+    /// The two panels are one panel and both fill their lists in the same place,
+    /// so today this could only fail with the create half. It is here because a
+    /// change that gave Edit a fill of its own would break this half in silence:
+    /// the box would still draw, and the number in it would be whatever it read
+    /// the first time.
+    /// </remarks>
+    [Fact]
+    public async Task EditingAnAlbum_SaysHowManyNamesAndPlacesThereAreNow()
+    {
+        await _albums.StartCreatingCommand.ExecuteAsync(null);
+        _albums.EditedName = "Genting, at last";
+        await _albums.SaveCommand.ExecuteAsync(null);
+
+        _people.Add(new PersonDirectoryEntry(3, "Kesh Nadar", 12));
+        _places.Add(new PlaceDirectoryEntry(PlaceFilter.Exactly(78), "Cameron Highlands", 61));
+
+        List<string> people = [];
+        List<string> places = [];
+        _albums.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(AlbumsViewModel.PeoplePrompt))
+            {
+                people.Add(_albums.PeoplePrompt);
+            }
+            else if (e.PropertyName == nameof(AlbumsViewModel.PlacesPrompt))
+            {
+                places.Add(_albums.PlacesPrompt);
+            }
+        };
+
+        await _albums.EditCommand.ExecuteAsync(null);
+
+        Assert.True(_albums.IsEditing);
+        Assert.Contains("Add someone - 3 people named", people);
+        Assert.Contains("Add a place - 2 places known", places);
     }
 
     [Fact]
@@ -223,7 +284,7 @@ public sealed class NewAlbumTests : IDisposable
         Assert.Empty(_albums.ShownPeople);
         Assert.Equal("Diana", Assert.Single(_albums.ChosenPeople).Name);
         Assert.StartsWith(
-            "They are already in the rule",
+            "Every name that matches is already in the rule",
             _albums.PeopleFilterNote,
             StringComparison.Ordinal);
 
@@ -289,8 +350,35 @@ public sealed class NewAlbumTests : IDisposable
 
         Assert.Empty(_albums.ShownPlaces);
         Assert.StartsWith(
-            "That place is already in the rule",
+            "Every place that matches is already in the rule",
             _albums.PlacesFilterNote,
+            StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// The line stands for however many names it is about, not for one.
+    /// </summary>
+    /// <remarks>
+    /// It is printed whenever every match is already in the rule, and "an"
+    /// matches both of the names this library has. Written about one person, a
+    /// single sentence about "their name" stood over two chips.
+    /// </remarks>
+    [Fact]
+    public async Task TypingSomethingSeveralChosenNamesMatch_IsNotSaidAboutOneOfThem()
+    {
+        await _albums.StartCreatingCommand.ExecuteAsync(null);
+        foreach (TickChoice choice in _albums.People)
+        {
+            choice.IsChosen = true;
+        }
+
+        _albums.PeopleFilter = "an";
+
+        Assert.Equal(2, _albums.ChosenPeople.Count);
+        Assert.Empty(_albums.ShownPeople);
+        Assert.StartsWith(
+            "Every name that matches is already in the rule",
+            _albums.PeopleFilterNote,
             StringComparison.Ordinal);
     }
 
@@ -660,21 +748,35 @@ public sealed class NewAlbumTests : IDisposable
             throw new NotSupportedException();
     }
 
-    private sealed class TwoPeople : IPeopleReader
+    /// <summary>
+    /// Two named faces to begin with, and the means to name more.
+    /// </summary>
+    /// <remarks>
+    /// A directory that can grow between two reads, because that is the whole
+    /// of what the count under each box is for: naming another face under People
+    /// and coming back here has to show the new number rather than the one the
+    /// box was first drawn with.
+    /// </remarks>
+    private sealed class NamedPeople : IPeopleReader
     {
+        private readonly List<PersonDirectoryEntry> _named =
+        [
+            new PersonDirectoryEntry(Ana, "Ana Lim", 120),
+            new PersonDirectoryEntry(2, "Diana", 1),
+        ];
+
         /// <summary>True once the directory is to refuse to be read.</summary>
         public bool Unreadable { get; set; }
+
+        /// <summary>Names one more face, as naming one under People would.</summary>
+        public void Add(PersonDirectoryEntry person) => _named.Add(person);
 
         public Task<IReadOnlyList<PersonDirectoryEntry>> GetDirectoryAsync(
             CancellationToken cancellationToken = default) =>
             Unreadable
                 ? Task.FromException<IReadOnlyList<PersonDirectoryEntry>>(
                     new IOException("the library is busy"))
-                : Task.FromResult<IReadOnlyList<PersonDirectoryEntry>>(
-                [
-                    new PersonDirectoryEntry(Ana, "Ana Lim", 120),
-                    new PersonDirectoryEntry(2, "Diana", 1),
-                ]);
+                : Task.FromResult<IReadOnlyList<PersonDirectoryEntry>>([.. _named]);
 
         public Task<IReadOnlyList<FaceRecord>> GetFacesAsync(
             bool confirmedOnly, CancellationToken cancellationToken = default) =>
@@ -701,15 +803,24 @@ public sealed class NewAlbumTests : IDisposable
     /// A place and the country holding it, so the filtering is exercised rather
     /// than asserted against a list that could only ever have passed.
     /// </summary>
-    private sealed class OnePlaceAndOneCountry : IPlaceReader
+    /// <remarks>
+    /// It grows for the same reason the people do: a scan works out where more
+    /// photographs were taken, and the count under the box has to be read again
+    /// rather than kept from the first time it was drawn.
+    /// </remarks>
+    private sealed class KnownPlaces : IPlaceReader
     {
+        private readonly List<PlaceDirectoryEntry> _known =
+        [
+            new PlaceDirectoryEntry(PlaceFilter.Exactly(Genting), "Genting", 458),
+            new PlaceDirectoryEntry(PlaceFilter.InCountry("MY"), "Malaysia", 900),
+        ];
+
+        /// <summary>Works out one more place, as a scan would.</summary>
+        public void Add(PlaceDirectoryEntry place) => _known.Add(place);
+
         public Task<IReadOnlyList<PlaceDirectoryEntry>> GetDirectoryAsync(
             CancellationToken cancellationToken = default) =>
-            Task.FromResult<IReadOnlyList<PlaceDirectoryEntry>>(
-            [
-                new PlaceDirectoryEntry(PlaceFilter.Exactly(Genting), "Genting", 458),
-                new PlaceDirectoryEntry(PlaceFilter.InCountry("MY"), "Malaysia", 900),
-            ]);
+            Task.FromResult<IReadOnlyList<PlaceDirectoryEntry>>([.. _known]);
     }
-
 }

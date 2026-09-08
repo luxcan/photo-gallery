@@ -388,7 +388,7 @@ public sealed partial class MainViewModel : ObservableObject
                 await People.ReloadAsync();
             }
         }
-        catch (Exception ex) when (ex is IOException or InvalidOperationException)
+        catch (Exception ex) when (LibraryFailure.IsExpected(ex))
         {
             DiagnosticLog.Write("could not re-read the library counts", ex);
         }
@@ -1194,9 +1194,7 @@ public sealed partial class MainViewModel : ObservableObject
                     await Gallery.LoadAsync();
                 }
             }
-            catch (Exception ex) when (ex is IOException
-                                           or InvalidOperationException
-                                           or UnauthorizedAccessException)
+            catch (Exception ex) when (LibraryFailure.IsExpected(ex))
             {
                 // The originals and their database paths are already settled.
                 // A view failing to re-read must not be reported as a failed

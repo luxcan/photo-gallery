@@ -1716,11 +1716,8 @@ public partial class MainWindow : Window
         {
             // The overlay already said it was stopping and no unstarted file was changed.
         }
-        catch (Exception ex) when (ex is IOException
-                                       or UnauthorizedAccessException
-                                       or InvalidOperationException
-                                       or ArgumentException
-                                       or NotSupportedException)
+        catch (Exception ex) when (LibraryFailure.IsExpected(ex)
+                                  || ex is ArgumentException or NotSupportedException)
         {
             AppDialog.Tell(
                 this,

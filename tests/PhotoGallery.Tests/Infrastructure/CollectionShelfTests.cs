@@ -153,17 +153,20 @@ public sealed class CollectionShelfTests : IDisposable
 
     /// <summary>
     /// The album's own panel is the other way on to a shelf, and it keeps a
-    /// suggestion for the same reason the tick list does.
+    /// suggestion for the same reason the tick list does - and answers that it
+    /// did, so the panel can say it out loud rather than accept for the user in
+    /// silence.
     /// </summary>
     [Fact]
-    public async Task PuttingASuggestionOnAShelfFromItsOwnPanelKeepsIt()
+    public async Task PuttingASuggestionOnAShelfFromItsOwnPanelKeepsItAndSaysSo()
     {
         int holiday = await _shelves.CreateAsync("Holiday");
         int proposed = Album("March 2019", "2019-03-20..2019-03-20");
 
-        await _shelves.SetAlbumCollectionAsync(proposed, holiday);
+        AlbumShelfResult result = await _shelves.SetAlbumCollectionAsync(proposed, holiday);
         _db.ChangeTracker.Clear();
 
+        Assert.True(result.Kept);
         Assert.Equal(holiday, await ShelfOf(proposed));
         Assert.Equal(AlbumOrigin.Accepted, await OriginOf(proposed));
     }
@@ -197,9 +200,10 @@ public sealed class CollectionShelfTests : IDisposable
         int holiday = await _shelves.CreateAsync("Holiday");
         int genting = Album("Genting");
 
-        await _shelves.SetAlbumCollectionAsync(genting, holiday);
+        AlbumShelfResult result = await _shelves.SetAlbumCollectionAsync(genting, holiday);
         _db.ChangeTracker.Clear();
 
+        Assert.False(result.Kept);
         Assert.Equal(AlbumOrigin.Made, await OriginOf(genting));
     }
 
@@ -214,9 +218,11 @@ public sealed class CollectionShelfTests : IDisposable
         int proposed = Album("March 2019", "2019-03-20..2019-03-20");
         Shelve(proposed, holiday);
 
-        await _shelves.SetAlbumCollectionAsync(proposed, null);
+        AlbumShelfResult result = await _shelves.SetAlbumCollectionAsync(proposed, null);
         _db.ChangeTracker.Clear();
 
+        Assert.False(result.Kept);
+        Assert.Equal("Holiday", result.Left);
         Assert.Null(await ShelfOf(proposed));
         Assert.Equal(AlbumOrigin.Proposed, await OriginOf(proposed));
     }
@@ -289,15 +295,45 @@ public sealed class CollectionShelfTests : IDisposable
         await _shelves.SetAlbumsAsync(holiday, [genting]);
         _db.ChangeTracker.Clear();
 
-        _db.Database.ExecuteSqlRaw(
-            """
-            CREATE TRIGGER RefuseTheTombstone
-            BEFORE UPDATE OF "DeletedUtc" ON "Collections"
-            BEGIN SELECT RAISE(ABORT, 'the shelf refuses to be tombstoned'); END;
-            """);
+        RefuseTheTombstone();
 
         await Assert.ThrowsAnyAsync<DbUpdateException>(() => _shelves.DeleteAsync(holiday));
         _db.ChangeTracker.Clear();
+
+        Assert.Equal(holiday, await ShelfOf(genting));
+        Assert.Equal(1, Assert.Single(await _shelves.GetAsync()).AlbumCount);
+    }
+
+    /// <summary>
+    /// And it leaves nothing behind waiting to be written. The tombstone is
+    /// stamped on the tracked row before the save that fails, and rolling the
+    /// transaction back does not take it off again: a context carried on past
+    /// the failure would write that tombstone by itself the next time anything
+    /// saved at all, taking the shelf away and leaving its albums pointing at
+    /// it - the same pair of writes come apart the other way round.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately without the ChangeTracker.Clear() its neighbour makes,
+    /// because what is left on the tracker is the thing being measured.
+    /// </remarks>
+    [Fact]
+    public async Task ARemovalThatFailsHalfwayLeavesNothingWaitingToBeWritten()
+    {
+        int holiday = await _shelves.CreateAsync("Holiday");
+        int genting = Album("Genting");
+        await _shelves.SetAlbumsAsync(holiday, [genting]);
+        _db.ChangeTracker.Clear();
+
+        RefuseTheTombstone();
+
+        await Assert.ThrowsAnyAsync<DbUpdateException>(() => _shelves.DeleteAsync(holiday));
+
+        Assert.False(_db.ChangeTracker.HasChanges());
+
+        // The removal is over, so the next save on this context - whatever it
+        // is for - must not be able to finish it.
+        _db.Database.ExecuteSqlRaw("DROP TRIGGER RefuseTheTombstone;");
+        await _db.SaveChangesAsync();
 
         Assert.Equal(holiday, await ShelfOf(genting));
         Assert.Equal(1, Assert.Single(await _shelves.GetAsync()).AlbumCount);
@@ -483,6 +519,15 @@ public sealed class CollectionShelfTests : IDisposable
         _db.SaveChanges();
         _db.ChangeTracker.Clear();
     }
+
+    /// <summary>Makes the tombstone write fail, halfway through a removal.</summary>
+    private void RefuseTheTombstone() =>
+        _db.Database.ExecuteSqlRaw(
+            """
+            CREATE TRIGGER RefuseTheTombstone
+            BEFORE UPDATE OF "DeletedUtc" ON "Collections"
+            BEGIN SELECT RAISE(ABORT, 'the shelf refuses to be tombstoned'); END;
+            """);
 
     public void Dispose()
     {

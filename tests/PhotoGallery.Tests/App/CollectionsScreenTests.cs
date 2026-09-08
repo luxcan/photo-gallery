@@ -1,3 +1,4 @@
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using PhotoGallery.App.Albums;
@@ -25,6 +26,7 @@ public sealed class CollectionsScreenTests : IDisposable
     private readonly ServiceProvider _services;
     private readonly IAlbumRepository _albumStore;
     private readonly ICollectionRepository _shelves;
+    private readonly GatedAlbums _reads;
     private readonly AlbumsViewModel _albums;
 
     public CollectionsScreenTests()
@@ -51,12 +53,21 @@ public sealed class CollectionsScreenTests : IDisposable
 
         _albumStore = new SqliteAlbumRepository(_db);
         _shelves = new SqliteCollectionRepository(_db);
+        _reads = new GatedAlbums(_albumStore);
 
         // The album panel reads the people and the places as well as the rule,
         // so a container answering only the two repositories opens half a panel
         // and every assertion here is about the half that was already filled.
+        //
+        // All four are singletons over the one context above, as the sibling
+        // fixtures register theirs and unlike production, which hands every
+        // scope a context of its own. What that costs is one shape of test: two
+        // reads genuinely overlapping would throw on a shared context where
+        // production would answer, so the gate below holds a read in front of
+        // the context rather than inside it, and a test that needs two real
+        // reads at once belongs in a fixture that scopes.
         _services = new ServiceCollection()
-            .AddSingleton(_albumStore)
+            .AddSingleton<IAlbumRepository>(_reads)
             .AddSingleton(_shelves)
             .AddSingleton<IPeopleReader>(new SqlitePeopleReader(_db))
             .AddSingleton<IPlaceReader>(new SqlitePlaceReader(_db))
@@ -204,6 +215,90 @@ public sealed class CollectionsScreenTests : IDisposable
     }
 
     /// <summary>
+    /// Opening the naming panel tells the screen to read the caution line and
+    /// the Save button again, even when the box already holds the answer.
+    /// </summary>
+    /// <remarks>
+    /// The panel keeps whatever was last typed in it, so opening it on a shelf
+    /// whose name is already in the box writes the string the box already
+    /// holds - and an assignment that changes nothing announces nothing. The
+    /// panel then came up refusing the name of the very shelf it had been
+    /// opened to rename, with Save dead until a key was pressed. The values
+    /// were always right, because all three are getters that recompute on every
+    /// read; what was missing was the screen being told to read them, which is
+    /// why this watches what was announced rather than what it now says.
+    /// </remarks>
+    [Fact]
+    public async Task RenamingAfterACancelledCollisionSaysTheNameIsFreeAgain()
+    {
+        int beach = await _shelves.CreateAsync("Beach");
+        int holiday = await _shelves.CreateAsync("Holiday");
+        await _albums.ReloadAsync();
+
+        _albums.Collections.OpenShelfCommand.Execute(
+            _albums.Collections.All.Single(item => item.Id == beach));
+        _albums.Collections.StartRenamingCommand.Execute(null);
+        _albums.Collections.TypedName = "Holiday";
+        Assert.True(_albums.Collections.HasNameProblem);
+        _albums.Collections.CancelNamingCommand.Execute(null);
+
+        _albums.Collections.OpenShelfCommand.Execute(
+            _albums.Collections.All.Single(item => item.Id == holiday));
+
+        List<string> announced = [];
+        bool askedAgain = false;
+        _albums.Collections.PropertyChanged +=
+            (_, e) => announced.Add(e.PropertyName ?? string.Empty);
+        _albums.Collections.SaveNameCommand.CanExecuteChanged += (_, _) => askedAgain = true;
+
+        _albums.Collections.StartRenamingCommand.Execute(null);
+
+        Assert.False(_albums.Collections.HasNameProblem);
+        Assert.True(_albums.Collections.SaveNameCommand.CanExecute(null));
+        Assert.Contains(nameof(CollectionsViewModel.NameProblem), announced);
+        Assert.Contains(nameof(CollectionsViewModel.HasNameProblem), announced);
+        Assert.True(askedAgain);
+    }
+
+    /// <summary>
+    /// The same hole seeded by New collection rather than by a rename, which is
+    /// the half a test of renaming alone would miss.
+    /// </summary>
+    /// <remarks>
+    /// New leaves the box holding the name that was refused and the shelf being
+    /// named set to none. Renaming the shelf that name belongs to then moves
+    /// the shelf from none to that one while the box does not move at all.
+    /// </remarks>
+    [Fact]
+    public async Task RenamingAfterACancelledNewCollectionSaysTheNameIsFreeAgain()
+    {
+        int holiday = await _shelves.CreateAsync("Holiday");
+        await _albums.ReloadAsync();
+
+        _albums.Collections.StartCreatingCommand.Execute(null);
+        _albums.Collections.TypedName = "Holiday";
+        Assert.True(_albums.Collections.HasNameProblem);
+        _albums.Collections.CancelNamingCommand.Execute(null);
+
+        _albums.Collections.OpenShelfCommand.Execute(
+            _albums.Collections.All.Single(item => item.Id == holiday));
+
+        List<string> announced = [];
+        bool askedAgain = false;
+        _albums.Collections.PropertyChanged +=
+            (_, e) => announced.Add(e.PropertyName ?? string.Empty);
+        _albums.Collections.SaveNameCommand.CanExecuteChanged += (_, _) => askedAgain = true;
+
+        _albums.Collections.StartRenamingCommand.Execute(null);
+
+        Assert.False(_albums.Collections.HasNameProblem);
+        Assert.True(_albums.Collections.SaveNameCommand.CanExecute(null));
+        Assert.Contains(nameof(CollectionsViewModel.NameProblem), announced);
+        Assert.Contains(nameof(CollectionsViewModel.HasNameProblem), announced);
+        Assert.True(askedAgain);
+    }
+
+    /// <summary>
     /// Every album, including the ones on another shelf, and the line says which
     /// shelf that is.
     /// </summary>
@@ -238,6 +333,104 @@ public sealed class CollectionsScreenTests : IDisposable
             "on Weekends",
             _albums.Collections.Choices.Single(c => c.Id == bali).Caption,
             StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Only the shelf still open when the read comes back may raise the list.
+    /// </summary>
+    /// <remarks>
+    /// Nothing covers the screen while it reads, so the back chevron beside the
+    /// name stays live. A list raised for a shelf that has been left behind
+    /// stands over the top level with a blank heading and a Save that wants an
+    /// open shelf, so it can never light up and the only way out is the chevron
+    /// underneath it.
+    /// </remarks>
+    [Fact]
+    public async Task GoingBackWhileTheListIsBeingReadRaisesNoList()
+    {
+        await _albumStore.CreateAsync("Genting");
+        await _shelves.CreateAsync("Holiday");
+        await _albums.ReloadAsync();
+        _albums.Collections.OpenShelfCommand.Execute(_albums.Collections.All.Single());
+
+        var held = new TaskCompletionSource();
+        _reads.Held = held;
+        Task picking = _albums.Collections.StartPickingCommand.ExecuteAsync(null);
+
+        _albums.Collections.CloseCommand.Execute(null);
+        held.SetResult();
+        await picking;
+
+        Assert.False(_albums.Collections.IsPicking);
+        Assert.Empty(_albums.Collections.OpenName);
+        Assert.True(_albums.Collections.IsIdle);
+    }
+
+    /// <summary>
+    /// And a list read for one shelf is not raised over another, which is the
+    /// worse half of the same race.
+    /// </summary>
+    /// <remarks>
+    /// The heading names the shelf that is open now and the ticks describe the
+    /// one left behind, so saving it would empty this shelf on to that one -
+    /// and the list would look right while it did.
+    /// </remarks>
+    [Fact]
+    public async Task SwitchingShelfWhileTheListIsBeingReadRaisesNoList()
+    {
+        int bali = await _albumStore.CreateAsync("Bali");
+        int holiday = await _shelves.CreateAsync("Holiday");
+        int weekends = await _shelves.CreateAsync("Weekends");
+        await _shelves.SetAlbumsAsync(holiday, [bali]);
+        await _albums.ReloadAsync();
+        _albums.Collections.OpenShelfCommand.Execute(
+            _albums.Collections.All.Single(item => item.Id == holiday));
+
+        var held = new TaskCompletionSource();
+        _reads.Held = held;
+        Task picking = _albums.Collections.StartPickingCommand.ExecuteAsync(null);
+
+        _albums.Collections.CloseCommand.Execute(null);
+        _albums.Collections.OpenShelfCommand.Execute(
+            _albums.Collections.All.Single(item => item.Id == weekends));
+        held.SetResult();
+        await picking;
+
+        Assert.False(_albums.Collections.IsPicking);
+        Assert.Equal("Weekends", _albums.Collections.OpenName);
+        Assert.True(_albums.Collections.IsIdle);
+    }
+
+    /// <summary>
+    /// A library that cannot be read is said on this screen rather than left to
+    /// close the app.
+    /// </summary>
+    /// <remarks>
+    /// The catch here was written out for a file read, and the library is a
+    /// database too: SqliteException derives from DbException, which none of
+    /// the three types it named matched. What is watched is the sentence this
+    /// screen raises rather than the status line, because the albums screen
+    /// reports the same fault on the same read straight afterwards and the two
+    /// sentences read alike.
+    /// </remarks>
+    [Fact]
+    public async Task AlbumsThatCannotBeReadAreSaidOnTheScreenRatherThanClosingTheApp()
+    {
+        await _shelves.CreateAsync("Holiday");
+        await _albums.ReloadAsync();
+        _albums.Collections.OpenShelfCommand.Execute(_albums.Collections.All.Single());
+
+        List<string> announced = [];
+        _albums.Collections.Changed += (_, sentence) => announced.Add(sentence);
+        _reads.ReadFails = new SqliteException("database is locked", 5);
+
+        await _albums.Collections.StartPickingCommand.ExecuteAsync(null);
+
+        string said = Assert.Single(announced);
+        Assert.Contains("could not be read", said, StringComparison.Ordinal);
+        Assert.Contains("database is locked", said, StringComparison.Ordinal);
+        Assert.False(_albums.Collections.IsPicking);
+        Assert.True(_albums.Collections.IsIdle);
     }
 
     /// <summary>
@@ -301,6 +494,76 @@ public sealed class CollectionsScreenTests : IDisposable
         Assert.Empty(_albums.Suggested);
     }
 
+    /// <summary>
+    /// A suggestion already standing on the shelf is kept by this save too, and
+    /// a shelf that kept one is not an unchanged shelf.
+    /// </summary>
+    /// <remarks>
+    /// The test above ticks a proposal that is not on the shelf yet, so an
+    /// album joins and the sentence gets written on the way past that. This is
+    /// the case the wording is really about: nothing joins, nothing leaves, and
+    /// the save is what accepts the album standing there - which is a change to
+    /// somebody's library that outlives this screen, since no later pass may
+    /// rewrite an album that was kept.
+    /// </remarks>
+    [Fact]
+    public async Task KeepingASuggestionAlreadyOnTheShelfIsNotAnUnchangedShelf()
+    {
+        Album proposed = Suggested("March 2019");
+        int holiday = await _shelves.CreateAsync("Holiday");
+
+        // On a shelf while still a suggestion, which is the state the kept
+        // count exists for: an album can reach a shelf before anything has
+        // accepted it.
+        Album standing = await _db.Albums.SingleAsync(a => a.Id == proposed.Id);
+        standing.CollectionId = holiday;
+        await _db.SaveChangesAsync();
+        _db.ChangeTracker.Clear();
+
+        await _albums.ReloadAsync();
+        _albums.Collections.OpenShelfCommand.Execute(_albums.Collections.All.Single());
+        await _albums.Collections.StartPickingCommand.ExecuteAsync(null);
+
+        // Ticked already, because it is on the shelf. Saving the list exactly
+        // as it came up is the whole of this.
+        Assert.True(_albums.Collections.Choices.Single(c => c.Id == proposed.Id).IsChosen);
+        await _albums.Collections.SavePickCommand.ExecuteAsync(null);
+
+        Assert.DoesNotContain("unchanged", _albums.Status, StringComparison.Ordinal);
+        Assert.Contains("now yours to keep", _albums.Status, StringComparison.Ordinal);
+        Assert.Equal(
+            AlbumOrigin.Accepted,
+            await _db.Albums.Where(a => a.Id == proposed.Id)
+                .Select(a => a.Origin).SingleAsync());
+    }
+
+    /// <summary>A save that only takes an album off reads as English.</summary>
+    /// <remarks>
+    /// The sentence used to be a list of clauses with one ending hung on all of
+    /// them, and "added" and "taken off" do not take the same preposition - so
+    /// a removal on its own came out as 1 taken off to "Holiday", naming the
+    /// shelf the album had just left as the one it went to.
+    /// </remarks>
+    [Fact]
+    public async Task ASaveThatOnlyTakesAnAlbumOffSaysSoInEnglish()
+    {
+        int genting = await _albumStore.CreateAsync("Genting");
+        int holiday = await _shelves.CreateAsync("Holiday");
+        await _shelves.SetAlbumsAsync(holiday, [genting]);
+        await _albums.ReloadAsync();
+        _albums.Collections.OpenShelfCommand.Execute(_albums.Collections.All.Single());
+        await _albums.Collections.StartPickingCommand.ExecuteAsync(null);
+
+        _albums.Collections.Choices.Single(c => c.Id == genting).IsChosen = false;
+        await _albums.Collections.SavePickCommand.ExecuteAsync(null);
+
+        Assert.Contains(
+            "1 album taken off \"Holiday\".", _albums.Status, StringComparison.Ordinal);
+        Assert.Null(
+            await _db.Albums.Where(a => a.Id == genting)
+                .Select(a => a.CollectionId).SingleAsync());
+    }
+
     [Fact]
     public async Task AnEmptyShelfSaysHowToFillIt()
     {
@@ -343,6 +606,67 @@ public sealed class CollectionsScreenTests : IDisposable
         Assert.Equal("Genting", Assert.Single(_albums.Wall).Name);
         Assert.True(_albums.ShowingTheStrip);
         Assert.Contains("back on the wall", _albums.Status, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Remove asks first, and the shelf can be gone by the time it is answered.
+    /// </summary>
+    /// <remarks>
+    /// The question is a modal window, which pumps messages for as long as it
+    /// is up: a reload finishing behind it re-points the open shelf, and at
+    /// nothing when a second copy of the app on the same library has taken it
+    /// away. Remove is a Click handler with a question in front of it rather
+    /// than a command binding, so it runs whether or not CanExecute still
+    /// agrees - which is why the assertion below that it does not is not the
+    /// end of the test.
+    /// </remarks>
+    [Fact]
+    public async Task RemovingAShelfThatWentAwayWhileTheQuestionWasUpDoesNothing()
+    {
+        int holiday = await _shelves.CreateAsync("Holiday");
+        await _albums.ReloadAsync();
+        _albums.Collections.OpenShelfCommand.Execute(_albums.Collections.All.Single());
+
+        await _shelves.DeleteAsync(holiday);
+        await _albums.Collections.ReloadAsync();
+
+        Assert.Null(_albums.Collections.Open);
+        Assert.False(_albums.Collections.DeleteCommand.CanExecute(null));
+
+        await _albums.Collections.DeleteCommand.ExecuteAsync(null);
+
+        Assert.Empty(_albums.Status);
+        Assert.True(_albums.Collections.IsIdle);
+    }
+
+    /// <summary>
+    /// And the other three answers to the open shelf, which the same reload can
+    /// leave without one.
+    /// </summary>
+    /// <remarks>
+    /// These are command bindings rather than Click handlers, so the shipped
+    /// buttons go dead with the shelf - but a command asked to run is run, and
+    /// each body reads the shelf again for the same reason Remove does.
+    /// </remarks>
+    [Fact]
+    public async Task TheOtherAnswersToAShelfThatWentAwayDoNothing()
+    {
+        int holiday = await _shelves.CreateAsync("Holiday");
+        await _albums.ReloadAsync();
+        _albums.Collections.OpenShelfCommand.Execute(_albums.Collections.All.Single());
+
+        await _shelves.DeleteAsync(holiday);
+        await _albums.Collections.ReloadAsync();
+        Assert.Null(_albums.Collections.Open);
+
+        _albums.Collections.StartRenamingCommand.Execute(null);
+        await _albums.Collections.StartPickingCommand.ExecuteAsync(null);
+        await _albums.Collections.SavePickCommand.ExecuteAsync(null);
+
+        Assert.False(_albums.Collections.IsNaming);
+        Assert.False(_albums.Collections.IsPicking);
+        Assert.Empty(_albums.Status);
+        Assert.True(_albums.Collections.IsIdle);
     }
 
     /// <summary>The suggestions tab is unchanged, and never shows a band.</summary>
@@ -580,6 +904,12 @@ public sealed class CollectionsScreenTests : IDisposable
 
         await _albums.StartCreatingCommand.ExecuteAsync(null);
 
+        // That a panel opened at all, before what it defaulted to. "Not on a
+        // collection" is also what the field holds before anything opens, so on
+        // its own it cannot tell a panel that defaulted correctly from one that
+        // gave up half way and left the reason in Status.
+        Assert.True(_albums.IsEditing);
+        Assert.Empty(_albums.Status);
         Assert.Equal("Not on a collection", _albums.EditedCollection.Name);
     }
 
@@ -615,5 +945,106 @@ public sealed class CollectionsScreenTests : IDisposable
         {
             // A locked temporary folder is not a failed test.
         }
+    }
+
+    /// <summary>
+    /// The real albums, with the one read this screen makes held open or
+    /// refused.
+    /// </summary>
+    /// <remarks>
+    /// A decorator rather than a double: everything else these tests do is a
+    /// real write to a real library, and only the timing of that read is in
+    /// question. The gate sits in front of the inner call rather than inside
+    /// it, so a held read is a call that has not reached the context yet -
+    /// which is what lets this fixture share one.
+    /// </remarks>
+    private sealed class GatedAlbums : IAlbumRepository
+    {
+        private readonly IAlbumRepository _inner;
+
+        public GatedAlbums(IAlbumRepository inner) => _inner = inner;
+
+        /// <summary>Holds the read of the albums open, so a late one can be tested.</summary>
+        public TaskCompletionSource? Held { get; set; }
+
+        /// <summary>What that read throws, where it is to fail.</summary>
+        public Exception? ReadFails { get; set; }
+
+        public async Task<IReadOnlyList<AlbumSummary>> GetAsync(
+            CancellationToken cancellationToken = default)
+        {
+            if (Held is not null)
+            {
+                await Held.Task.ConfigureAwait(false);
+            }
+
+            if (ReadFails is not null)
+            {
+                throw ReadFails;
+            }
+
+            return await _inner.GetAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        public Task<IReadOnlyList<DatedPhoto>> GetCandidatesAsync(
+            CancellationToken cancellationToken = default) =>
+            _inner.GetCandidatesAsync(cancellationToken);
+
+        public Task<IReadOnlyDictionary<string, IReadOnlyList<int>>> GetRejectionsAsync(
+            CancellationToken cancellationToken = default) =>
+            _inner.GetRejectionsAsync(cancellationToken);
+
+        public Task<int> SaveProposalsAsync(
+            IReadOnlyList<ProposedAlbum> proposals,
+            CancellationToken cancellationToken = default) =>
+            _inner.SaveProposalsAsync(proposals, cancellationToken);
+
+        public Task<AlbumSummary?> FindForAssetAsync(
+            int assetId, CancellationToken cancellationToken = default) =>
+            _inner.FindForAssetAsync(assetId, cancellationToken);
+
+        public Task<IReadOnlyList<int>> GetMembersAsync(
+            int albumId, CancellationToken cancellationToken = default) =>
+            _inner.GetMembersAsync(albumId, cancellationToken);
+
+        public Task<int> CreateAsync(string name, CancellationToken cancellationToken = default) =>
+            _inner.CreateAsync(name, cancellationToken);
+
+        public Task<AlbumRule> GetRuleAsync(
+            int albumId, CancellationToken cancellationToken = default) =>
+            _inner.GetRuleAsync(albumId, cancellationToken);
+
+        public Task SetRuleAsync(
+            int albumId, AlbumRule rule, CancellationToken cancellationToken = default) =>
+            _inner.SetRuleAsync(albumId, rule, cancellationToken);
+
+        public Task<IReadOnlyList<int>> SuggestAsync(
+            int albumId, CancellationToken cancellationToken = default) =>
+            _inner.SuggestAsync(albumId, cancellationToken);
+
+        public Task AcceptAsync(int albumId, CancellationToken cancellationToken = default) =>
+            _inner.AcceptAsync(albumId, cancellationToken);
+
+        public Task DismissAsync(int albumId, CancellationToken cancellationToken = default) =>
+            _inner.DismissAsync(albumId, cancellationToken);
+
+        public Task RenameAsync(
+            int albumId, string name, CancellationToken cancellationToken = default) =>
+            _inner.RenameAsync(albumId, name, cancellationToken);
+
+        public Task DeleteAsync(int albumId, CancellationToken cancellationToken = default) =>
+            _inner.DeleteAsync(albumId, cancellationToken);
+
+        public Task<AlbumAddResult> AddAsync(
+            int albumId,
+            IReadOnlyList<int> assetIds,
+            CancellationToken cancellationToken = default) =>
+            _inner.AddAsync(albumId, assetIds, cancellationToken);
+
+        public Task RemoveAsync(
+            int albumId,
+            IReadOnlyList<int> assetIds,
+            CancellationToken cancellationToken = default) =>
+            _inner.RemoveAsync(albumId, assetIds, cancellationToken);
     }
 }

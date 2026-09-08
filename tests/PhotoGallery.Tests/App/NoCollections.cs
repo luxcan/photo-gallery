@@ -38,11 +38,11 @@ internal sealed class NoCollections : ICollectionRepository
     /// <summary>
     /// Answers rather than throws, because the album panel calls this whenever
     /// its Collection field changed - and in a library with no shelves the
-    /// honest answer is that it did not.
+    /// honest answer is that nothing happened.
     /// </summary>
-    public Task<string?> SetAlbumCollectionAsync(
+    public Task<AlbumShelfResult> SetAlbumCollectionAsync(
         int albumId,
         int? collectionId,
         CancellationToken cancellationToken = default) =>
-        Task.FromResult<string?>(null);
+        Task.FromResult(AlbumShelfResult.Nothing);
 }

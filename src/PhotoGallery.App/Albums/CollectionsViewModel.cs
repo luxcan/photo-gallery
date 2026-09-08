@@ -168,12 +168,9 @@ public sealed partial class CollectionsViewModel : ObservableObject
         {
             int chosen = Choices.Count(choice => choice.IsChosen);
 
-            return chosen switch
-            {
-                0 => "Nothing chosen. Saving with nothing ticked empties the collection.",
-                1 => "1 album chosen.",
-                _ => $"{chosen:N0} albums chosen.",
-            };
+            return chosen == 0
+                ? "Nothing chosen. Saving with nothing ticked empties the collection."
+                : $"{Counted(chosen)} chosen.";
         }
     }
 
@@ -478,6 +475,15 @@ public sealed partial class CollectionsViewModel : ObservableObject
     }
 
     /// <summary>Re-reads the band, keeping whichever shelf is open open.</summary>
+    /// <remarks>
+    /// The only thing here with no catch of its own, deliberately. Every caller
+    /// is already inside one - the three writes above, and the albums screen's
+    /// own reload - and what a failure deserves to say is about whatever the
+    /// user pressed, which only the caller knows. That is a rule for whoever
+    /// adds the next caller rather than a detail of this one: the screen's
+    /// reload is reached from an async void handler, where an exception nobody
+    /// catches closes the app.
+    /// </remarks>
     public async Task ReloadAsync()
     {
         IReadOnlyList<CollectionSummary> all;

@@ -129,21 +129,35 @@ public sealed class SqliteCollectionRepository : ICollectionRepository
         await using IDbContextTransaction transaction =
             await _db.Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
 
-        // Ignoring the filter on purpose. An album that has been removed still
-        // holds the shelf it was on, and it is out of every query in the app
-        // until somebody restores it - at which point it would come back
-        // pointing at a collection that is gone.
-        await _db.Albums
-            .IgnoreQueryFilters()
-            .Where(album => album.CollectionId == collectionId)
-            .ExecuteUpdateAsync(
-                set => set.SetProperty(album => album.CollectionId, (int?)null),
-                cancellationToken)
-            .ConfigureAwait(false);
+        try
+        {
+            // Ignoring the filter on purpose. An album that has been removed still
+            // holds the shelf it was on, and it is out of every query in the app
+            // until somebody restores it - at which point it would come back
+            // pointing at a collection that is gone.
+            await _db.Albums
+                .IgnoreQueryFilters()
+                .Where(album => album.CollectionId == collectionId)
+                .ExecuteUpdateAsync(
+                    set => set.SetProperty(album => album.CollectionId, (int?)null),
+                    cancellationToken)
+                .ConfigureAwait(false);
 
-        collection.DeletedUtc = DateTime.UtcNow;
-        await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
-        await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+            collection.DeletedUtc = DateTime.UtcNow;
+            await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+            await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            // The rollback takes the writes back out of the file, but not the
+            // tombstone back off the tracked row - it was stamped there before
+            // the save that failed. A context carried on past the failure would
+            // write that tombstone by itself on its next save: the shelf gone
+            // with its albums still pointing at it, which is this same pair
+            // coming apart the other way round. Cleared either way, so the
+            // context is left as this method found it.
+            _db.ChangeTracker.Clear();
+        }
     }
 
     public async Task<CollectionFillResult> SetAlbumsAsync(
@@ -221,7 +235,7 @@ public sealed class SqliteCollectionRepository : ICollectionRepository
         return new CollectionFillResult(added, removed, kept, from);
     }
 
-    public async Task<string?> SetAlbumCollectionAsync(
+    public async Task<AlbumShelfResult> SetAlbumCollectionAsync(
         int albumId,
         int? collectionId,
         CancellationToken cancellationToken = default)
@@ -232,7 +246,7 @@ public sealed class SqliteCollectionRepository : ICollectionRepository
 
         if (album is null || album.CollectionId == collectionId)
         {
-            return null;
+            return AlbumShelfResult.Nothing;
         }
 
         if (collectionId is int wanted
@@ -240,7 +254,7 @@ public sealed class SqliteCollectionRepository : ICollectionRepository
                 .AnyAsync(row => row.Id == wanted, cancellationToken)
                 .ConfigureAwait(false))
         {
-            return null;
+            return AlbumShelfResult.Nothing;
         }
 
         // Read before the column is overwritten. A shelf this album has never
@@ -263,13 +277,15 @@ public sealed class SqliteCollectionRepository : ICollectionRepository
         // A proposal is still a question as far as a rebuild is concerned, and
         // a rebuild removes a question nobody answered - taking the album off
         // the shelf somebody filled with it, and its photographs with it.
-        if (collectionId is not null && album.Origin == AlbumOrigin.Proposed)
+        bool kept = collectionId is not null && album.Origin == AlbumOrigin.Proposed;
+
+        if (kept)
         {
             album.Origin = AlbumOrigin.Accepted;
         }
 
         await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
 
-        return left;
+        return new AlbumShelfResult(left, kept);
     }
 }

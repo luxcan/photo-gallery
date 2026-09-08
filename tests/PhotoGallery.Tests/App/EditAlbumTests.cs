@@ -44,6 +44,8 @@ public sealed class EditAlbumTests : IDisposable
     private readonly string _root;
     private readonly ServiceProvider _services;
     private readonly FakeAlbums _repository = new();
+    private readonly OneShelf _shelves = new();
+    private readonly NoPlaces _places = new();
     private readonly HeldCover _covers;
     private readonly AlbumsViewModel _albums;
 
@@ -61,9 +63,9 @@ public sealed class EditAlbumTests : IDisposable
 
         _services = new ServiceCollection()
             .AddSingleton<IAlbumRepository>(_repository)
-            .AddSingleton<ICollectionRepository, OneShelf>()
+            .AddSingleton<ICollectionRepository>(_shelves)
             .AddSingleton<IPeopleReader, NoPeople>()
-            .AddSingleton<IPlaceReader, NoPlaces>()
+            .AddSingleton<IPlaceReader>(_places)
             .BuildServiceProvider();
 
         _albums = new AlbumsViewModel(
@@ -115,6 +117,29 @@ public sealed class EditAlbumTests : IDisposable
 
         Assert.Empty(_repository.Renamed);
         Assert.Single(_repository.RulesSet);
+    }
+
+    /// <summary>
+    /// Putting a suggestion on a shelf from its own panel keeps it, and the
+    /// panel says so.
+    /// </summary>
+    /// <remarks>
+    /// The album leaves the suggestions for good and no later rebuild may
+    /// rewrite it, which is a change to the user's library rather than a detail
+    /// of a save they pressed to set a shelf. The tick list on the collections
+    /// screen already says it about the albums ticked on it; this is the other
+    /// way on to a shelf, and it went quiet.
+    /// </remarks>
+    [Fact]
+    public async Task SavingASuggestionOnToAShelf_SaysItWasKept()
+    {
+        await OpenForEditAsync(Suggested);
+
+        _albums.EditedCollection =
+            _albums.CollectionOptions.Single(option => option.Id == Weekends);
+        await _albums.SaveCommand.ExecuteAsync(null);
+
+        Assert.Contains("now yours to keep", _albums.Status, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -219,6 +244,36 @@ public sealed class EditAlbumTests : IDisposable
     }
 
     /// <summary>
+    /// A panel the reader backed out of does not open itself when it is ready.
+    /// </summary>
+    /// <remarks>
+    /// The panel opens only once the rule behind it has been read, and the back
+    /// chevron is live for the whole of that read. Shutting the panel is not
+    /// enough to call the read off: walking back into the same album leaves the
+    /// read nothing to notice, and it puts a modal up over the photographs that
+    /// nobody pressed anything for.
+    /// </remarks>
+    [Fact]
+    public async Task BackingOutBeforeTheRuleLands_LeavesThePanelShutWhenItDoes()
+    {
+        _repository.Held = new TaskCompletionSource();
+
+        await _albums.ReloadAsync();
+        _albums.Selected = _albums.Showing.Single(item => item.Id == Mine);
+        Task editing = _albums.EditCommand.ExecuteAsync(null);
+
+        // Back to the wall and into the same album again, without pressing Edit
+        // a second time.
+        _albums.CloseAlbumCommand.Execute(null);
+        _albums.Selected = _albums.Showing.Single(item => item.Id == Mine);
+
+        _repository.Held.SetResult();
+        await editing;
+
+        Assert.False(_albums.IsEditing);
+    }
+
+    /// <summary>
     /// A cover arriving while the name is typed does not take it with it.
     /// </summary>
     /// <remarks>
@@ -272,6 +327,64 @@ public sealed class EditAlbumTests : IDisposable
     }
 
     /// <summary>
+    /// Reading the library again does not discard a name being typed over it.
+    /// </summary>
+    /// <remarks>
+    /// The wall rebuilds every row without its cover and then finds the album
+    /// that is open among them, so once that album's cover has decoded the row
+    /// it lands on is a different one and the panel is refilled from it. The
+    /// side navigation is outside the panel, which is all it takes: leave the
+    /// Albums section with a name half typed, come back, and Save compares the
+    /// box with the stored name, finds them the same, sends no rename and says
+    /// "Saved."
+    /// </remarks>
+    [Fact]
+    public async Task AReloadAfterTheCoverDecoded_DoesNotDiscardTheTypedName()
+    {
+        _repository.HasCover = true;
+        await OpenForEditAsync(Mine);
+
+        _covers.Release();
+        await WaitFor(
+            () => _albums.Wall[0].Cover is not null, "the cover to reach the wall");
+
+        _albums.EditedName = "Harbour Weekend 2012";
+        await _albums.ReloadAsync();
+
+        Assert.Equal("Harbour Weekend 2012", _albums.EditedName);
+
+        await _albums.SaveCommand.ExecuteAsync(null);
+
+        Assert.Equal((Mine, "Harbour Weekend 2012"), _repository.Renamed.Single());
+    }
+
+    /// <summary>
+    /// And it does not read the open album's photographs a second time.
+    /// </summary>
+    /// <remarks>
+    /// The paths that genuinely change what is in an album - answering its
+    /// suggestions, keeping them, moving its originals - read them again
+    /// themselves. A reload on its own changes nothing about the album, and
+    /// refilling the grid puts the reader back at the top of a wall of
+    /// photographs they had scrolled down through.
+    /// </remarks>
+    [Fact]
+    public async Task AReloadAfterTheCoverDecoded_DoesNotReadThePhotographsAgain()
+    {
+        _repository.HasCover = true;
+        await OpenForEditAsync(Mine);
+
+        _covers.Release();
+        await WaitFor(
+            () => _albums.Wall[0].Cover is not null, "the cover to reach the wall");
+
+        int readBefore = _repository.MemberReads;
+        await _albums.ReloadAsync();
+
+        Assert.Equal(readBefore, _repository.MemberReads);
+    }
+
+    /// <summary>
     /// Saving leaves the album open, including inside a collection.
     /// </summary>
     /// <remarks>
@@ -320,6 +433,68 @@ public sealed class EditAlbumTests : IDisposable
     }
 
     /// <summary>
+    /// The shelf's mosaic arriving does not close the album standing on it.
+    /// </summary>
+    /// <remarks>
+    /// The band's rows are records too, so a decoded mosaic replaces the open
+    /// shelf with a new row carrying the same id - and the wall hears about the
+    /// open shelf changing. Read as the reader having gone somewhere, that
+    /// closed whatever album they had open, part way through renaming it, for a
+    /// picture finishing behind them. Which shelf is the question, not which
+    /// row.
+    /// </remarks>
+    [Fact]
+    public async Task AMosaicArrivingUnderAnOpenAlbum_LeavesItOpen()
+    {
+        _shelves.HasMosaic = true;
+        await _albums.ReloadAsync();
+        _albums.Collections.OpenShelfCommand.Execute(_albums.Collections.All.Single());
+        _albums.Selected = _albums.Wall.Single();
+        await _albums.EditCommand.ExecuteAsync(null);
+
+        _albums.EditedName = "A weekend away";
+        _covers.Release();
+        await WaitFor(
+            () => _albums.Collections.Open?.Covers[0] is not null,
+            "the mosaic to reach the band");
+
+        Assert.Equal(Shelved, _albums.Selected?.Id);
+        Assert.Equal(Weekends, _albums.Collections.Open?.Id);
+        Assert.True(_albums.IsEditing);
+        Assert.Equal("A weekend away", _albums.EditedName);
+    }
+
+    /// <summary>
+    /// New album inside a collection puts it on the shelf it was pressed in.
+    /// </summary>
+    /// <remarks>
+    /// The panel opens only once the people and places behind it have been read,
+    /// and the collection's header - back chevron and all - is live for the
+    /// whole of that read. Read afterwards, the shelf would be whichever one
+    /// happened to be open when the read came back, and the album would be
+    /// written on to it, or on to none, without a word.
+    /// </remarks>
+    [Fact]
+    public async Task NewAlbumInsideACollection_KeepsTheShelfItWasPressedIn()
+    {
+        await _albums.ReloadAsync();
+        _albums.Collections.OpenShelfCommand.Execute(_albums.Collections.All.Single());
+
+        _places.Held = new TaskCompletionSource();
+        Task creating = _albums.StartCreatingCommand.ExecuteAsync(null);
+
+        // Out of the shelf while the read is still out, which is what the back
+        // chevron does and what nothing on screen says is a bad idea.
+        _albums.Collections.CloseCommand.Execute(null);
+
+        _places.Held.SetResult();
+        await creating;
+
+        Assert.True(_albums.IsEditing);
+        Assert.Equal(Weekends, _albums.EditedCollection.Id);
+    }
+
+    /// <summary>
     /// A library that will not answer is a sentence on the screen, not the end
     /// of the session.
     /// </summary>
@@ -358,6 +533,49 @@ public sealed class EditAlbumTests : IDisposable
         Assert.Contains("could not be saved", _albums.Status, StringComparison.Ordinal);
         Assert.True(_albums.IsEditing);
         Assert.False(_albums.IsBusy);
+    }
+
+    /// <summary>
+    /// Photographs that cannot be read are a sentence too, not a closed app.
+    /// </summary>
+    /// <remarks>
+    /// Settling an album after its originals have moved reads them again, and it
+    /// is reached from a click handler whose own filter names only the file
+    /// exceptions - so a locked database went straight past it, past the one
+    /// above it, and into the handler in App.xaml.cs that reports and then lets
+    /// the app close.
+    /// </remarks>
+    [Fact]
+    public async Task PhotographsThatCannotBeReadAfterAMove_AreSaidOnTheScreen()
+    {
+        await _albums.ReloadAsync();
+        _albums.Selected = _albums.Showing.Single(item => item.Id == Mine);
+
+        _repository.MemberReadFails = new SqliteException("database is locked", 5);
+        await _albums.SettleAfterOriginalsMovedAsync("The originals were moved.");
+
+        Assert.Contains("could not be read", _albums.Status, StringComparison.Ordinal);
+        Assert.Contains("database is locked", _albums.Status, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// And opening an album says so rather than sitting on an empty grid.
+    /// </summary>
+    /// <remarks>
+    /// The other shape of the same read: opening an album starts it and does not
+    /// wait, so nothing is left to observe what it threw. The reader got an
+    /// album with no photographs in it and no reason given.
+    /// </remarks>
+    [Fact]
+    public async Task OpeningAnAlbumWhosePhotographsCannotBeRead_SaysSo()
+    {
+        await _albums.ReloadAsync();
+        _repository.MemberReadFails = new SqliteException("database is locked", 5);
+
+        _albums.Selected = _albums.Showing.Single(item => item.Id == Mine);
+
+        Assert.Contains("could not be read", _albums.Status, StringComparison.Ordinal);
+        Assert.Contains("database is locked", _albums.Status, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -620,6 +838,9 @@ public sealed class EditAlbumTests : IDisposable
         /// <summary>What a read of one album's rule throws, on the same terms.</summary>
         public Exception? RuleReadFails { get; set; }
 
+        /// <summary>What a read of an album's photographs throws, on the same terms.</summary>
+        public Exception? MemberReadFails { get; set; }
+
         /// <summary>What a write throws, for the tests about a refused save.</summary>
         public Exception? WriteFails { get; set; }
 
@@ -709,7 +930,10 @@ public sealed class EditAlbumTests : IDisposable
             int albumId, CancellationToken cancellationToken = default)
         {
             MemberReads++;
-            return Task.FromResult<IReadOnlyList<int>>([]);
+
+            return MemberReadFails is not null
+                ? Task.FromException<IReadOnlyList<int>>(MemberReadFails)
+                : Task.FromResult<IReadOnlyList<int>>([]);
         }
 
         public Task<int> CreateAsync(string name, CancellationToken cancellationToken = default) =>
@@ -767,18 +991,30 @@ public sealed class EditAlbumTests : IDisposable
     /// not, because the compiler is free to give back the same cached instance
     /// every time and the row would then compare equal.
     ///
-    /// <para>Left empty so the band decodes no mosaic, which keeps the one
-    /// decode in this file the album cover the tests below are about.</para>
+    /// <para>The mosaic is asked for rather than assumed, so that the one decode
+    /// running in most of these tests is the album cover they are about.</para>
     /// </remarks>
     private sealed class OneShelf : ICollectionRepository
     {
+        /// <summary>
+        /// Whether the shelf has a mosaic for the band to decode.
+        /// </summary>
+        /// <remarks>
+        /// Off for the rest of these tests, for the reason the remarks above
+        /// give: only the test about a mosaic arriving wants one decoding
+        /// underneath it.
+        /// </remarks>
+        public bool HasMosaic { get; set; }
+
         public Task<IReadOnlyList<CollectionSummary>> GetAsync(
             CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyList<CollectionSummary>>(
             [
                 new CollectionSummary(
                     Weekends, "Weekends away", AlbumCount: 1, PhotoCount: 41,
-                    CoverThumbnailNames: new List<string>()),
+                    CoverThumbnailNames: HasMosaic
+                        ? new List<string> { "mosaic" }
+                        : new List<string>()),
             ]);
 
         public Task<int> CreateAsync(string name, CancellationToken cancellationToken = default) =>
@@ -799,13 +1035,20 @@ public sealed class EditAlbumTests : IDisposable
 
         /// <summary>
         /// Answers rather than throws, because the album panel calls this
-        /// whenever its Collection field changed - and here it did not.
+        /// whenever its Collection field changed.
         /// </summary>
-        public Task<string?> SetAlbumCollectionAsync(
+        /// <remarks>
+        /// On the real repository's terms: the one suggested album here is kept
+        /// on its way on to a shelf, and nothing is kept on its way off one.
+        /// </remarks>
+        public Task<AlbumShelfResult> SetAlbumCollectionAsync(
             int albumId,
             int? collectionId,
             CancellationToken cancellationToken = default) =>
-            Task.FromResult<string?>(null);
+            Task.FromResult(
+                albumId == Suggested && collectionId is not null
+                    ? new AlbumShelfResult(Left: null, Kept: true)
+                    : AlbumShelfResult.Nothing);
     }
 
     /// <summary>
@@ -893,10 +1136,26 @@ public sealed class EditAlbumTests : IDisposable
             throw new NotSupportedException();
     }
 
+    /// <summary>No places, and the means to keep the panel waiting for them.</summary>
+    /// <remarks>
+    /// The panel opens only once both directories have been read, so holding
+    /// this one open is how a test stands in the window between the button
+    /// being pressed and the panel appearing.
+    /// </remarks>
     private sealed class NoPlaces : IPlaceReader
     {
-        public Task<IReadOnlyList<PlaceDirectoryEntry>> GetDirectoryAsync(
-            CancellationToken cancellationToken = default) =>
-            Task.FromResult<IReadOnlyList<PlaceDirectoryEntry>>([]);
+        /// <summary>Holds the read open, where a test wants that window.</summary>
+        public TaskCompletionSource? Held { get; set; }
+
+        public async Task<IReadOnlyList<PlaceDirectoryEntry>> GetDirectoryAsync(
+            CancellationToken cancellationToken = default)
+        {
+            if (Held is not null)
+            {
+                await Held.Task.ConfigureAwait(false);
+            }
+
+            return [];
+        }
     }
 }

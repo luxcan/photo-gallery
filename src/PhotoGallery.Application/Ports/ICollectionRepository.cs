@@ -54,8 +54,8 @@ public interface ICollectionRepository
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Puts one album on one collection, or on none, and answers with the name
-    /// of the collection it came off.
+    /// Puts one album on one collection, or on none, and answers with what that
+    /// did to the album.
     /// </summary>
     /// <remarks>
     /// The other direction of <see cref="SetAlbumsAsync"/>, for the album's own
@@ -70,9 +70,12 @@ public interface ICollectionRepository
     ///
     /// <para>A suggestion put on a shelf is kept on the way in, exactly as one
     /// ticked on <see cref="SetAlbumsAsync"/>'s list is: a rebuild removes a
-    /// proposal nobody answered, and choosing a shelf for it is answering.</para>
+    /// proposal nobody answered, and choosing a shelf for it is answering. The
+    /// result says so, for the reason <see cref="SetAlbumsAsync"/> counts them:
+    /// it is a change to somebody's library rather than a detail of the
+    /// save.</para>
     /// </remarks>
-    Task<string?> SetAlbumCollectionAsync(
+    Task<AlbumShelfResult> SetAlbumCollectionAsync(
         int albumId,
         int? collectionId,
         CancellationToken cancellationToken = default);

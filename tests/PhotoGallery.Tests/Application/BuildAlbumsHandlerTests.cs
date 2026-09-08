@@ -185,15 +185,7 @@ public sealed class BuildAlbumsHandlerTests : IDisposable
     [Fact]
     public async Task ASuggestionOnAShelfIsKeptByARebuildRatherThanRemoved()
     {
-        var holiday = new Collection
-        {
-            Name = "Holiday",
-            CreatedUtc = DateTime.UtcNow,
-            NamedUtc = DateTime.UtcNow,
-        };
-
-        _db.Collections.Add(holiday);
-        _db.SaveChanges();
+        Collection holiday = AddShelf("Holiday");
 
         var shelved = new Album
         {
@@ -218,6 +210,55 @@ public sealed class BuildAlbumsHandlerTests : IDisposable
         Album kept = await _db.Albums.SingleAsync(c => c.Id == shelved.Id);
         Assert.Equal(holiday.Id, kept.CollectionId);
         Assert.Equal(AlbumOrigin.Accepted, kept.Origin);
+    }
+
+    /// <summary>
+    /// The same repair on the row a rebuild does not find stale: a shelved
+    /// suggestion whose photographs are untouched, so the clusterer offers its
+    /// key again.
+    /// </summary>
+    /// <remarks>
+    /// This is the shape such a library actually holds. Putting an album on a
+    /// shelf changes no photograph, so the key that made it is the key the next
+    /// scan makes, and a repair that only reached keys the clusterer had stopped
+    /// offering would pass over the row for ever - leaving the collection
+    /// counting an album its wall will not show, and nothing on the screen to
+    /// say why.
+    /// </remarks>
+    [Fact]
+    public async Task AShelvedSuggestionIsKeptEvenWhileTheClustererStillOffersIt()
+    {
+        AddDays(Trip, days: 3, perDay: 6);
+        await NewHandler().HandleAsync();
+        _db.ChangeTracker.Clear();
+
+        Collection holiday = AddShelf("Holiday");
+
+        // Straight to the column, the way a version with no rule about origins
+        // wrote it. Going through the collection repository would keep the
+        // album on the way in, which is the state this test has to start before.
+        Album shelved = await _db.Albums.SingleAsync();
+        shelved.CollectionId = holiday.Id;
+        _db.SaveChanges();
+        _db.ChangeTracker.Clear();
+
+        await NewHandler().HandleAsync();
+        _db.ChangeTracker.Clear();
+
+        Album kept = await _db.Albums.Include(c => c.Members).SingleAsync();
+        Assert.Equal(AlbumOrigin.Accepted, kept.Origin);
+        Assert.Equal(holiday.Id, kept.CollectionId);
+        Assert.Equal(18, kept.Members.Count);
+
+        // And the two numbers the user is shown agree. The band counts every
+        // album carrying the shelf; the wall is filled from the albums that are
+        // not proposals, so a row left as one is a count with nothing under it.
+        CollectionSummary band = Assert.Single(
+            await new SqliteCollectionRepository(_db).GetAsync());
+        int onTheWall = await _db.Albums.CountAsync(album =>
+            album.CollectionId == holiday.Id && album.Origin != AlbumOrigin.Proposed);
+
+        Assert.Equal(band.AlbumCount, onTheWall);
     }
 
     [Fact]
@@ -330,6 +371,23 @@ public sealed class BuildAlbumsHandlerTests : IDisposable
                     start.AddDays(day).AddMinutes(i * 40));
             }
         }
+    }
+
+    /// <summary>A collection to put an album on.</summary>
+    private Collection AddShelf(string name)
+    {
+        var collection = new Collection
+        {
+            Name = name,
+            CreatedUtc = DateTime.UtcNow,
+            NamedUtc = DateTime.UtcNow,
+        };
+
+        _db.Collections.Add(collection);
+        _db.SaveChanges();
+        _db.ChangeTracker.Clear();
+
+        return collection;
     }
 
     /// <summary>Puts one face on a photograph, so it can be a cover.</summary>

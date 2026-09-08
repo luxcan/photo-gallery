@@ -70,23 +70,29 @@ public sealed class SqliteAlbumRepository : IAlbumRepository
         var offered = new HashSet<string>(
             proposals.Select(proposal => proposal.ProposalKey), StringComparer.Ordinal);
 
-        // A proposal nobody answered and the clusterer no longer makes is not a
-        // question any more. One the user kept or made is not touched here at
-        // all - it was never in this list.
-        foreach (Album stale in existing.Where(album =>
-            album.ProposalKey is null || !offered.Contains(album.ProposalKey)))
+        // One pass, two rules. A proposal that carries a shelf was answered by
+        // whoever put it there; a proposal nobody answered and the clusterer no
+        // longer makes is not a question any more. An album the user kept or
+        // made is not touched here at all - it was never in this list.
+        foreach (Album album in existing)
         {
-            // An answered question is not a stale one. A proposal that carries
-            // a shelf was put there by somebody, and this removal is a delete
-            // rather than a tombstone - so removing it would take an album off
-            // a collection the user filled and leave nothing to restore.
-            if (stale.CollectionId is not null)
+            // Older libraries shelved a suggestion without keeping it, and no
+            // migration can tell such a row from an unanswered one. Left as a
+            // proposal it is counted by the collection and left off the wall,
+            // which shows only albums the user owns, and the removal below is a
+            // delete rather than a tombstone. Waiting for its key to go stale
+            // would never heal it: shelving an album changes no photograph, so
+            // the clusterer offers that same key again on every later scan.
+            if (album.CollectionId is not null)
             {
-                stale.Origin = AlbumOrigin.Accepted;
+                album.Origin = AlbumOrigin.Accepted;
                 continue;
             }
 
-            _db.Albums.Remove(stale);
+            if (album.ProposalKey is null || !offered.Contains(album.ProposalKey))
+            {
+                _db.Albums.Remove(album);
+            }
         }
 
         DateTime now = DateTime.UtcNow;

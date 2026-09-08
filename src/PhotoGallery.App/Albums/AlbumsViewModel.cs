@@ -452,8 +452,8 @@ public sealed partial class AlbumsViewModel : ObservableObject
             }
 
             return People.Any(choice => Matches(choice, wanted))
-                ? "They are already in the rule - their name is above the box, and "
-                  + "pressing it takes them back out."
+                ? "Every name that matches is already in the rule - they are above the "
+                  + "box, and pressing one takes them back out."
                 : "Nobody in this library goes by that name. A rule can only ask for "
                   + "somebody whose face you have already named.";
         }
@@ -473,8 +473,8 @@ public sealed partial class AlbumsViewModel : ObservableObject
             }
 
             return Places.Any(choice => Matches(choice, wanted))
-                ? "That place is already in the rule - its name is above the box, and "
-                  + "pressing it takes it back out."
+                ? "Every place that matches is already in the rule - they are above the "
+                  + "box, and pressing one takes it back out."
                 : "Nowhere in this library goes by that name. A place comes from the "
                   + "coordinates in a photograph, so a rule can only ask for one a scan "
                   + "has already worked out.";
@@ -542,8 +542,8 @@ public sealed partial class AlbumsViewModel : ObservableObject
 
             if (Collections.HasOpen)
             {
-                return "Nothing on this collection yet. Choose Add albums, and tick the ones "
-                       + "that belong on it.";
+                return "Nothing on this collection yet. Choose Add albums to tick ones "
+                       + "you already have, or New album to make one here.";
             }
 
             return Mine.Count == 0
@@ -566,9 +566,30 @@ public sealed partial class AlbumsViewModel : ObservableObject
     [RelayCommand]
     private void CloseAlbum()
     {
-        IsEditing = false;
+        ClosePanel();
         ForgetSuggestions();
         Selected = null;
+    }
+
+    /// <summary>
+    /// Puts the description panel down, and retires whatever it was waiting on.
+    /// </summary>
+    /// <remarks>
+    /// The panel opens only once the rule and the two directories have been
+    /// read, and the header behind it is live for the whole of that read - so
+    /// there is a window in which the reader can walk away from a panel they
+    /// asked for. Shutting it is not enough on its own: the read still lands,
+    /// and it is stopped only by the album having moved on. Walking back into
+    /// the same album springs the panel open over the photographs, unasked.
+    ///
+    /// <para>Saving an album does not come through here. Edit can be pressed
+    /// while a save is still in flight, and the panel that read is opening is
+    /// one the reader has asked for.</para>
+    /// </remarks>
+    private void ClosePanel()
+    {
+        Interlocked.Increment(ref _panelRequest);
+        IsEditing = false;
     }
 
     /// <summary>Opens the panel that renames, keeps or throws this one away.</summary>
@@ -862,7 +883,7 @@ public sealed partial class AlbumsViewModel : ObservableObject
         string name = EditedName.Trim();
         bool renaming = !string.Equals(name, album.Name, StringComparison.Ordinal);
         bool reshelving = ChosenCollection != album.Summary.CollectionId;
-        string? left = null;
+        AlbumShelfResult shelved = AlbumShelfResult.Nothing;
 
         IsBusy = true;
         try
@@ -881,7 +902,7 @@ public sealed partial class AlbumsViewModel : ObservableObject
 
                 if (reshelving)
                 {
-                    left = await scope.ServiceProvider
+                    shelved = await scope.ServiceProvider
                         .GetRequiredService<ICollectionRepository>()
                         .SetAlbumCollectionAsync(album.Id, ChosenCollection)
                         .ConfigureAwait(true);
@@ -889,7 +910,7 @@ public sealed partial class AlbumsViewModel : ObservableObject
             }
 
             IsEditing = false;
-            Status = Saved(renaming ? $"Saved as \"{name}\"." : "Saved.", rule, left);
+            Status = Saved(renaming ? $"Saved as \"{name}\"." : "Saved.", rule, shelved);
         }
         catch (Exception ex) when (LibraryFailure.IsExpected(ex))
         {
@@ -980,14 +1001,31 @@ public sealed partial class AlbumsViewModel : ObservableObject
         LibraryChanged?.Invoke(this, EventArgs.Empty);
     }
 
-    /// <summary>What to say about a save, including a move nobody asked about.</summary>
-    private static string Saved(string saved, AlbumRule rule, string? left)
+    /// <summary>
+    /// What to say about a save, including what it did that nobody asked about.
+    /// </summary>
+    /// <remarks>
+    /// A suggestion put on a shelf is kept on the way in, and that outlives this
+    /// screen: the album leaves the suggestions for good and no later pass may
+    /// rewrite it. The tick list says as much about the albums ticked on it, and
+    /// this is the other way on to a shelf.
+    ///
+    /// <para>Said before the shelf the album came off, because a sentence about
+    /// what became of the album belongs beside the album rather than after a
+    /// clause naming somewhere else.</para>
+    /// </remarks>
+    private static string Saved(string saved, AlbumRule rule, AlbumShelfResult shelved)
     {
         string said = rule.IsSomething
             ? $"{saved} Choose Find photos that fit to see what matches."
             : $"{saved} This album has no rule, so nothing is looked for.";
 
-        return left is null ? said : $"{said} Taken off \"{left}\".";
+        if (shelved.Kept)
+        {
+            said = $"{said} This album was a suggestion, and is now yours to keep.";
+        }
+
+        return shelved.Left is null ? said : $"{said} Taken off \"{shelved.Left}\".";
     }
 
     /// <summary>
@@ -1463,7 +1501,7 @@ public sealed partial class AlbumsViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private void CancelEdit() => IsEditing = false;
+    private void CancelEdit() => ClosePanel();
 
     /// <summary>Reads the albums again, keeping whatever was open open.</summary>
     public async Task ReloadAsync()
@@ -1507,15 +1545,18 @@ public sealed partial class AlbumsViewModel : ObservableObject
     /// <summary>Re-reads the open album after its originals changed folders.</summary>
     public async Task SettleAfterOriginalsMovedAsync(string status)
     {
-        IsEditing = false;
+        ClosePanel();
         await ReloadAsync().ConfigureAwait(true);
+
+        // Said before the photographs are read rather than after, so that a
+        // read which cannot be done leaves its own line on the screen instead
+        // of having the summary of the move written over the top of it.
+        Status = status;
 
         if (Selected is AlbumItem album)
         {
             await LoadPhotosAsync(album.Id).ConfigureAwait(true);
         }
-
-        Status = status;
     }
 
     /// <summary>Keeps a suggestion, so no pass may change it again.</summary>
@@ -1553,6 +1594,14 @@ public sealed partial class AlbumsViewModel : ObservableObject
         int request = Interlocked.Increment(ref _panelRequest);
         Status = string.Empty;
 
+        // Which shelf, read now rather than when the panel opens. The panel
+        // opens only after the two directories behind it have been read, and
+        // the collection's header - back chevron and all - is live for the whole
+        // of that read. Read afterwards, the album would land on whichever shelf
+        // happened to be open when the read came back rather than the one the
+        // button was pressed in, and it would be written there without a word.
+        int? shelf = Collections.Open?.Id;
+
         // An empty rule, which is also what clears whatever the last time the
         // panel opened left in the fields. The panel opens after it, so a
         // directory that cannot be read leaves no panel rather than one holding
@@ -1564,7 +1613,7 @@ public sealed partial class AlbumsViewModel : ObservableObject
 
         IsNewAlbum = true;
         EditedName = string.Empty;
-        ShowCollections(Collections.Open?.Id);
+        ShowCollections(shelf);
         IsEditing = true;
     }
 
@@ -1581,7 +1630,7 @@ public sealed partial class AlbumsViewModel : ObservableObject
             return;
         }
 
-        IsEditing = false;
+        ClosePanel();
         IsBusy = true;
         try
         {
@@ -1637,7 +1686,27 @@ public sealed partial class AlbumsViewModel : ObservableObject
         }
 
         FillWall();
-        Selected = Showing.FirstOrDefault(item => item.Id == wasOpen);
+
+        // Carried across the rebuild under the same guard as the rebuild, for
+        // the same reason a decoded cover is: this is the wall finding the album
+        // that is already open, not the user opening a different one. Every row
+        // is rebuilt without its cover, so once the open album's cover has
+        // decoded this is a real change of row, and unguarded it runs what
+        // opening an album runs - the name box refilled from the album over a
+        // rename half typed into it, and the photographs read a second time,
+        // which puts the reader back at the top of a grid they had scrolled
+        // down through. The three paths that do change what is in an album -
+        // answering its suggestions, keeping them, and moving its originals -
+        // read the photographs again themselves.
+        _rebuilding = true;
+        try
+        {
+            Selected = Showing.FirstOrDefault(item => item.Id == wasOpen);
+        }
+        finally
+        {
+            _rebuilding = false;
+        }
 
         _ = LoadCoversAsync();
     }
@@ -1778,46 +1847,62 @@ public sealed partial class AlbumsViewModel : ObservableObject
     }
 
     /// <summary>Opens one album on its photographs, in the order they were taken.</summary>
+    /// <remarks>
+    /// The guard is here rather than at the callers because the four of them
+    /// need two different things from it. Opening an album starts this and does
+    /// not wait, so an escape there is an exception nobody is left to observe
+    /// and a grid that stays empty with nothing said. The three that do await it
+    /// - answering an album's suggestions, keeping them, and moving its
+    /// originals - are reached from handlers whose own filters name only the
+    /// file exceptions, so a locked or unreachable library went past them and
+    /// closed the app.
+    /// </remarks>
     private async Task LoadPhotosAsync(int albumId)
     {
-        IReadOnlyList<int> members;
-        GalleryPage page;
-
-        using (IServiceScope scope = _scopeFactory.CreateScope())
+        try
         {
-            members = await scope.ServiceProvider
-                .GetRequiredService<IAlbumRepository>()
-                .GetMembersAsync(albumId)
-                .ConfigureAwait(true);
+            GalleryPage page;
 
-            if (members.Count == 0)
+            using (IServiceScope scope = _scopeFactory.CreateScope())
             {
-                _photos.Fill(Array.Empty<GalleryTile>());
-                OnPropertyChanged(nameof(PhotoCount));
-                OnPropertyChanged(nameof(HasPhotos));
+                IReadOnlyList<int> members = await scope.ServiceProvider
+                    .GetRequiredService<IAlbumRepository>()
+                    .GetMembersAsync(albumId)
+                    .ConfigureAwait(true);
+
+                if (members.Count == 0)
+                {
+                    _photos.Fill(Array.Empty<GalleryTile>());
+                    OnPropertyChanged(nameof(PhotoCount));
+                    OnPropertyChanged(nameof(HasPhotos));
+                    return;
+                }
+
+                // RankedAssetIds already means "these, in this order", which is
+                // how a typed description is answered - so an album's grid needs
+                // no query of its own.
+                page = await scope.ServiceProvider
+                    .GetRequiredService<QueryGalleryHandler>()
+                    .HandleAsync(new GalleryQuery(RankedAssetIds: members))
+                    .ConfigureAwait(true);
+            }
+
+            if (Selected?.Id != albumId)
+            {
                 return;
             }
 
-            // RankedAssetIds already means "these, in this order", which is how
-            // a typed description is answered - so an album's grid needs no
-            // query of its own.
-            page = await scope.ServiceProvider
-                .GetRequiredService<QueryGalleryHandler>()
-                .HandleAsync(new GalleryQuery(RankedAssetIds: members))
-                .ConfigureAwait(true);
-        }
+            _photos.Fill([.. page.Items.Select(item => new GalleryTile(item))]);
+            OnPropertyChanged(nameof(PhotoCount));
+            OnPropertyChanged(nameof(HasPhotos));
 
-        if (Selected?.Id != albumId)
+            await _photos.MarkPreparedAsync(CancellationToken.None).ConfigureAwait(true);
+            await _photos.ShowRangeAsync(0).ConfigureAwait(true);
+        }
+        catch (Exception ex) when (LibraryFailure.IsExpected(ex))
         {
-            return;
+            Status = $"The photographs could not be read: {ex.Message}";
         }
-
-        _photos.Fill([.. page.Items.Select(item => new GalleryTile(item))]);
-        OnPropertyChanged(nameof(PhotoCount));
-        OnPropertyChanged(nameof(HasPhotos));
-
-        await _photos.MarkPreparedAsync(CancellationToken.None).ConfigureAwait(true);
-        await _photos.ShowRangeAsync(0).ConfigureAwait(true);
     }
 
     private async Task LoadCoversAsync()
