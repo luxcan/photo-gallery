@@ -83,7 +83,16 @@ public sealed class MergeDecisionsHandler
             outcome = Both(outcome, again);
         }
 
-        foreach (DecisionSet them in fetched.Sets)
+        // Only the machines actually listened to. A refused set is one whose
+        // answers were read and then not taken, and remembering it puts that
+        // laptop on the Sharing screen as a computer this library has taken
+        // answers from - which is the screen's way of saying the two are in
+        // step. Two libraries that have never had a folder in common would
+        // otherwise report each other as settled from the first press, and the
+        // one line that could have said so says the opposite.
+        HashSet<Guid> refused = [.. outcome.Refused.Select(set => set.Machine.Id)];
+
+        foreach (DecisionSet them in fetched.Sets.Where(set => !refused.Contains(set.Machine.Id)))
         {
             await _repository
                 .RememberAsync(them.Machine, DateTime.UtcNow, cancellationToken)

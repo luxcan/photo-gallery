@@ -49,6 +49,65 @@ public sealed class PairingTwoLibrariesTests : IDisposable
         Assert.True(offer.CanPair);
     }
 
+    /// <summary>
+    /// The sentence somebody reads on the first exchange of their lives.
+    /// </summary>
+    /// <remarks>
+    /// Every pair of libraries starts here, because no two of them mint the
+    /// same source identity until a person says their folders are one. Reported
+    /// as "Nothing new." it is indistinguishable from an exchange that asked
+    /// properly and heard nothing - and a family that reads that twice puts the
+    /// feature down, which is exactly what happened.
+    /// </remarks>
+    [Fact]
+    public async Task AWhollyRefusedMergeSaysWhyInsteadOfReportingNothingNew()
+    {
+        Apart();
+        NameAFaceOnMum();
+
+        await Mum.Publishing.HandleAsync();
+        MergeResult merged = await Dad.Merging.HandleAsync();
+
+        Assert.DoesNotContain("Nothing new", merged.Summary, StringComparison.Ordinal);
+        Assert.Contains("Nothing was taken from Mum", merged.Summary, StringComparison.Ordinal);
+        Assert.Contains(
+            "no folder of photographs in common", merged.Summary, StringComparison.Ordinal);
+
+        // And it points at the one question on the screen that settles it,
+        // rather than leaving somebody to find the card below by themselves.
+        Assert.Contains("share again", merged.Summary, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// A machine whose whole set was refused is not one this library has taken
+    /// answers from.
+    /// </summary>
+    /// <remarks>
+    /// The Sharing screen's list of machines is the house's answer to "is
+    /// everybody in step?". Remembering a refused set puts the other laptop on
+    /// it as settled from the very first press, so the one line that could have
+    /// said two libraries have never had a folder in common says the opposite.
+    /// </remarks>
+    [Fact]
+    public async Task AMachineWhoseSetWasRefusedIsNotRememberedAsOneTakenFrom()
+    {
+        Apart();
+        NameAFaceOnMum();
+
+        await Mum.Publishing.HandleAsync();
+        await Dad.Merging.HandleAsync();
+
+        Assert.Empty(Dad.Db.KnownMachines);
+
+        // And it is remembered the moment there is genuinely something in
+        // common, so this refuses the refused rather than refusing everybody.
+        PairingProposal offer = Assert.Single((await Dad.Merging.HandleAsync()).Pairings);
+        await Dad.Pairing.HandleAsync(offer.Mine.SharedId, offer.Theirs.SharedId);
+        await Dad.Merging.HandleAsync();
+
+        Assert.Single(Dad.Db.KnownMachines);
+    }
+
     [Fact]
     public async Task OnceThePairIsConfirmedEveryDecisionMatches()
     {

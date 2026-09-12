@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using PhotoGallery.App.Sharing;
+using PhotoGallery.Application.Ports;
 
 namespace PhotoGallery.Tests.App;
 
@@ -20,7 +21,15 @@ public sealed class PicturesCostTests : IDisposable
     private readonly SharingViewModel _sharing;
 
     public PicturesCostTests() =>
-        _sharing = new SharingViewModel(_services.GetRequiredService<IServiceScopeFactory>());
+        _sharing = new SharingViewModel(
+            _services.GetRequiredService<IServiceScopeFactory>(), new SilentLog());
+
+    private sealed class SilentLog : IActivityLog
+    {
+        public void Append(string line)
+        {
+        }
+    }
 
     /// <summary>
     /// A handful is said once, because there is nothing to choose between.

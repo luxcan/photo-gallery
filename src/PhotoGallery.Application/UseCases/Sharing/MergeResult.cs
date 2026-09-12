@@ -59,6 +59,22 @@ public sealed record MergeResult(
                      + "photo lines up. Point both at the same folder and share again.";
             }
 
+            // Said before the counts, and for the same reason as the line
+            // above: a refusal is the question never having been asked, while
+            // "Nothing new" is what a merge says when it asked properly and
+            // there was nothing to hear. The two read identically on screen and
+            // mean opposite things.
+            //
+            // The first exchange between any two libraries lands here, because
+            // no two of them mint the same source identity until somebody says
+            // their folders are one - so this is the sentence that has to carry
+            // a person to that question, rather than leaving them at "Nothing
+            // new" concluding the feature does not work.
+            if (Outcome.Refused.Count > 0 && Outcome.ChangedNothing)
+            {
+                return Refusals();
+            }
+
             List<string> parts = [];
             Add(parts, Outcome.NamesGained, "name", "names");
             Add(parts, Outcome.NamesReplaced, "answer replaced", "answers replaced");
@@ -72,11 +88,47 @@ public sealed record MergeResult(
                 ? "Nothing new"
                 : string.Join(", ", parts);
 
-            return Outcome.Held == 0
+            string said = Outcome.Held == 0
                 ? changed + "."
                 : $"{changed}. {Outcome.Held:N0} answers are waiting for photos this "
                   + "library has not indexed yet - scanning will bring them in.";
+
+            // Part of the house heard from and part of it refused is the one
+            // shape of this report that can mislead while every number in it is
+            // right: the counts are true and incomplete at the same time.
+            return Outcome.Refused.Count == 0 ? said : $"{said} {Refusals()}";
         }
+    }
+
+    /// <summary>
+    /// The machines whose answers were not taken, and what to do about it.
+    /// </summary>
+    /// <remarks>
+    /// Every refusal already carries a detail written to be read by a person
+    /// rather than by a log, so these are joined rather than reworded.
+    ///
+    /// <para>A source not yet in common is the only one of the three reasons
+    /// somebody can settle without leaving the screen, and it is the one every
+    /// pair of libraries meets on its first exchange - so it is pointed at the
+    /// question waiting below rather than merely stated. The other two, a newer
+    /// release and a clock too far ahead, are answered somewhere else entirely
+    /// and saying so here would be telling somebody to press something that is
+    /// not on the screen.</para>
+    /// </remarks>
+    private string Refusals()
+    {
+        string said = string.Join(
+            " ",
+            Outcome.Refused.Select(refused =>
+                $"Nothing was taken from {refused.Machine.Name} because {refused.Detail}."));
+
+        bool answerable =
+            Pairings.Count > 0
+            && Outcome.Refused.Any(refused => refused.Reason == RefusalReason.NoSourceInCommon);
+
+        return answerable
+            ? said + " Say whether those two folders are the same one below, then share again."
+            : said;
     }
 
     private static void Add(List<string> parts, int count, string one, string many)

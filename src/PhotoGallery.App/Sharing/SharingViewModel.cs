@@ -1,6 +1,7 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.DependencyInjection;
+using PhotoGallery.Application.Ports;
 using PhotoGallery.Application.UseCases.Sharing;
 
 namespace PhotoGallery.App.Sharing;
@@ -23,6 +24,20 @@ namespace PhotoGallery.App.Sharing;
 public sealed partial class SharingViewModel : ObservableObject
 {
     private readonly IServiceScopeFactory _scopeFactory;
+
+    /// <summary>
+    /// Where a share leaves a trace, because the screen's own account of it
+    /// lives until the next press and no longer.
+    /// </summary>
+    /// <remarks>
+    /// This feature is the one in the app whose failures are invisible on the
+    /// machine that suffers them: a laptop nominating a folder nobody else can
+    /// reach writes its file perfectly, reports a success, and is never heard
+    /// from by anybody. The folder is the whole of what went wrong in that case
+    /// and the whole of what is needed to see it, so it is written down beside
+    /// the result rather than only drawn on a screen somebody has closed.
+    /// </remarks>
+    private readonly IActivityLog _log;
 
     /// <summary>
     /// One job at a time.
@@ -97,9 +112,10 @@ public sealed partial class SharingViewModel : ObservableObject
     [NotifyCanExecuteChangedFor(nameof(ShareCommand), nameof(TakePicturesCommand))]
     private bool _isBusy;
 
-    public SharingViewModel(IServiceScopeFactory scopeFactory)
+    public SharingViewModel(IServiceScopeFactory scopeFactory, IActivityLog log)
     {
         _scopeFactory = scopeFactory;
+        _log = log;
     }
 
     public bool HasFolder => Folder.Length > 0;
@@ -268,6 +284,13 @@ public sealed partial class SharingViewModel : ObservableObject
             }).ConfigureAwait(true);
 
             Status = result.Summary;
+
+            // The folder first, and on its own line, because the failure this
+            // records is two machines each sharing faultlessly through a folder
+            // the other cannot see. Two logs side by side name it in a second;
+            // without them both laptops only ever said everything was fine.
+            _log.Append($"sharing through {Folder}");
+            _log.Append($"  {result.Summary}");
 
             Offers =
             [

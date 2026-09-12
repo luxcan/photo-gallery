@@ -285,7 +285,7 @@ public sealed partial class MainViewModel : ObservableObject
         About = new AboutViewModel();
         Albums = new AlbumsViewModel(scopeFactory, thumbnails);
         Models = new ModelsViewModel(scopeFactory);
-        Sharing = new SharingViewModel(scopeFactory);
+        Sharing = new SharingViewModel(scopeFactory, activityLog);
 
         // The nav and the search box both gate on what is installed, and neither
         // of them owns it.
