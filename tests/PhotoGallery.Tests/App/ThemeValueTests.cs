@@ -73,7 +73,7 @@ public sealed class ThemeValueTests
         { "Editor.Placeholder", "#FF98989D" },
         { "TextDisabled", "#FF8E8E93" },
         { "Button.Background", "#FF0A84FF" },
-        { "Button.HoverBackground", "#FF409CFF" },
+        { "Button.HoverBackground", "#FF097AE3" },
         { "Button.Foreground", "#FFFFFFFF" },
         { "Focus.Border", "#FF0A84FF" },
         { "Link.Foreground", "#FF0A84FF" },

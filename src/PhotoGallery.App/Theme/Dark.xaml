@@ -48,7 +48,18 @@
   <Color x:Key="TextDisabledColor">#FF8E8E93</Color>
 
   <Color x:Key="AccentBackgroundColor">#FF0A84FF</Color>
-  <Color x:Key="AccentBackgroundHoverColor">#FF409CFF</Color>
+  <!-- The one value taken FROM the handoff rather than from it. The table asks
+       for #409CFF, which is lighter than the accent it hovers off, so white on
+       it measures 2.83:1 against 3.65:1 at rest - the label gets harder to read
+       at the moment the pointer arrives, and the pressed state below is darker
+       again, so the ladder turned back on itself half way.
+
+       This is the handoff's own light step applied to the dark accent: light
+       goes #007AFF to #0071E3, which darkens green by 0.93 and blue by 0.89,
+       and the same two factors on #0A84FF give this. White on it is 4.28:1, and
+       rest 3.65 to hover 4.28 to pressed 5.59 now climbs the whole way. Raised
+       with whoever wrote the table rather than settled here. -->
+  <Color x:Key="AccentBackgroundHoverColor">#FF097AE3</Color>
   <Color x:Key="AccentBackgroundPressedColor">#FF0064D2</Color>
   <Color x:Key="AccentForegroundColor">#FFFFFFFF</Color>
   <Color x:Key="FocusVisualColor">#660A84FF</Color>
