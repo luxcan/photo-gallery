@@ -1,50 +1,74 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
-  <!-- Precision, light. The same direction as Dark.xaml with the accent retuned
-       rather than reused: teal at #37B6D8 is legible on a dark surface and far
-       too pale on a white one, so light takes a deeper #0E7C9B and puts white
-       text on it. That retune is the handoff's, not an interpretation of it.
+  <!-- Apple-style, light. macOS neutrals over white with the system blue as the
+       accent, from the design handoff "PhotoGallery - Apple-style theme"; the
+       hexes its token table names are that file's, unchanged, so a colour can be
+       traced back to its source. Everything the handoff does not name is derived
+       from Apple's own grey and blue ladders rather than invented, and says so
+       in the comment beside it.
+
+       This direction replaces Precision, which put a teal accent on cool
+       blue-greys. The two vocabularies below are unchanged by that: the
+       handoff's own role names come first and are the definitions, and under
+       them the names this app already used are mapped onto the same colours,
+       which is what lets the whole shell change appearance without a line of
+       MainWindow.xaml or Controls.xaml moving. Where the two disagree the
+       mapping is the honest record of which role a screen actually wanted.
 
        Every key in Dark.xaml appears here and nothing appears in only one of the
        two - which is what makes switching theme a swap rather than a merge, and
-       what stops a screen looking finished in one mode and broken in the other. -->
+       what stops a screen looking finished in one mode and broken in the other.
+       ThemeParityTests and ThemeDictionaryTests hold that line. -->
 
-  <!-- ===== Precision tokens ===== -->
-  <Color x:Key="AppBackgroundColor">#FFEBEFF4</Color>
+  <!-- ===== Palette tokens ===== -->
+  <Color x:Key="AppBackgroundColor">#FFF2F2F7</Color>
   <Color x:Key="SurfaceBackgroundColor">#FFFFFFFF</Color>
-  <Color x:Key="SurfaceAltBackgroundColor">#FFF4F7FA</Color>
-  <Color x:Key="TitleBarBackgroundColor">#FFF4F7FA</Color>
-  <Color x:Key="StatusBarBackgroundColor">#FFF4F7FA</Color>
-  <Color x:Key="StatusBarForegroundColor">#FF5C6B7F</Color>
+  <Color x:Key="SurfaceAltBackgroundColor">#FFF5F5F7</Color>
+  <Color x:Key="TitleBarBackgroundColor">#FFF5F5F7</Color>
+  <Color x:Key="StatusBarBackgroundColor">#FFF5F5F7</Color>
+  <Color x:Key="StatusBarForegroundColor">#FF86868B</Color>
   <Color x:Key="ControlBackgroundColor">#FFFFFFFF</Color>
-  <Color x:Key="ControlBackgroundHoverColor">#FFEFF4F9</Color>
-  <Color x:Key="ControlBackgroundPressedColor">#FFE1E8F0</Color>
-  <Color x:Key="ControlBackgroundDisabledColor">#FFF2F4F7</Color>
-  <Color x:Key="ControlBorderColor">#FFC3CDD9</Color>
-  <Color x:Key="ControlBorderHoverColor">#FF98A7BA</Color>
-  <Color x:Key="ControlBorderDisabledColor">#FFE1E6EC</Color>
-  <Color x:Key="DividerColor">#FFE2E7EE</Color>
-  <Color x:Key="TextPrimaryColor">#FF1B2430</Color>
-  <Color x:Key="TextSecondaryColor">#FF5C6B7F</Color>
-  <Color x:Key="TextDisabledColor">#FFA3AEBD</Color>
-  <Color x:Key="AccentBackgroundColor">#FF0E7C9B</Color>
-  <Color x:Key="AccentBackgroundHoverColor">#FF0C6B86</Color>
-  <Color x:Key="AccentBackgroundPressedColor">#FF0A5A71</Color>
+  <Color x:Key="ControlBackgroundHoverColor">#FFEEEEF0</Color>
+  <Color x:Key="ControlBackgroundPressedColor">#FFE5E5EA</Color>
+  <Color x:Key="ControlBackgroundDisabledColor">#FFF5F5F7</Color>
+  <Color x:Key="ControlBorderColor">#FFD2D2D7</Color>
+  <Color x:Key="ControlBorderHoverColor">#FFC7C7CC</Color>
+  <Color x:Key="ControlBorderDisabledColor">#FFEEEEF0</Color>
+  <Color x:Key="DividerColor">#FFE5E5EA</Color>
+  <Color x:Key="TextPrimaryColor">#FF1D1D1F</Color>
+  <Color x:Key="TextSecondaryColor">#FF3A3A3C</Color>
+
+  <!-- Placeholder is a rung of its own rather than a shade of secondary. The
+       handoff gives four greys for text - #1D1D1F, #3A3A3C, #86868B and #8E8E93
+       - and this app had three names for them, so one had to be added. This is
+       the one the watermark, the picture counts and every quiet line under a
+       heading take. -->
+  <!-- The caption grey. The handoff separates it from the placeholder by eight
+       units - captions and hints at #FF86868B, watermarks and counts one step
+       darker - which is invisible side by side and is still what the table
+       says, so it is carried rather than rounded away. -->
+  <Color x:Key="TextCaptionColor">#FF86868B</Color>
+  <Color x:Key="TextPlaceholderColor">#FF8E8E93</Color>
+  <Color x:Key="TextDisabledColor">#FF8E8E93</Color>
+
+  <Color x:Key="AccentBackgroundColor">#FF007AFF</Color>
+  <Color x:Key="AccentBackgroundHoverColor">#FF0071E3</Color>
+  <Color x:Key="AccentBackgroundPressedColor">#FF0062C4</Color>
   <Color x:Key="AccentForegroundColor">#FFFFFFFF</Color>
-  <Color x:Key="FocusVisualColor">#590E7C9B</Color>
-  <Color x:Key="SelectionBackgroundColor">#FFD6E9F1</Color>
-  <Color x:Key="SelectionBackgroundHoverColor">#FFC4E0EB</Color>
-  <Color x:Key="SelectionUnfocusedColor">#FFE4EBF1</Color>
-  <Color x:Key="RowAlternatingColor">#FFF7F9FC</Color>
-  <Color x:Key="ScrollBarTrackColor">#FFE7ECF2</Color>
-  <Color x:Key="ScrollBarThumbColor">#FFB4C0CE</Color>
-  <Color x:Key="ScrollBarThumbHoverColor">#FF8E9DAF</Color>
-  <Color x:Key="TooltipBackgroundColor">#FF1B2430</Color>
-  <Color x:Key="TooltipForegroundColor">#FFF2F5F9</Color>
-  <Color x:Key="TooltipBorderColor">#FF1B2430</Color>
-  <Color x:Key="ValidationErrorColor">#FFC0392B</Color>
-  <Color x:Key="ValidationErrorRingColor">#38C0392B</Color>
+  <Color x:Key="FocusVisualColor">#59007AFF</Color>
+  <Color x:Key="SelectionBackgroundColor">#FFE0EFFF</Color>
+  <Color x:Key="SelectionBackgroundHoverColor">#FFD1E7FF</Color>
+  <Color x:Key="SelectionUnfocusedColor">#FFE5E5EA</Color>
+  <Color x:Key="RowAlternatingColor">#FFFAFAFC</Color>
+  <Color x:Key="ScrollBarTrackColor">#FFF2F2F7</Color>
+  <Color x:Key="ScrollBarThumbColor">#FFC7C7CC</Color>
+  <Color x:Key="ScrollBarThumbHoverColor">#FFAEAEB2</Color>
+  <Color x:Key="TooltipBackgroundColor">#FF1D1D1F</Color>
+  <Color x:Key="TooltipForegroundColor">#FFFFFFFF</Color>
+  <Color x:Key="TooltipBorderColor">#FF1D1D1F</Color>
+  <Color x:Key="ValidationErrorColor">#FFD70015</Color>
+  <Color x:Key="ValidationErrorRingColor">#38D70015</Color>
 
   <SolidColorBrush x:Key="AppBackground"             Color="{StaticResource AppBackgroundColor}" />
   <SolidColorBrush x:Key="SurfaceBackground"         Color="{StaticResource SurfaceBackgroundColor}" />
@@ -62,6 +86,8 @@
   <SolidColorBrush x:Key="Divider"                   Color="{StaticResource DividerColor}" />
   <SolidColorBrush x:Key="TextPrimary"               Color="{StaticResource TextPrimaryColor}" />
   <SolidColorBrush x:Key="TextSecondary"             Color="{StaticResource TextSecondaryColor}" />
+  <SolidColorBrush x:Key="TextCaption"               Color="{StaticResource TextCaptionColor}" />
+  <SolidColorBrush x:Key="TextPlaceholder"           Color="{StaticResource TextPlaceholderColor}" />
   <SolidColorBrush x:Key="TextDisabled"              Color="{StaticResource TextDisabledColor}" />
   <SolidColorBrush x:Key="AccentBackground"          Color="{StaticResource AccentBackgroundColor}" />
   <SolidColorBrush x:Key="AccentBackgroundHover"     Color="{StaticResource AccentBackgroundHoverColor}" />
@@ -83,15 +109,33 @@
 
   <!-- ===== This app's names, mapped onto those roles ===== -->
 
-  <Color x:Key="Color.Accent">#FF0E7C9B</Color>
+  <Color x:Key="Color.Accent">#FF007AFF</Color>
 
   <SolidColorBrush x:Key="TitleBar.Background"        Color="{StaticResource TitleBarBackgroundColor}" />
   <SolidColorBrush x:Key="TitleBar.Foreground"        Color="{StaticResource TextPrimaryColor}" />
 
-  <SolidColorBrush x:Key="SideNav.Background"     Color="{StaticResource SurfaceAltBackgroundColor}" />
-  <SolidColorBrush x:Key="SideNav.Foreground"     Color="{StaticResource TextSecondaryColor}" />
+  <!-- The side nav is recessed chrome, so it takes the alternate surface rather
+       than a shade of its own. Its foreground is the PRIMARY text colour, not a
+       secondary one: the handoff draws an unselected section at full strength
+       and says which one is open by filling its row with the accent instead of
+       by dimming the others. SideNav.ActiveBorder no longer paints anything -
+       the 2 DIP rail it fed went with the rest of that idea - and it is kept
+       only so the two files stay key for key. -->
+  <SolidColorBrush x:Key="SideNav.Background"       Color="{StaticResource SurfaceAltBackgroundColor}" />
+  <SolidColorBrush x:Key="SideNav.Foreground"       Color="{StaticResource TextPrimaryColor}" />
   <SolidColorBrush x:Key="SideNav.ActiveForeground" Color="{StaticResource TextPrimaryColor}" />
-  <SolidColorBrush x:Key="SideNav.ActiveBorder"   Color="{StaticResource AccentBackgroundColor}" />
+  <SolidColorBrush x:Key="SideNav.ActiveBorder"     Color="{StaticResource AccentBackgroundColor}" />
+
+  <!-- The count on the open row, which is white text on the accent and has to
+       sit back from the name beside it. Eight tenths of white rather than a grey
+       mixed against the blue, so it holds whatever the accent turns out to be. -->
+  <SolidColorBrush x:Key="SideNav.SelectedCount"    Color="#CCFFFFFF" />
+
+  <!-- The three rows at the foot of the nav, a step back from the sections
+       above them. Its own key rather than SideBar.Foreground: that one is also
+       the label on every SecondaryButton, and the artboards draw those at full
+       strength while drawing the foot nav quieter. One key cannot be both. -->
+  <SolidColorBrush x:Key="SideNav.FootForeground"   Color="{StaticResource TextSecondaryColor}" />
 
   <SolidColorBrush x:Key="SideBar.Background"         Color="{StaticResource SurfaceAltBackgroundColor}" />
   <SolidColorBrush x:Key="SideBar.Foreground"         Color="{StaticResource TextPrimaryColor}" />
@@ -99,10 +143,20 @@
 
   <SolidColorBrush x:Key="Editor.Background"          Color="{StaticResource SurfaceBackgroundColor}" />
   <SolidColorBrush x:Key="Editor.Foreground"          Color="{StaticResource TextPrimaryColor}" />
-  <SolidColorBrush x:Key="Editor.Placeholder"         Color="{StaticResource TextSecondaryColor}" />
+
+  <!-- Its own rung now. This key does not only dress watermarks: it also carries
+       the picture count, the folder path under a face and what the search
+       understood, so it may not fall to the disabled grey. -->
+  <SolidColorBrush x:Key="Editor.Placeholder"         Color="{StaticResource TextPlaceholderColor}" />
 
   <SolidColorBrush x:Key="Panel.Background"           Color="{StaticResource SurfaceBackgroundColor}" />
-  <SolidColorBrush x:Key="Panel.Border"               Color="{StaticResource ControlBorderColor}" />
+
+  <!-- The divider, not the control border. The handoff separates the two: a card
+       or a panel is outlined in the same hairline that rules a band off from
+       what is under it, and only something you can type in or press carries the
+       heavier ControlBorder. They were one colour under Precision, which is why
+       they had been one token. -->
+  <SolidColorBrush x:Key="Panel.Border"               Color="{StaticResource DividerColor}" />
 
   <SolidColorBrush x:Key="StatusBar.Background"       Color="{StaticResource StatusBarBackgroundColor}" />
   <SolidColorBrush x:Key="StatusBar.Foreground"       Color="{StaticResource StatusBarForegroundColor}" />
@@ -131,9 +185,17 @@
   <SolidColorBrush x:Key="Badge.Background"           Color="{StaticResource ControlBackgroundPressedColor}" />
   <SolidColorBrush x:Key="Badge.Foreground"           Color="{StaticResource TextPrimaryColor}" />
 
+  <!-- The badge on a video tile is not the badge on a card. It is read against a
+       photograph rather than against the page, so it is a dark scrim carrying
+       white in BOTH themes - the one pair here whose light and dark values say
+       the same thing. Badge.Background would put a pale chip on a pale picture
+       and lose it. -->
+  <SolidColorBrush x:Key="VideoBadge.Background"      Color="#B81D1D1F" />
+  <SolidColorBrush x:Key="VideoBadge.Foreground"      Color="#FFFFFFFF" />
+
   <SolidColorBrush x:Key="Log.Muted"                  Color="{StaticResource TextSecondaryColor}" />
-  <SolidColorBrush x:Key="Log.Success"                Color="#FF1E7A45" />
-  <SolidColorBrush x:Key="Log.Warning"                Color="#FF8A5A00" />
+  <SolidColorBrush x:Key="Log.Success"                Color="#FF248A3D" />
+  <SolidColorBrush x:Key="Log.Warning"                Color="#FFB25000" />
 
   <!-- Numbered neutral ramp, mirroring Dark.xaml position for position: 1 is the
        surface content sits on and 6 the strongest chrome, so a pairing that has
@@ -142,26 +204,39 @@
        A ladder rather than a role map, and it has to be: this direction gives
        light the same white to SurfaceBackground and ControlBackground, so a ramp
        built from roles would repeat itself and two things told apart by their
-       step would become the same colour. Step 4 borrows AppBackground and step 6
-       the border, which are the values that keep it moving. -->
+       step would become the same colour. Step 3 borrows AppBackground and step 6
+       the control border, which are the values that keep it moving. -->
   <SolidColorBrush x:Key="Neutral.1" Color="{StaticResource SurfaceBackgroundColor}" />
   <SolidColorBrush x:Key="Neutral.2" Color="{StaticResource SurfaceAltBackgroundColor}" />
-  <SolidColorBrush x:Key="Neutral.3" Color="{StaticResource ControlBackgroundHoverColor}" />
-  <SolidColorBrush x:Key="Neutral.4" Color="{StaticResource AppBackgroundColor}" />
+  <SolidColorBrush x:Key="Neutral.3" Color="{StaticResource AppBackgroundColor}" />
+  <SolidColorBrush x:Key="Neutral.4" Color="{StaticResource ControlBackgroundHoverColor}" />
   <SolidColorBrush x:Key="Neutral.5" Color="{StaticResource ControlBackgroundPressedColor}" />
   <SolidColorBrush x:Key="Neutral.6" Color="{StaticResource ControlBorderColor}" />
 
-  <!-- As in Dark.xaml: Success and Caution and their backgrounds are TUNED, NOT
-       SPECIFIED. The handoff gives no green and no amber, so these were picked
-       by eye to carry the same weight here that they carry there. The soft part
-       of the palette - replace them the moment real values exist. -->
-  <SolidColorBrush x:Key="Status.Info"        Color="{StaticResource AccentBackgroundColor}" />
-  <SolidColorBrush x:Key="Status.InfoBack"    Color="{StaticResource SelectionBackgroundColor}" />
-  <SolidColorBrush x:Key="Status.Success"     Color="#FF1E7A45" />
-  <SolidColorBrush x:Key="Status.SuccessBack" Color="#FFDDF2E5" />
-  <SolidColorBrush x:Key="Status.Caution"     Color="#FF8A5A00" />
-  <SolidColorBrush x:Key="Status.CautionBack" Color="#FFFBEED6" />
-  <SolidColorBrush x:Key="Status.Danger"      Color="{StaticResource ValidationErrorColor}" />
-  <SolidColorBrush x:Key="Status.DangerBack"  Color="#FFFBE4E1" />
+  <!-- Status colours.
+
+       Info and Danger are the theme's own: info is the accent, and danger is
+       ValidationError, so an invalid field and a failure message say the same
+       thing in the same colour.
+
+       Success and Caution come in two strengths, on purpose. The handoff gives
+       #34C759 and #FF9F0A, but it gives them for ONE job - the outline drawn
+       round a face on a photograph - and this app also sets those two keys as
+       TEXT on five screens, where against white they measure 2.22:1 and 2.06:1
+       and cannot be read. So the vivid pair keeps the handoff's values for the
+       outlines, and Status.Success and Status.Caution are darkened to Apple's
+       own accessible green and amber for everything written in them. Dark needs
+       no such split: the handoff's values are legible there, and both strengths
+       are the same colour. -->
+  <SolidColorBrush x:Key="Status.Info"         Color="{StaticResource AccentBackgroundColor}" />
+  <SolidColorBrush x:Key="Status.InfoBack"     Color="{StaticResource SelectionBackgroundColor}" />
+  <SolidColorBrush x:Key="Status.Success"      Color="#FF248A3D" />
+  <SolidColorBrush x:Key="Status.SuccessVivid" Color="#FF34C759" />
+  <SolidColorBrush x:Key="Status.SuccessBack"  Color="#FFE3F7E8" />
+  <SolidColorBrush x:Key="Status.Caution"      Color="#FFB25000" />
+  <SolidColorBrush x:Key="Status.CautionVivid" Color="#FFFF9F0A" />
+  <SolidColorBrush x:Key="Status.CautionBack"  Color="#FFFFF2DD" />
+  <SolidColorBrush x:Key="Status.Danger"       Color="{StaticResource ValidationErrorColor}" />
+  <SolidColorBrush x:Key="Status.DangerBack"   Color="#FFFFE4E2" />
 
 </ResourceDictionary>

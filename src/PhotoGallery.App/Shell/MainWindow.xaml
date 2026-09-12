@@ -67,8 +67,7 @@
          right border on the nav. Inside the nav it would be subtracted before
          the padding, leaving 51 to divide up and clipping the last pixel off
          every icon; out here the nav's 52 is 52, and 12 + 7 + 14 + 7 + 12 comes
-         out exact with the icon centred on 26 - the 2 DIP rail is overlaid
-         rather than laid out, so it costs the row no width. -->
+         out exact with the icon centred on 26. -->
     <Grid Grid.Row="0">
       <Grid.ColumnDefinitions>
         <ColumnDefinition Width="Auto" />
@@ -87,6 +86,14 @@
           <Border DockPanel.Dock="Bottom" Padding="12,8"
                   BorderThickness="0,1,0,0" SnapsToDevicePixels="True"
                   BorderBrush="{DynamicResource Separator}">
+            <!-- The one row template in the app names NavigationItemButton, so
+                 the quieter foot style is handed to it under that name here
+                 rather than by copying the template. A resource lookup from
+                 inside the template walks up the tree and finds this one first. -->
+            <Border.Resources>
+              <Style x:Key="NavigationItemButton" TargetType="ToggleButton"
+                     BasedOn="{StaticResource NavigationFootItemButton}" />
+            </Border.Resources>
             <ItemsControl ItemsSource="{Binding BottomSections}"
                           ItemTemplate="{DynamicResource NavigationItem}" />
           </Border>
@@ -310,7 +317,11 @@
                    the box unusable. -->
               <StackPanel Grid.Column="0" Orientation="Horizontal">
               <Grid Width="270">
+                <!-- 32 high, and the padding goes horizontal-only to allow it.
+                     On the instance rather than in InputTextBox, which dresses a
+                     dozen other boxes the handoff never sized. -->
                 <TextBox x:Name="PersonSearch" Style="{DynamicResource InputTextBox}"
+                         Height="32" Padding="10,0" VerticalContentAlignment="Center"
                          AutomationProperties.Name="Search for a person, a place, or a description"
                          Text="{Binding Gallery.SearchText, UpdateSourceTrigger=PropertyChanged}"
                          GotKeyboardFocus="OnSearchFocused">
@@ -469,12 +480,12 @@
                       CornerRadius="{DynamicResource Radius.Control}" Padding="2"
                       SnapsToDevicePixels="True">
                 <UniformGrid Rows="1">
-                  <RadioButton Style="{DynamicResource SegmentedToggle}"
+                  <RadioButton Style="{DynamicResource SegmentedToggle}" MinWidth="80"
                                Content="Newest" GroupName="GallerySort"
                                ToolTip="Most recent pictures first"
                                IsChecked="{Binding Gallery.OldestFirst,
                                            Converter={StaticResource InverseBool}}" />
-                  <RadioButton Style="{DynamicResource SegmentedToggle}"
+                  <RadioButton Style="{DynamicResource SegmentedToggle}" MinWidth="80"
                                Content="Oldest" GroupName="GallerySort"
                                ToolTip="Earliest pictures first"
                                IsChecked="{Binding Gallery.OldestFirst}" />
@@ -496,11 +507,11 @@
                        draw; it now holds both, and a label promising one of them
                        is the kind of small lie that has somebody hunting for a
                        video tab that does not exist. -->
-                  <RadioButton Style="{DynamicResource SegmentedToggle}"
+                  <RadioButton Style="{DynamicResource SegmentedToggle}" MinWidth="80"
                                Content="Media" GroupName="GalleryView"
                                IsChecked="{Binding Gallery.ShowFolders,
                                            Converter={StaticResource InverseBool}}" />
-                  <RadioButton Style="{DynamicResource SegmentedToggle}"
+                  <RadioButton Style="{DynamicResource SegmentedToggle}" MinWidth="80"
                                Content="Folders" GroupName="GalleryView"
                                IsChecked="{Binding Gallery.ShowFolders}" />
                 </UniformGrid>
@@ -647,10 +658,10 @@
                                   <StackPanel Orientation="Horizontal">
                                     <TextBlock Text="&#xE714;" FontFamily="Segoe MDL2 Assets"
                                                FontSize="11" VerticalAlignment="Center"
-                                               Foreground="{DynamicResource Badge.Foreground}" />
+                                               Foreground="{DynamicResource VideoBadge.Foreground}" />
                                     <TextBlock Text="{Binding DurationCaption}" FontSize="11"
                                                Margin="4,0,0,0" VerticalAlignment="Center"
-                                               Foreground="{DynamicResource Badge.Foreground}"
+                                               Foreground="{DynamicResource VideoBadge.Foreground}"
                                                Visibility="{Binding HasDuration,
                                                             Converter={StaticResource BoolToVisibility}}" />
                                   </StackPanel>
@@ -709,11 +720,13 @@
               </Grid.ColumnDefinitions>
               <StackPanel Grid.Column="0" VerticalAlignment="Center"
                           HorizontalAlignment="Left" Margin="0,0,16,0">
-                <TextBlock Style="{DynamicResource FieldLabel}" Text="Albums" />
-                <TextBlock Style="{DynamicResource HintText}" TextWrapping="Wrap"
-                           Text="Nothing here moves or renames a file. A photograph belongs to one album, so putting it in another takes it out of the first."
-                           Visibility="{Binding Albums.HasStatus,
-                                        Converter={StaticResource InverseBoolToVisibility}}" />
+                <!-- The name of the screen, and nothing under it. The sentence
+                     that used to sit here - that nothing on this screen moves or
+                     renames a file, and that a photograph belongs to one album -
+                     is gone at the handoff's asking: it was read once and read
+                     past every day after. What the screen still says out loud is
+                     what just happened, which is the line below. -->
+                <TextBlock Style="{DynamicResource Heading}" Margin="0" Text="Albums" />
                 <TextBlock Style="{DynamicResource HintText}" TextWrapping="Wrap"
                            Text="{Binding Albums.Status}"
                            Visibility="{Binding Albums.HasStatus,
@@ -909,7 +922,7 @@
                                        Foreground="{DynamicResource Editor.Foreground}" />
                             <TextBlock Text="{Binding Caption}" Margin="0,2,0,0" FontSize="11"
                                        TextTrimming="CharacterEllipsis"
-                                       Foreground="{DynamicResource Editor.Placeholder}" />
+                                       Foreground="{DynamicResource TextCaption}" />
                           </StackPanel>
                         </Grid>
                       </Button>
@@ -949,7 +962,12 @@
                             <Border Background="{DynamicResource Panel.Background}"
                                     CornerRadius="{StaticResource Radius.Inner}" />
                             <Image Source="{Binding Cover}" Stretch="UniformToFill" />
-                            <Border Style="{DynamicResource VideoBadge}"
+                            <!-- Badge.Background, not the VideoBadge scrim: this
+                                 one names what kind of album it is and is read as
+                                 part of the card, so it takes the neutral chip the
+                                 People count and the turn notices take. -->
+                            <Border Background="{DynamicResource Badge.Background}"
+                                    Padding="5,2"
                                     HorizontalAlignment="Left" VerticalAlignment="Top"
                                     Margin="6"
                                     Visibility="{Binding HasKindLabel,
@@ -963,7 +981,7 @@
                                      Foreground="{DynamicResource Editor.Foreground}" />
                           <TextBlock Text="{Binding Caption}" Margin="2,1,2,0" FontSize="11.5"
                                      TextTrimming="CharacterEllipsis"
-                                     Foreground="{DynamicResource Editor.Placeholder}" />
+                                     Foreground="{DynamicResource TextCaption}" />
                         </StackPanel>
                       </Button>
                     </DataTemplate>
@@ -1086,7 +1104,7 @@
                                                    Converter={StaticResource BoolToVisibility}}">
                                 <TextBlock Text="&#xE714;" FontFamily="Segoe MDL2 Assets"
                                            FontSize="11" VerticalAlignment="Center"
-                                           Foreground="{DynamicResource Badge.Foreground}" />
+                                           Foreground="{DynamicResource VideoBadge.Foreground}" />
                               </Border>
 
                               <!-- The corner button the face crops already carry,
@@ -1148,10 +1166,10 @@
                                 <StackPanel Orientation="Horizontal">
                                   <TextBlock Text="&#xE714;" FontFamily="Segoe MDL2 Assets"
                                              FontSize="11" VerticalAlignment="Center"
-                                             Foreground="{DynamicResource Badge.Foreground}" />
+                                             Foreground="{DynamicResource VideoBadge.Foreground}" />
                                   <TextBlock Text="{Binding DurationCaption}" FontSize="11"
                                              Margin="4,0,0,0" VerticalAlignment="Center"
-                                             Foreground="{DynamicResource Badge.Foreground}"
+                                             Foreground="{DynamicResource VideoBadge.Foreground}"
                                              Visibility="{Binding HasDuration,
                                                           Converter={StaticResource BoolToVisibility}}" />
                                 </StackPanel>
@@ -1726,10 +1744,10 @@
                                     <StackPanel Orientation="Horizontal">
                                       <TextBlock Text="&#xE714;" FontFamily="Segoe MDL2 Assets"
                                                  FontSize="11" VerticalAlignment="Center"
-                                                 Foreground="{DynamicResource Badge.Foreground}" />
+                                                 Foreground="{DynamicResource VideoBadge.Foreground}" />
                                       <TextBlock Text="{Binding DurationCaption}" FontSize="11"
                                                  Margin="4,0,0,0" VerticalAlignment="Center"
-                                                 Foreground="{DynamicResource Badge.Foreground}"
+                                                 Foreground="{DynamicResource VideoBadge.Foreground}"
                                                  Visibility="{Binding HasDuration,
                                                               Converter={StaticResource BoolToVisibility}}" />
                                     </StackPanel>
@@ -1960,20 +1978,20 @@
                                  Foreground="{DynamicResource Badge.Foreground}" />
                     </Border>
 
-                    <Button Style="{DynamicResource ViewerButton}" Content="&#xE80C;"
+                    <Button Style="{DynamicResource ViewerToolButton}" Content="&#xE80C;"
                             Margin="0,0,6,0"
                             ToolTip="Turn a quarter to the left"
                             AutomationProperties.Name="Turn left"
                             Command="{Binding People.TurnInspectedCommand}"
                             CommandParameter="-90" />
-                    <Button Style="{DynamicResource ViewerButton}" Content="&#xE80D;"
+                    <Button Style="{DynamicResource ViewerToolButton}" Content="&#xE80D;"
                             Margin="0,0,10,0"
                             ToolTip="Turn a quarter to the right"
                             AutomationProperties.Name="Turn right"
                             Command="{Binding People.TurnInspectedCommand}"
                             CommandParameter="90" />
 
-                    <Button Style="{DynamicResource ViewerButton}" Content="&#xE74D;"
+                    <Button Style="{DynamicResource ViewerToolButton}" Content="&#xE74D;"
                             Margin="0,0,10,0"
                             ToolTip="Delete this photo"
                             AutomationProperties.Name="Delete this photo"
@@ -1981,7 +1999,8 @@
 
                     <!-- The same button in the same corner as the photo viewer's,
                          because it is the same gesture: put this picture down. -->
-                    <Button Style="{DynamicResource SecondaryButton}" MinWidth="90"
+                    <Button Style="{DynamicResource SecondaryButton}"
+                            Height="32" Padding="15,0"
                             Content="Close" ToolTip="Back to the faces (Esc)"
                             Command="{Binding People.CloseInspectCommand}" />
                   </StackPanel>
@@ -1989,404 +2008,6 @@
               </Grid>
             </Border>
           </Grid>
-
-          <!-- One picture, over the content area. Focusable and focused on open,
-               because a Border does not take keyboard input and Escape and the
-               arrow keys would otherwise go to the grid behind it. -->
-          <Border x:Name="PhotoViewer" Focusable="True"
-                  Background="{DynamicResource Editor.Background}"
-                  Visibility="{Binding Gallery.IsViewerOpen,
-                               Converter={StaticResource BoolToVisibility}}"
-                  KeyDown="OnViewerKeyDown">
-            <Grid Margin="16">
-              <Grid.RowDefinitions>
-                <RowDefinition Height="*" />
-                <RowDefinition Height="Auto" />
-              </Grid.RowDefinitions>
-
-              <!-- No StretchDirection: a preview is laid out at its DPI-scaled
-                   size, not its pixel size, so a camera that writes 180 DPI
-                   turns a 1024px preview into a 546 DIP element. DownOnly then
-                   pinned it there and the picture showed postage-stamp sized on
-                   a large window. Uniform alone fills the space whatever the
-                   file claims its resolution to be. -->
-              <Grid Grid.Row="0">
-                <Grid.ColumnDefinitions>
-                  <ColumnDefinition Width="*" />
-                  <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-
-                <!-- The same panel the face review and the duplicate comparison
-                     show, so a photograph reads the same way whichever screen
-                     you reached it from. -->
-                <ScrollViewer Grid.Column="1" Width="290" Margin="16,0,0,0"
-                              VerticalScrollBarVisibility="Auto"
-                              HorizontalScrollBarVisibility="Disabled">
-                  <ContentControl Content="{Binding Gallery.OpenDetails}" />
-                </ScrollViewer>
-
-              <Grid Grid.Column="0" x:Name="PhotoArea" SizeChanged="OnPhotoAreaSizeChanged">
-                <!-- Hidden while the clip runs. Left showing, a player that
-                     stalled would sit on top of its own still and look like it
-                     was working. -->
-                <Image Source="{Binding Gallery.OpenPicture}" Stretch="Uniform"
-                       Visibility="{Binding Gallery.IsPlayingVideo,
-                                    Converter={StaticResource InverseBoolToVisibility}}" />
-
-                <!-- A video's still is the one picture in this app that is not
-                     the whole of what the file is, so the picture itself is the
-                     way in: clicking it plays the clip. The badge is there
-                     because a still that does something when clicked has to look
-                     like it will - without it this is an invisible rule that
-                     only gets found by accident.
-
-                     Below the face boxes on purpose, so naming somebody in a
-                     video still works and only the rest of the frame plays. -->
-                <!-- The clip itself, once somebody has asked for it.
-                     LoadedBehavior="Manual" so it cannot start merely because a
-                     video was looked at - but Manual also means setting Source
-                     does not begin playing, and Play() has to be called by hand
-                     once the source is on the element. Doing it only from
-                     MediaOpened was not enough: it rendered the first frame and
-                     sat there, which reads exactly like a video that is playing
-                     something very still. Both are wired now - the click starts
-                     it, and MediaOpened starts it again for the case where the
-                     source had not finished opening when the click landed. -->
-                <MediaElement x:Name="VideoPlayer" Stretch="Uniform"
-                              LoadedBehavior="Manual" UnloadedBehavior="Stop"
-                              Source="{Binding Gallery.PlayingSource}"
-                              MediaOpened="OnVideoOpened"
-                              MediaEnded="OnVideoEnded"
-                              MediaFailed="OnVideoFailed">
-                  <!-- Collapsed until it is playing. Warming it by keeping it in
-                       the tree was tried and does not work: a MediaElement that
-                       is not being drawn does not open its source, whether it is
-                       collapsed or merely transparent, so the wait came back the
-                       moment play was pressed. The head start comes from
-                       VideoPrefetch instead, which pulls the ends of the file
-                       into Windows' own cache and needs no element at all. -->
-                  <MediaElement.Style>
-                    <Style TargetType="MediaElement">
-                      <Setter Property="Visibility" Value="Collapsed" />
-                      <Style.Triggers>
-                        <DataTrigger Binding="{Binding Gallery.IsPlayingVideo}" Value="True">
-                          <Setter Property="Visibility" Value="Visible" />
-                        </DataTrigger>
-                      </Style.Triggers>
-                    </Style>
-                  </MediaElement.Style>
-                  <!-- LayoutTransform, not RenderTransform: a quarter turn swaps
-                       the picture's width and height, and only a layout
-                       transform makes the space around it agree. Rendering it
-                       would leave a portrait clip drawn across the bars of a
-                       landscape box. -->
-                  <MediaElement.LayoutTransform>
-                    <RotateTransform Angle="{Binding Gallery.PlayingRotation}" />
-                  </MediaElement.LayoutTransform>
-                </MediaElement>
-
-                <Button Visibility="{Binding Gallery.CanOfferPlay,
-                                     Converter={StaticResource BoolToVisibility}}"
-                        ToolTip="Play this video"
-                        AutomationProperties.Name="Play this video"
-                        Cursor="Hand"
-                        Click="OnStartVideoClicked">
-                  <Button.Template>
-                    <ControlTemplate TargetType="Button">
-                      <!-- Transparent rather than no background: a null one is
-                           not hit-testable, so the click would fall through to
-                           the picture behind and nothing would happen. -->
-                      <Border Background="Transparent">
-                        <ContentPresenter HorizontalAlignment="Center"
-                                          VerticalAlignment="Center" />
-                      </Border>
-                    </ControlTemplate>
-                  </Button.Template>
-                  <Border Width="72" Height="72" CornerRadius="36"
-                          Background="#99000000" Opacity="0.85">
-                    <TextBlock Text="&#xE768;" FontFamily="Segoe MDL2 Assets"
-                               FontSize="30" Foreground="White"
-                               HorizontalAlignment="Center" VerticalAlignment="Center"
-                               Margin="4,0,0,0" />
-                  </Border>
-                </Button>
-
-                <!-- Boxes are laid out in the view model against this area's
-                     size, because the picture is drawn uniformly - centred with
-                     bars on two sides - and a box that did not follow the same
-                     arithmetic would sit over nothing. -->
-                <ItemsControl ItemsSource="{Binding Gallery.OpenFaces}"
-                              Visibility="{Binding Gallery.ShowFaceNames,
-                                           Converter={StaticResource BoolToVisibility}}">
-                  <ItemsControl.ItemsPanel>
-                    <ItemsPanelTemplate>
-                      <Canvas />
-                    </ItemsPanelTemplate>
-                  </ItemsControl.ItemsPanel>
-                  <ItemsControl.ItemContainerStyle>
-                    <Style TargetType="ContentPresenter">
-                      <Setter Property="Canvas.Left" Value="{Binding Left}" />
-                      <Setter Property="Canvas.Top" Value="{Binding Top}" />
-                    </Style>
-                  </ItemsControl.ItemContainerStyle>
-                  <ItemsControl.ItemTemplate>
-                    <DataTemplate>
-                      <Button Style="{DynamicResource FaceBox}"
-                              Width="{Binding Width}" Height="{Binding Height}"
-                              ToolTip="Say who this is"
-                              AutomationProperties.Name="{Binding Label}"
-                              Command="{Binding DataContext.Gallery.BeginNamingFaceCommand,
-                                        RelativeSource={RelativeSource AncestorType=Window}}"
-                              CommandParameter="{Binding}">
-                        <Border Style="{DynamicResource FaceBoxLabel}">
-                          <TextBlock Text="{Binding Label}" FontSize="11" Foreground="White" />
-                        </Border>
-                      </Button>
-                    </DataTemplate>
-                  </ItemsControl.ItemTemplate>
-                </ItemsControl>
-
-                <!-- Where the clip is up to, and the way to move it. Over the
-                     foot of the picture rather than under it, so it costs the
-                     grid no height and appears only while something is playing.
-
-                     Shown only when the length is known: a bar with no end is a
-                     lie about what dragging it would do. -->
-                <!-- Centred and capped rather than stretched. The area under a
-                     picture is as wide as the window, and a bar that fills it is
-                     a control the width of a desk for a clip a few seconds long
-                     - the thumb moves a hand's breadth per second and the eye
-                     has to travel the whole screen to read the time beside it. -->
-                <Border VerticalAlignment="Bottom" HorizontalAlignment="Center"
-                        MinWidth="540" MaxWidth="840" Margin="0,0,0,16"
-                        Padding="14,8" CornerRadius="8" Background="#CC000000"
-                        Visibility="{Binding Gallery.CanScrub,
-                                     Converter={StaticResource BoolToVisibility}}">
-                  <Grid>
-                    <Grid.ColumnDefinitions>
-                      <ColumnDefinition Width="*" />
-                      <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-
-                    <Slider x:Name="VideoSeek" Grid.Column="0" VerticalAlignment="Center"
-                            Minimum="0" IsMoveToPointEnabled="True"
-                            AutomationProperties.Name="How far into the video"
-                            Maximum="{Binding Gallery.PlaybackLengthSeconds}"
-                            Value="{Binding Gallery.PlaybackSeconds, Mode=TwoWay}"
-                            Thumb.DragStarted="OnSeekStarted"
-                            Thumb.DragCompleted="OnSeekFinished"
-                            PreviewMouseLeftButtonUp="OnSeekClicked" />
-
-                    <TextBlock Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center"
-                               FontSize="12" Foreground="White"
-                               Text="{Binding Gallery.PositionCaption}" />
-                  </Grid>
-                </Border>
-
-                <!-- What is offered when this machine cannot decode the clip.
-                     Never a black rectangle: the still is still there behind
-                     this, and the button hands the file to whatever Windows
-                     does play it with. -->
-                <Border VerticalAlignment="Bottom" HorizontalAlignment="Center"
-                        Margin="0,0,0,20" Padding="14,10" CornerRadius="6"
-                        Background="#CC000000"
-                        Visibility="{Binding Gallery.HasPlaybackError,
-                                     Converter={StaticResource BoolToVisibility}}">
-                  <StackPanel Orientation="Horizontal">
-                    <TextBlock VerticalAlignment="Center" FontSize="12.5" MaxWidth="420"
-                               TextWrapping="Wrap" Foreground="White"
-                               Text="{Binding Gallery.PlaybackError}" />
-                    <Button Style="{DynamicResource SecondaryButton}" Margin="12,0,0,0"
-                            MinWidth="150" Content="Open in your player"
-                            ToolTip="Hand this file to the program Windows normally plays it with"
-                            Tag="{Binding Gallery.OpenTile.Item.FullPath}"
-                            Click="OnPlayVideoClicked" />
-                  </StackPanel>
-                </Border>
-
-                <!-- Saying who one face is. The template lives in Controls.xaml
-                     because the People screen asks the same question. -->
-                <ContentControl Content="{Binding Gallery.Picker}"
-                                Visibility="{Binding Gallery.Picker.IsOpen,
-                                             Converter={StaticResource BoolToVisibility}}" />
-
-                <!-- And saying which occasion it belongs to. -->
-                <ContentControl Content="{Binding Gallery.Albums}"
-                                Visibility="{Binding Gallery.Albums.IsOpen,
-                                             Converter={StaticResource BoolToVisibility}}" />
-              </Grid>
-              </Grid>
-
-              <TextBlock Grid.Row="0" HorizontalAlignment="Center" VerticalAlignment="Center"
-                         FontSize="13" MaxWidth="360" TextWrapping="Wrap" TextAlignment="Center"
-                         Foreground="{DynamicResource Editor.Placeholder}"
-                         Text="This one has not been prepared yet. Choose Prepare pictures to read it."
-                         Visibility="{Binding Gallery.OpenPicture,
-                                      Converter={StaticResource NullToVisibility}}" />
-
-              <!-- A dock rather than three things overlaid in one cell. Laid
-                   over each other, the centred arrows and the tools on the
-                   right ran through one another the moment the window was not
-                   wide enough for both - the face summary printed straight
-                   across the Next button. Docking the tools first and letting
-                   the arrows centre in what is left cannot collide at any
-                   width; the arrows drift off true centre on a narrow window,
-                   which is the right thing to give up.
-
-                   The file name and folder that used to sit on the left are
-                   gone: the panel beside the picture already shows both, as the
-                   same Explorer link, and one photograph does not need naming
-                   twice on one screen. -->
-              <DockPanel Grid.Row="1" Margin="0,14,0,0" LastChildFill="True">
-                <StackPanel DockPanel.Dock="Right" VerticalAlignment="Center"
-                            Orientation="Horizontal">
-                  <TextBlock VerticalAlignment="Center" Margin="0,0,10,0" FontSize="11.5"
-                             Foreground="{DynamicResource Editor.Placeholder}"
-                             Text="{Binding Gallery.FaceSummary}"
-                             Visibility="{Binding Gallery.ShowFaceNames,
-                                          Converter={StaticResource BoolToVisibility}}" />
-
-                  <!-- Videos only. The app shows one still taken out of the
-                       film, so watching it means handing the file to whatever
-                       Windows already plays it with - and saying so plainly when
-                       the folder it lives in is away. -->
-                  <!-- Play here, and stop here. One button that changes what it
-                       offers, because two side by side would each be wrong half
-                       the time. -->
-                  <Button Style="{DynamicResource ViewerButton}" Content="&#xE768;"
-                          Margin="0,0,10,0"
-                          ToolTip="Play this video"
-                          AutomationProperties.Name="Play this video"
-                          Visibility="{Binding Gallery.CanOfferPlay,
-                                       Converter={StaticResource BoolToVisibility}}"
-                          Click="OnStartVideoClicked" />
-
-                  <Button Style="{DynamicResource ViewerButton}" Content="&#xE71A;"
-                          Margin="0,0,10,0"
-                          ToolTip="Stop and go back to the picture"
-                          AutomationProperties.Name="Stop this video"
-                          Visibility="{Binding Gallery.IsPlayingVideo,
-                                       Converter={StaticResource BoolToVisibility}}"
-                          Click="OnStopVideoClicked" />
-
-                  <!-- What just happened to this photograph's album, and only
-                       that: the button beside it already carries the name, so
-                       the steady state was printing the same word twice. What
-                       this says is what a name cannot - that it left one album
-                       to be in another. -->
-                  <TextBlock VerticalAlignment="Center" Margin="0,0,10,0" FontSize="11.5"
-                             MaxWidth="320" TextTrimming="CharacterEllipsis"
-                             Foreground="{DynamicResource Editor.Placeholder}"
-                             Text="{Binding Gallery.AlbumNotice}"
-                             ToolTip="{Binding Gallery.AlbumNotice}"
-                             Visibility="{Binding Gallery.HasAlbumNotice,
-                                          Converter={StaticResource BoolToVisibility}}" />
-
-                  <!-- One button: where this photograph is, and the way to change
-                       it. It carries the album's glyph from the side nav, so the
-                       two say album in the same way. Taking it out lives inside
-                       the list it opens, because "none" is an answer to which
-                       album this is in. -->
-                  <Button Style="{DynamicResource ViewerButton}" Margin="0,0,10,0"
-                          MaxWidth="260" HorizontalContentAlignment="Left"
-                          ToolTip="{Binding Gallery.AlbumTip}"
-                          AutomationProperties.Name="{Binding Gallery.AlbumTip}"
-                          Command="{Binding Gallery.AddToAlbumCommand}">
-                    <StackPanel Orientation="Horizontal">
-                      <TextBlock Text="&#xE8FD;" FontSize="15" VerticalAlignment="Center" />
-                      <TextBlock Text="{Binding Gallery.AlbumLabel}" Margin="9,0,0,0"
-                                 FontFamily="{StaticResource Font.Ui}" FontSize="12.5"
-                                 VerticalAlignment="Center"
-                                 TextTrimming="CharacterEllipsis" />
-                    </StackPanel>
-                  </Button>
-
-                  <ToggleButton Style="{DynamicResource PillToggle}" MinWidth="90"
-                                Content="Names" Margin="0,0,8,0"
-                                ToolTip="Outline the faces so you can say who they are"
-                                IsChecked="{Binding Gallery.ShowFaceNames, Mode=TwoWay}" />
-
-                  <!-- Said plainly: this one is upright here and nowhere else,
-                       because its file has no orientation tag and no room to add
-                       one without rewriting the picture. -->
-                  <Border VerticalAlignment="Center" Margin="0,0,10,0" Padding="7,3"
-                          Background="{DynamicResource Badge.Background}"
-                          CornerRadius="{StaticResource Radius.Inner}"
-                          ToolTip="{Binding Gallery.TurnNoticeTip}"
-                          Visibility="{Binding Gallery.TurnNotice,
-                                       Converter={StaticResource InverseNullToVisibility}}">
-                    <TextBlock Text="{Binding Gallery.TurnNotice}" FontSize="10.5"
-                               Foreground="{DynamicResource Badge.Foreground}" />
-                  </Border>
-
-                  <!-- For a picture whose file never said which way up it goes.
-                       EXIF orientation is already applied when the copy is made,
-                       so anything still wrong here only a person can judge. -->
-                  <Button Style="{DynamicResource ViewerButton}" Content="&#xE80C;"
-                          Margin="0,0,6,0"
-                          ToolTip="Turn a quarter to the left"
-                          AutomationProperties.Name="Turn left"
-                          Command="{Binding Gallery.TurnPhotoCommand}"
-                          CommandParameter="-90" />
-                  <Button Style="{DynamicResource ViewerButton}" Content="&#xE80D;"
-                          Margin="0,0,10,0"
-                          ToolTip="Turn a quarter to the right"
-                          AutomationProperties.Name="Turn right"
-                          Command="{Binding Gallery.TurnPhotoCommand}"
-                          CommandParameter="90" />
-
-                  <!-- The one thing here that cannot be undone, so it asks
-                       first and says what it costs. -->
-                  <Button Style="{DynamicResource ViewerButton}" Content="&#xE74D;"
-                          Margin="0,0,10,0"
-                          ToolTip="Delete this photo"
-                          AutomationProperties.Name="Delete this photo"
-                          Click="OnDeletePhotoClicked" />
-
-                  <Button Style="{DynamicResource SecondaryButton}" MinWidth="90"
-                          Content="Close" ToolTip="Back to the grid (Esc)"
-                          Command="{Binding Gallery.ClosePhotoCommand}" />
-                </StackPanel>
-
-                <!-- Last, so it fills what the tools left and centres in it. -->
-                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center"
-                            VerticalAlignment="Center">
-                  <Button Style="{DynamicResource ViewerButton}" Content="&#xE76B;"
-                          ToolTip="Previous picture (left arrow)"
-                          AutomationProperties.Name="Previous picture"
-                          Command="{Binding Gallery.PreviousPhotoCommand}" />
-
-                  <!-- Only when the picture is one an album is proposing. Two
-                       acts rather than a switch: at full size the question is
-                       answered outright and the proposal leaves the list, so the
-                       next one is already on screen. Named after what they do,
-                       and the refusing one says out loud that it is final -
-                       "not now" is what closing the viewer already does. -->
-                  <Button Style="{DynamicResource PrimaryButton}" MinWidth="130"
-                          Margin="10,0,0,0" Content="Add this one"
-                          ToolTip="Put this photograph in the album"
-                          AutomationProperties.Name="Add this one"
-                          Command="{Binding KeepSuggestedPhotoCommand}"
-                          Visibility="{Binding Gallery.IsDecidingSuggestion,
-                                       Converter={StaticResource BoolToVisibility}}" />
-
-                  <Button Style="{DynamicResource SecondaryButton}" MinWidth="130"
-                          Margin="8,0,0,0" Content="Not this one"
-                          ToolTip="Leave it out. It will not be offered for this album again."
-                          AutomationProperties.Name="Not this one"
-                          Command="{Binding RefuseSuggestedPhotoCommand}"
-                          Visibility="{Binding Gallery.IsDecidingSuggestion,
-                                       Converter={StaticResource BoolToVisibility}}" />
-
-                  <Button Style="{DynamicResource ViewerButton}" Content="&#xE76C;"
-                          Margin="10,0,0,0"
-                          ToolTip="Next picture (right arrow)"
-                          AutomationProperties.Name="Next picture"
-                          Command="{Binding Gallery.NextPhotoCommand}" />
-                </StackPanel>
-              </DockPanel>
-            </Grid>
-          </Border>
 
           <!-- Settings -->
           <Grid Visibility="{Binding ShowSettings, Converter={StaticResource BoolToVisibility}}">
@@ -2853,7 +2474,7 @@
 
                   <StackPanel Margin="15,0,0,0" MaxWidth="440">
                     <TextBlock Text="Photo Gallery" Style="{DynamicResource Heading}"
-                               FontSize="20" FontWeight="SemiBold" Margin="0" />
+                               Margin="0" />
                     <TextBlock Style="{DynamicResource HintText}" Margin="0,4,0,0"
                                FontSize="12.5" Text="{Binding About.VersionLine}" />
                     <TextBlock Style="{DynamicResource BodyText}" Margin="0,4,0,0"
@@ -3011,14 +2632,25 @@
             <!-- The two kinds are never one list: identical is a proof, alike is
                  a question, and they warrant different handling. -->
             <Grid Grid.Row="0">
-              <StackPanel Orientation="Horizontal" HorizontalAlignment="Left">
-                <RadioButton Style="{DynamicResource SegmentedToggle}" MinWidth="140"
-                             Content="{Binding Duplicates.ExactTab}"
-                             IsChecked="{Binding Duplicates.IsShowingExact, Mode=TwoWay}" />
-                <RadioButton Style="{DynamicResource SegmentedToggle}" MinWidth="170"
-                             Content="{Binding Duplicates.NearTab}"
-                             IsChecked="{Binding Duplicates.ShowNear, Mode=TwoWay}" />
-              </StackPanel>
+              <!-- The track the other segmented pairs in this app sit in. These
+                   two were loose, which nobody noticed while the chosen one was
+                   told apart by a tint; filled with the accent and floating free
+                   they read as one lit button beside one dark one rather than as
+                   two sides of a choice. -->
+              <Border HorizontalAlignment="Left" VerticalAlignment="Center"
+                      Background="{DynamicResource Input.Background}"
+                      BorderBrush="{DynamicResource Separator}" BorderThickness="1"
+                      CornerRadius="{DynamicResource Radius.Control}" Padding="2"
+                      SnapsToDevicePixels="True">
+                <StackPanel Orientation="Horizontal">
+                  <RadioButton Style="{DynamicResource SegmentedToggle}" MinWidth="140"
+                               Content="{Binding Duplicates.ExactTab}"
+                               IsChecked="{Binding Duplicates.IsShowingExact, Mode=TwoWay}" />
+                  <RadioButton Style="{DynamicResource SegmentedToggle}" MinWidth="170"
+                               Content="{Binding Duplicates.NearTab}"
+                               IsChecked="{Binding Duplicates.ShowNear, Mode=TwoWay}" />
+                </StackPanel>
+              </Border>
 
               <Button Style="{DynamicResource SecondaryButton}" MinWidth="160"
                       HorizontalAlignment="Right" VerticalAlignment="Center"
@@ -3147,7 +2779,6 @@
                                      taken back: unticking the last one lifts the
                                      whole group out of the decision again. -->
                                 <CheckBox Margin="0,6,0,0" Content="Keep this one"
-                                          Foreground="{DynamicResource Editor.Foreground}"
                                           AutomationProperties.Name="{Binding FileName}"
                                           IsChecked="{Binding IsKept, Mode=TwoWay}" />
                               </StackPanel>
@@ -3242,7 +2873,8 @@
                              VerticalAlignment="Center"
                              Text="{Binding Duplicates.InspectedPosition}" />
 
-                  <Button Style="{DynamicResource SecondaryButton}" MinWidth="90"
+                  <Button Style="{DynamicResource SecondaryButton}"
+                          Height="32" Padding="15,0"
                           HorizontalAlignment="Right" VerticalAlignment="Center"
                           Content="Close" ToolTip="Back to the sets (Esc)"
                           Command="{Binding Duplicates.CloseInspectCommand}" />
@@ -3255,8 +2887,11 @@
       </Border>
     </Grid>
 
-    <!-- Status bar -->
-    <Border Grid.Row="1" Background="{DynamicResource StatusBar.Background}">
+    <!-- Status bar. A rule along its top edge, so the strip reads as chrome
+         under the content rather than as the last row of it. -->
+    <Border Grid.Row="1" Background="{DynamicResource StatusBar.Background}"
+            BorderThickness="0,1,0,0" SnapsToDevicePixels="True"
+            BorderBrush="{DynamicResource Separator}">
       <Grid Margin="10,0">
         <StackPanel Orientation="Horizontal">
           <TextBlock Style="{DynamicResource StatusBarText}" Text="{Binding SourceSummary}" />
@@ -3270,6 +2905,456 @@
         <!-- The theme used to sit here. It is set once and then left, so it
              belongs in Settings beside the other such things rather than on the
              strip that reports what the library holds. -->
+      </Grid>
+    </Border>
+
+    <!-- One picture, over the whole window. It is a child of the root grid
+         rather than of the content column, and spans both rows, so opening a
+         photograph covers the side nav and the status bar as well as the grid -
+         which is the handoff's layout, and is what stops a 196 DIP band of
+         chrome sitting beside a picture nobody is looking at it next to.
+
+         After the status bar and before the pass overlay: later siblings paint
+         over earlier ones, so this order is what lets the viewer cover the strip
+         while the two long passes still cover the viewer.
+
+         Focusable and focused on open, because a Border does not take keyboard
+         input and Escape and the arrow keys would otherwise go to the grid
+         behind it. -->
+    <Border x:Name="PhotoViewer" Grid.Row="0" Grid.RowSpan="2" Focusable="True"
+            Background="{DynamicResource Editor.Background}"
+            Visibility="{Binding Gallery.IsViewerOpen,
+                         Converter={StaticResource BoolToVisibility}}"
+            KeyDown="OnViewerKeyDown">
+      <Grid Margin="16">
+        <Grid.RowDefinitions>
+          <RowDefinition Height="*" />
+          <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- No StretchDirection: a preview is laid out at its DPI-scaled
+             size, not its pixel size, so a camera that writes 180 DPI
+             turns a 1024px preview into a 546 DIP element. DownOnly then
+             pinned it there and the picture showed postage-stamp sized on
+             a large window. Uniform alone fills the space whatever the
+             file claims its resolution to be. -->
+        <Grid Grid.Row="0">
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="Auto" />
+          </Grid.ColumnDefinitions>
+
+          <!-- The panel beside the picture: what this photograph belongs
+               to and whether the faces are named, then the facts about the
+               file. The two controls at the top used to sit in the row of
+               tools below; they are about the photograph rather than about
+               looking at it, and that row has no width to spare once a
+               video is playing and a notice has arrived.
+
+               Three rows, and only the last one scrolls. A header that
+               scrolled away would take the album this picture is in with
+               it, which is the one thing somebody opens this panel for. -->
+          <Grid Grid.Column="1" Width="290" Margin="16,0,0,0">
+            <Grid.RowDefinitions>
+              <RowDefinition Height="Auto" />
+              <RowDefinition Height="Auto" />
+              <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <Grid Grid.Row="0">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+              </Grid.ColumnDefinitions>
+
+              <!-- One button: where this photograph is, and the way to
+                   change it. It carries the album's glyph from the side
+                   nav, so the two say album in the same way. Taking it out
+                   lives inside the list it opens, because "none" is an
+                   answer to which album this is in.
+
+                   It fills the column rather than capping its width: the
+                   panel is 290 and the name is what the row is for, so a
+                   long one ellipsises instead of leaving a gap. -->
+              <Button Grid.Column="0" Style="{DynamicResource ViewerButton}"
+                      Height="32" Padding="12,0" Margin="0,0,6,0"
+                      HorizontalContentAlignment="Left"
+                      ToolTip="{Binding Gallery.AlbumTip}"
+                      AutomationProperties.Name="{Binding Gallery.AlbumTip}"
+                      Command="{Binding Gallery.AddToAlbumCommand}">
+                <StackPanel Orientation="Horizontal">
+                  <TextBlock Text="&#xE8FD;" FontSize="15" VerticalAlignment="Center" />
+                  <TextBlock Text="{Binding Gallery.AlbumLabel}" Margin="9,0,0,0"
+                             FontFamily="{StaticResource Font.Ui}" FontSize="12.5"
+                             VerticalAlignment="Center"
+                             TextTrimming="CharacterEllipsis" />
+                </StackPanel>
+              </Button>
+
+              <ToggleButton Grid.Column="1" Style="{DynamicResource PillToggle}"
+                            MinWidth="90" Height="32" Padding="14,0" Content="Names"
+                            ToolTip="Outline the faces so you can say who they are"
+                            IsChecked="{Binding Gallery.ShowFaceNames, Mode=TwoWay}" />
+            </Grid>
+
+            <Border Grid.Row="1" Height="1" Margin="0,12"
+                    Background="{DynamicResource Panel.Border}"
+                    SnapsToDevicePixels="True" />
+
+            <!-- The same panel the face review and the duplicate comparison
+                 show, so a photograph reads the same way whichever screen
+                 you reached it from. -->
+            <ScrollViewer Grid.Row="2"
+                          VerticalScrollBarVisibility="Auto"
+                          HorizontalScrollBarVisibility="Disabled">
+              <ContentControl Content="{Binding Gallery.OpenDetails}" />
+            </ScrollViewer>
+          </Grid>
+
+        <Grid Grid.Column="0" x:Name="PhotoArea" SizeChanged="OnPhotoAreaSizeChanged">
+          <!-- Hidden while the clip runs. Left showing, a player that
+               stalled would sit on top of its own still and look like it
+               was working. -->
+          <Image Source="{Binding Gallery.OpenPicture}" Stretch="Uniform"
+                 Visibility="{Binding Gallery.IsPlayingVideo,
+                              Converter={StaticResource InverseBoolToVisibility}}" />
+
+          <!-- A video's still is the one picture in this app that is not
+               the whole of what the file is, so the picture itself is the
+               way in: clicking it plays the clip. The badge is there
+               because a still that does something when clicked has to look
+               like it will - without it this is an invisible rule that
+               only gets found by accident.
+
+               Below the face boxes on purpose, so naming somebody in a
+               video still works and only the rest of the frame plays. -->
+          <!-- The clip itself, once somebody has asked for it.
+               LoadedBehavior="Manual" so it cannot start merely because a
+               video was looked at - but Manual also means setting Source
+               does not begin playing, and Play() has to be called by hand
+               once the source is on the element. Doing it only from
+               MediaOpened was not enough: it rendered the first frame and
+               sat there, which reads exactly like a video that is playing
+               something very still. Both are wired now - the click starts
+               it, and MediaOpened starts it again for the case where the
+               source had not finished opening when the click landed. -->
+          <MediaElement x:Name="VideoPlayer" Stretch="Uniform"
+                        LoadedBehavior="Manual" UnloadedBehavior="Stop"
+                        Source="{Binding Gallery.PlayingSource}"
+                        MediaOpened="OnVideoOpened"
+                        MediaEnded="OnVideoEnded"
+                        MediaFailed="OnVideoFailed">
+            <!-- Collapsed until it is playing. Warming it by keeping it in
+                 the tree was tried and does not work: a MediaElement that
+                 is not being drawn does not open its source, whether it is
+                 collapsed or merely transparent, so the wait came back the
+                 moment play was pressed. The head start comes from
+                 VideoPrefetch instead, which pulls the ends of the file
+                 into Windows' own cache and needs no element at all. -->
+            <MediaElement.Style>
+              <Style TargetType="MediaElement">
+                <Setter Property="Visibility" Value="Collapsed" />
+                <Style.Triggers>
+                  <DataTrigger Binding="{Binding Gallery.IsPlayingVideo}" Value="True">
+                    <Setter Property="Visibility" Value="Visible" />
+                  </DataTrigger>
+                </Style.Triggers>
+              </Style>
+            </MediaElement.Style>
+            <!-- LayoutTransform, not RenderTransform: a quarter turn swaps
+                 the picture's width and height, and only a layout
+                 transform makes the space around it agree. Rendering it
+                 would leave a portrait clip drawn across the bars of a
+                 landscape box. -->
+            <MediaElement.LayoutTransform>
+              <RotateTransform Angle="{Binding Gallery.PlayingRotation}" />
+            </MediaElement.LayoutTransform>
+          </MediaElement>
+
+          <Button Visibility="{Binding Gallery.CanOfferPlay,
+                               Converter={StaticResource BoolToVisibility}}"
+                  ToolTip="Play this video"
+                  AutomationProperties.Name="Play this video"
+                  Cursor="Hand"
+                  Click="OnStartVideoClicked">
+            <Button.Template>
+              <ControlTemplate TargetType="Button">
+                <!-- Transparent rather than no background: a null one is
+                     not hit-testable, so the click would fall through to
+                     the picture behind and nothing would happen. -->
+                <Border Background="Transparent">
+                  <ContentPresenter HorizontalAlignment="Center"
+                                    VerticalAlignment="Center" />
+                </Border>
+              </ControlTemplate>
+            </Button.Template>
+            <Border Width="72" Height="72" CornerRadius="36"
+                    Background="#99000000" Opacity="0.85">
+              <TextBlock Text="&#xE768;" FontFamily="Segoe MDL2 Assets"
+                         FontSize="30" Foreground="White"
+                         HorizontalAlignment="Center" VerticalAlignment="Center"
+                         Margin="4,0,0,0" />
+            </Border>
+          </Button>
+
+          <!-- Boxes are laid out in the view model against this area's
+               size, because the picture is drawn uniformly - centred with
+               bars on two sides - and a box that did not follow the same
+               arithmetic would sit over nothing. -->
+          <ItemsControl ItemsSource="{Binding Gallery.OpenFaces}"
+                        Visibility="{Binding Gallery.ShowFaceNames,
+                                     Converter={StaticResource BoolToVisibility}}">
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate>
+                <Canvas />
+              </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemContainerStyle>
+              <Style TargetType="ContentPresenter">
+                <Setter Property="Canvas.Left" Value="{Binding Left}" />
+                <Setter Property="Canvas.Top" Value="{Binding Top}" />
+              </Style>
+            </ItemsControl.ItemContainerStyle>
+            <ItemsControl.ItemTemplate>
+              <DataTemplate>
+                <Button Style="{DynamicResource FaceBox}"
+                        Width="{Binding Width}" Height="{Binding Height}"
+                        ToolTip="Say who this is"
+                        AutomationProperties.Name="{Binding Label}"
+                        Command="{Binding DataContext.Gallery.BeginNamingFaceCommand,
+                                  RelativeSource={RelativeSource AncestorType=Window}}"
+                        CommandParameter="{Binding}">
+                  <Border Style="{DynamicResource FaceBoxLabel}">
+                    <TextBlock Text="{Binding Label}" FontSize="11" Foreground="White" />
+                  </Border>
+                </Button>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+
+          <!-- Where the clip is up to, and the way to move it. Over the
+               foot of the picture rather than under it, so it costs the
+               grid no height and appears only while something is playing.
+
+               Shown only when the length is known: a bar with no end is a
+               lie about what dragging it would do. -->
+          <!-- Centred and capped rather than stretched. The area under a
+               picture is as wide as the window, and a bar that fills it is
+               a control the width of a desk for a clip a few seconds long
+               - the thumb moves a hand's breadth per second and the eye
+               has to travel the whole screen to read the time beside it. -->
+          <Border VerticalAlignment="Bottom" HorizontalAlignment="Center"
+                  MinWidth="540" MaxWidth="840" Margin="0,0,0,16"
+                  Padding="14,8" CornerRadius="8" Background="#CC000000"
+                  Visibility="{Binding Gallery.CanScrub,
+                               Converter={StaticResource BoolToVisibility}}">
+            <Grid>
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+              </Grid.ColumnDefinitions>
+
+              <Slider x:Name="VideoSeek" Grid.Column="0" VerticalAlignment="Center"
+                      Minimum="0" IsMoveToPointEnabled="True"
+                      AutomationProperties.Name="How far into the video"
+                      Maximum="{Binding Gallery.PlaybackLengthSeconds}"
+                      Value="{Binding Gallery.PlaybackSeconds, Mode=TwoWay}"
+                      Thumb.DragStarted="OnSeekStarted"
+                      Thumb.DragCompleted="OnSeekFinished"
+                      PreviewMouseLeftButtonUp="OnSeekClicked" />
+
+              <TextBlock Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center"
+                         FontSize="12" Foreground="White"
+                         Text="{Binding Gallery.PositionCaption}" />
+            </Grid>
+          </Border>
+
+          <!-- What is offered when this machine cannot decode the clip.
+               Never a black rectangle: the still is still there behind
+               this, and the button hands the file to whatever Windows
+               does play it with. -->
+          <Border VerticalAlignment="Bottom" HorizontalAlignment="Center"
+                  Margin="0,0,0,20" Padding="14,10" CornerRadius="6"
+                  Background="#CC000000"
+                  Visibility="{Binding Gallery.HasPlaybackError,
+                               Converter={StaticResource BoolToVisibility}}">
+            <StackPanel Orientation="Horizontal">
+              <TextBlock VerticalAlignment="Center" FontSize="12.5" MaxWidth="420"
+                         TextWrapping="Wrap" Foreground="White"
+                         Text="{Binding Gallery.PlaybackError}" />
+              <Button Style="{DynamicResource SecondaryButton}" Margin="12,0,0,0"
+                      MinWidth="150" Content="Open in your player"
+                      ToolTip="Hand this file to the program Windows normally plays it with"
+                      Tag="{Binding Gallery.OpenTile.Item.FullPath}"
+                      Click="OnPlayVideoClicked" />
+            </StackPanel>
+          </Border>
+
+          <!-- Saying who one face is. The template lives in Controls.xaml
+               because the People screen asks the same question. -->
+          <ContentControl Content="{Binding Gallery.Picker}"
+                          Visibility="{Binding Gallery.Picker.IsOpen,
+                                       Converter={StaticResource BoolToVisibility}}" />
+
+          <!-- And saying which occasion it belongs to. -->
+          <ContentControl Content="{Binding Gallery.Albums}"
+                          Visibility="{Binding Gallery.Albums.IsOpen,
+                                       Converter={StaticResource BoolToVisibility}}" />
+        </Grid>
+        </Grid>
+
+        <TextBlock Grid.Row="0" HorizontalAlignment="Center" VerticalAlignment="Center"
+                   FontSize="13" MaxWidth="360" TextWrapping="Wrap" TextAlignment="Center"
+                   Foreground="{DynamicResource Editor.Placeholder}"
+                   Text="This one has not been prepared yet. Choose Prepare pictures to read it."
+                   Visibility="{Binding Gallery.OpenPicture,
+                                Converter={StaticResource NullToVisibility}}" />
+
+        <!-- The same two columns as the picture above, so the arrows sit
+             under the picture and the tools under the panel. This was a
+             DockPanel that docked the tools to the right and let the
+             arrows centre in whatever was left, which put them a little
+             off the picture's own centre; with the columns repeated they
+             land on it exactly.
+
+             The tool column is Auto over a 306 minimum: the panel's 290
+             plus the 16 that separates it from the picture. 290 alone was
+             wrong - the row above carries that gap INSIDE its column, so
+             the two star columns came out 16 apart and the arrows sat 8
+             DIP right of the picture's centre, which is the one thing this
+             grid exists to get right. A minimum rather than a fixed width
+             because when a video is playing and a notice has arrived the
+             tools need more, and a fixed column would have run them back
+             across the arrows.
+
+             MinHeight rather than Height: a ViewerButton at 16px with
+             14,10 of padding measures about 41, and pinning the row to the
+             handoff's 38 would clip the glyph rather than tighten the row.
+
+             The file name and folder that used to sit on the left are
+             gone: the panel beside the picture already shows both, as the
+             same Explorer link, and one photograph does not need naming
+             twice on one screen. The "N faces, M named" summary that used
+             to head the tools has gone with them - the boxes drawn on the
+             picture say it, and say which face is which. -->
+        <Grid Grid.Row="1" Margin="0,14,0,0" MinHeight="38">
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="Auto" MinWidth="306" />
+          </Grid.ColumnDefinitions>
+
+          <StackPanel Grid.Column="0" Orientation="Horizontal"
+                      HorizontalAlignment="Center" VerticalAlignment="Center">
+            <Button Style="{DynamicResource ViewerButton}" Content="&#xE76B;"
+                    ToolTip="Previous picture (left arrow)"
+                    AutomationProperties.Name="Previous picture"
+                    Command="{Binding Gallery.PreviousPhotoCommand}" />
+
+            <!-- Only when the picture is one an album is proposing. Two
+                 acts rather than a switch: at full size the question is
+                 answered outright and the proposal leaves the list, so the
+                 next one is already on screen. Named after what they do,
+                 and the refusing one says out loud that it is final -
+                 "not now" is what closing the viewer already does. -->
+            <Button Style="{DynamicResource PrimaryButton}" MinWidth="130"
+                    Margin="10,0,0,0" Content="Add this one"
+                    ToolTip="Put this photograph in the album"
+                    AutomationProperties.Name="Add this one"
+                    Command="{Binding KeepSuggestedPhotoCommand}"
+                    Visibility="{Binding Gallery.IsDecidingSuggestion,
+                                 Converter={StaticResource BoolToVisibility}}" />
+
+            <Button Style="{DynamicResource SecondaryButton}" MinWidth="130"
+                    Margin="8,0,0,0" Content="Not this one"
+                    ToolTip="Leave it out. It will not be offered for this album again."
+                    AutomationProperties.Name="Not this one"
+                    Command="{Binding RefuseSuggestedPhotoCommand}"
+                    Visibility="{Binding Gallery.IsDecidingSuggestion,
+                                 Converter={StaticResource BoolToVisibility}}" />
+
+            <Button Style="{DynamicResource ViewerButton}" Content="&#xE76C;"
+                    Margin="10,0,0,0"
+                    ToolTip="Next picture (right arrow)"
+                    AutomationProperties.Name="Next picture"
+                    Command="{Binding Gallery.NextPhotoCommand}" />
+          </StackPanel>
+
+          <StackPanel Grid.Column="1" Margin="16,0,0,0" Orientation="Horizontal"
+                      HorizontalAlignment="Right" VerticalAlignment="Center">
+            <!-- Videos only. The app shows one still taken out of the
+                 film, so watching it means handing the file to whatever
+                 Windows already plays it with - and saying so plainly when
+                 the folder it lives in is away. -->
+            <!-- Play here, and stop here. One button that changes what it
+                 offers, because two side by side would each be wrong half
+                 the time. -->
+            <Button Style="{DynamicResource ViewerToolButton}" Content="&#xE768;"
+                    ToolTip="Play this video"
+                    AutomationProperties.Name="Play this video"
+                    Visibility="{Binding Gallery.CanOfferPlay,
+                                 Converter={StaticResource BoolToVisibility}}"
+                    Click="OnStartVideoClicked" />
+
+            <Button Style="{DynamicResource ViewerToolButton}" Content="&#xE71A;"
+                    ToolTip="Stop and go back to the picture"
+                    AutomationProperties.Name="Stop this video"
+                    Visibility="{Binding Gallery.IsPlayingVideo,
+                                 Converter={StaticResource BoolToVisibility}}"
+                    Click="OnStopVideoClicked" />
+
+            <!-- What just happened to this photograph's album, and only
+                 that: the button in the panel above already carries the
+                 name, so the steady state was printing the same word
+                 twice. What this says is what a name cannot - that it left
+                 one album to be in another. -->
+            <TextBlock VerticalAlignment="Center" Margin="0,0,6,0" FontSize="11.5"
+                       MaxWidth="320" TextTrimming="CharacterEllipsis"
+                       Foreground="{DynamicResource Editor.Placeholder}"
+                       Text="{Binding Gallery.AlbumNotice}"
+                       ToolTip="{Binding Gallery.AlbumNotice}"
+                       Visibility="{Binding Gallery.HasAlbumNotice,
+                                    Converter={StaticResource BoolToVisibility}}" />
+
+            <!-- Said plainly: this one is upright here and nowhere else,
+                 because its file has no orientation tag and no room to add
+                 one without rewriting the picture. -->
+            <Border VerticalAlignment="Center" Margin="0,0,6,0" Padding="7,3"
+                    Background="{DynamicResource Badge.Background}"
+                    CornerRadius="{StaticResource Radius.Inner}"
+                    ToolTip="{Binding Gallery.TurnNoticeTip}"
+                    Visibility="{Binding Gallery.TurnNotice,
+                                 Converter={StaticResource InverseNullToVisibility}}">
+              <TextBlock Text="{Binding Gallery.TurnNotice}" FontSize="10.5"
+                         Foreground="{DynamicResource Badge.Foreground}" />
+            </Border>
+
+            <!-- For a picture whose file never said which way up it goes.
+                 EXIF orientation is already applied when the copy is made,
+                 so anything still wrong here only a person can judge. -->
+            <Button Style="{DynamicResource ViewerToolButton}" Content="&#xE80C;"
+                    ToolTip="Turn a quarter to the left"
+                    AutomationProperties.Name="Turn left"
+                    Command="{Binding Gallery.TurnPhotoCommand}"
+                    CommandParameter="-90" />
+            <Button Style="{DynamicResource ViewerToolButton}" Content="&#xE80D;"
+                    ToolTip="Turn a quarter to the right"
+                    AutomationProperties.Name="Turn right"
+                    Command="{Binding Gallery.TurnPhotoCommand}"
+                    CommandParameter="90" />
+
+            <!-- The one thing here that cannot be undone, so it asks
+                 first and says what it costs. -->
+            <Button Style="{DynamicResource ViewerToolButton}" Content="&#xE74D;"
+                    ToolTip="Delete this photo"
+                    AutomationProperties.Name="Delete this photo"
+                    Click="OnDeletePhotoClicked" />
+
+            <Button Style="{DynamicResource SecondaryButton}"
+                    Height="32" Padding="15,0"
+                    Content="Close" ToolTip="Back to the grid (Esc)"
+                    Command="{Binding Gallery.ClosePhotoCommand}" />
+          </StackPanel>
+        </Grid>
       </Grid>
     </Border>
 

@@ -324,13 +324,6 @@ public sealed partial class GalleryViewModel : ObservableObject
 
     public int OpenFaceCount => OpenFaces.Count;
 
-    public string FaceSummary => OpenFaces.Count switch
-    {
-        0 => "No faces were found in this one.",
-        1 => "1 face — click it to say who it is.",
-        _ => $"{OpenFaces.Count} faces — click one to say who it is.",
-    };
-
     /// <summary>
     /// Moving to another picture reloads its faces, so walking a folder with
     /// naming switched on stays switched on.
@@ -696,7 +689,6 @@ public sealed partial class GalleryViewModel : ObservableObject
         OpenFaces.Clear();
         FacingBeingNamed = null;
         OnPropertyChanged(nameof(OpenFaceCount));
-        OnPropertyChanged(nameof(FaceSummary));
 
         if (ShowFaceNames && value is not null)
         {
@@ -911,7 +903,6 @@ public sealed partial class GalleryViewModel : ObservableObject
             OpenFaces.Clear();
             FacingBeingNamed = null;
             OnPropertyChanged(nameof(OpenFaceCount));
-            OnPropertyChanged(nameof(FaceSummary));
         }
     }
 
@@ -967,7 +958,6 @@ public sealed partial class GalleryViewModel : ObservableObject
             {
                 OpenFaces.Clear();
                 OnPropertyChanged(nameof(OpenFaceCount));
-                OnPropertyChanged(nameof(FaceSummary));
             }
 
             return;
@@ -996,7 +986,6 @@ public sealed partial class GalleryViewModel : ObservableObject
         _everyone.AddRange(everyone);
 
         OnPropertyChanged(nameof(OpenFaceCount));
-        OnPropertyChanged(nameof(FaceSummary));
         LayoutFaces(_faceAreaWidth, _faceAreaHeight);
     }
 

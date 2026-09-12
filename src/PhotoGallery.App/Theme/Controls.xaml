@@ -354,7 +354,6 @@
           <TextBlock Grid.Column="2" Margin="8,0,0,0" FontSize="11"
                      FontFamily="{StaticResource Font.Ui}"
                      VerticalAlignment="Center"
-                     Foreground="{DynamicResource TextDisabled}"
                      Visibility="{Binding NavLabelsVisible,
                                   RelativeSource={RelativeSource AncestorType=Window},
                                   Converter={StaticResource BoolToVisibility}}">
@@ -367,6 +366,25 @@
                          RelativeSource="{RelativeSource AncestorType=Window}" />
               </MultiBinding>
             </TextBlock.Text>
+            <!-- The one thing in the row that does not simply inherit. On an
+                 unselected row a count is quieter than the name beside it; on
+                 the open row the whole pill is the accent and the count has to
+                 step back from white instead. A template trigger cannot reach
+                 in here - this TextBlock belongs to the data template, not to
+                 the button - so the state is read off the button above it. -->
+            <TextBlock.Style>
+              <Style TargetType="TextBlock">
+                <Setter Property="Foreground" Value="{DynamicResource TextDisabled}" />
+                <Style.Triggers>
+                  <DataTrigger Value="True"
+                               Binding="{Binding IsChecked,
+                                         RelativeSource={RelativeSource AncestorType=ToggleButton}}">
+                    <Setter Property="Foreground"
+                            Value="{DynamicResource SideNav.SelectedCount}" />
+                  </DataTrigger>
+                </Style.Triggers>
+              </Style>
+            </TextBlock.Style>
           </TextBlock>
         </Grid>
       </ToggleButton.Content>
@@ -412,13 +430,22 @@
 
   <!--
     32 high in both states, and every horizontal measurement in it is
-    state-independent: the rail is overlaid rather than laid out, so it costs the
-    content no width, and the presenter's 7 puts the icon's left edge 19 DIP from
+    state-independent: the presenter's 7 puts the icon's left edge 19 DIP from
     the pane's edge whether the names are there or not. Centre 26, which is half
     of the 52 the pane folds to.
 
-    Foreground is set once on the button and inherits down to the glyph and the
-    name, so a state trigger only has to touch one property.
+    Foreground is set HERE, on the style, and not left to be inherited from the
+    band the row sits in. That was tried and it is silently wrong: a ToggleButton
+    still picks up WPF's own default style for its type, an explicit Style only
+    replaces the setters it actually declares, and a theme-style setter beats
+    property-value inheritance. So the stock style's Foreground - SystemColors
+    ControlText, which is black - won, and in the dark palette every unselected
+    section rendered black on #2A2A2C and could not be read at all. Nothing threw
+    and the markup looked right.
+
+    The two bands are two colours - the sections at full strength, the three at
+    the foot a step back - so the foot takes NavigationFootItemButton below, and
+    the band it sits in asks for it by name.
   -->
   <Style x:Key="NavigationItemButton" TargetType="ToggleButton">
     <Setter Property="Height" Value="32" />
@@ -434,14 +461,26 @@
       <Setter.Value>
         <ControlTemplate TargetType="ToggleButton">
           <Grid>
+            <!-- A fill and a ring over it, not one Border doing both. The rail
+                 is gone: which section is open is said by filling the whole row
+                 with the accent, which is a louder answer than 2 DIP at the far
+                 left edge.
+
+                 The ring has to be its own Border. Carried as a transparent
+                 BorderThickness on the fill it cost the pill a pixel on every
+                 edge - a Border paints its background INSIDE its border - and
+                 the 172 by 32 the handoff draws came out 170 by 30. Measured
+                 against the handoff's own screenshot, which is the only way that
+                 kind of error is ever going to be caught.
+
+                 It overlays rather than nests, so thickening it on focus moves
+                 nothing: the Border is empty and shares the cell with the fill.
+                 The same shape GalleryCell uses for the ring round a tile. -->
             <Border x:Name="Fill" Background="{TemplateBinding Background}"
                     CornerRadius="{StaticResource Radius.Control}" />
-            <!-- Rounded on its left pair only, or a square 2 DIP strip hangs off
-                 the corners of a 3 DIP pill. A Border does not clip its child to
-                 a corner radius, so nesting the rail inside the fill does not
-                 solve it. -->
-            <Border x:Name="Indicator" Width="2" HorizontalAlignment="Left"
-                    CornerRadius="3,0,0,3" Background="Transparent" />
+            <Border x:Name="Focus" BorderThickness="0"
+                    BorderBrush="{DynamicResource Focus.Border}"
+                    CornerRadius="{StaticResource Radius.Control}" />
             <ContentPresenter Margin="7,0" VerticalAlignment="Center"
                               HorizontalAlignment="Stretch" />
           </Grid>
@@ -449,16 +488,22 @@
             <!-- Guarded on IsEnabled, because WPF raises IsMouseOver on a
                  disabled element too - that is what makes ShowOnDisabled work -
                  and a greyed section that lights up reads as clickable and then
-                 refuses the click. The foreground moves as well as the fill: in
-                 the light palette the hover wash is two per cent off the nav's
-                 own background, so on its own it says almost nothing. -->
+                 refuses the click.
+
+                 Neutral.5 rather than the List.HoverBackground every other row
+                 in the app uses. That wash is one per cent off the nav's own
+                 background in the light palette - a hover nobody would see - so
+                 the nav takes the next rung down the same ladder instead. The
+                 foreground still moves with it, which is what carries the state
+                 for the three rows at the foot; the sections above already sit
+                 at the colour hover moves to. -->
             <MultiTrigger>
               <MultiTrigger.Conditions>
                 <Condition Property="IsMouseOver" Value="True" />
                 <Condition Property="IsEnabled" Value="True" />
               </MultiTrigger.Conditions>
               <Setter TargetName="Fill" Property="Background"
-                      Value="{DynamicResource List.HoverBackground}" />
+                      Value="{DynamicResource Neutral.5}" />
               <Setter Property="Foreground"
                       Value="{DynamicResource SideNav.ActiveForeground}" />
             </MultiTrigger>
@@ -466,15 +511,12 @@
                  replace its selection fill with the hover one. -->
             <Trigger Property="IsChecked" Value="True">
               <Setter TargetName="Fill" Property="Background"
-                      Value="{DynamicResource List.ActiveSelection}" />
-              <Setter TargetName="Indicator" Property="Background"
-                      Value="{DynamicResource SideNav.ActiveBorder}" />
+                      Value="{DynamicResource Button.Background}" />
               <Setter Property="Foreground"
-                      Value="{DynamicResource SideNav.ActiveForeground}" />
+                      Value="{DynamicResource Button.Foreground}" />
             </Trigger>
             <Trigger Property="IsKeyboardFocused" Value="True">
-              <Setter TargetName="Indicator" Property="Background"
-                      Value="{DynamicResource Focus.Border}" />
+              <Setter TargetName="Focus" Property="BorderThickness" Value="1" />
             </Trigger>
             <!-- Last, so the disabled colour beats selection and hover both. -->
             <Trigger Property="IsEnabled" Value="False">
@@ -485,6 +527,17 @@
         </ControlTemplate>
       </Setter.Value>
     </Setter>
+  </Style>
+
+  <!-- The three at the foot of the nav. One step back from the sections above
+       them, which is the handoff's SideBar.Foreground, and the only thing that
+       differs - everything else, including every trigger, comes from the style
+       above. The band asks for it by re-keying NavigationItemButton in its own
+       resources, because the one DataTemplate that draws a nav row names that
+       key and a hundred lines of it are not worth copying for one colour. -->
+  <Style x:Key="NavigationFootItemButton" TargetType="ToggleButton"
+         BasedOn="{StaticResource NavigationItemButton}">
+    <Setter Property="Foreground" Value="{DynamicResource SideNav.FootForeground}" />
   </Style>
 
   <!-- E76B and E76C are ChevronLeft and ChevronRight in Segoe MDL2 Assets, the
@@ -498,7 +551,7 @@
   <Style x:Key="NavigationChevron" TargetType="Button">
     <Setter Property="Width" Value="26" />
     <Setter Property="Height" Value="26" />
-    <Setter Property="Foreground" Value="{DynamicResource SideNav.Foreground}" />
+    <Setter Property="Foreground" Value="{DynamicResource Editor.Placeholder}" />
     <Setter Property="Background" Value="Transparent" />
     <Setter Property="Cursor" Value="Hand" />
     <Setter Property="FontFamily" Value="Segoe MDL2 Assets" />
@@ -603,7 +656,13 @@
                   Padding="{TemplateBinding Padding}"
                   CornerRadius="{StaticResource Radius.Control}"
                   SnapsToDevicePixels="True">
-            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+            <!-- Bound rather than pinned to the centre. Centre is what a Button
+                 defaults to, so nothing here moves; what it buys is that a
+                 button which asks to align its content left is listened to. The
+                 viewer's album button asked, and was silently centred - a name
+                 floating in the middle of a 194 DIP row with its glyph. -->
+            <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                              VerticalAlignment="Center" />
           </Border>
           <ControlTemplate.Triggers>
             <!-- Read off the button rather than named here, so a style that
@@ -625,8 +684,10 @@
               <Setter TargetName="Root" Property="BorderBrush"
                       Value="{DynamicResource Focus.Border}" />
             </Trigger>
+            <!-- 45 per cent, from the handoff: the Search button spends most of
+                 its life like this, beside a box that is still empty. -->
             <Trigger Property="IsEnabled" Value="False">
-              <Setter TargetName="Root" Property="Opacity" Value="0.5" />
+              <Setter TargetName="Root" Property="Opacity" Value="0.45" />
             </Trigger>
           </ControlTemplate.Triggers>
         </ControlTemplate>
@@ -891,9 +952,19 @@
     <Setter Property="Margin" Value="0,0,0,10" />
   </Style>
 
+  <!-- What a screen calls itself. 20 and SemiBold, from the handoff, and the
+       same size on every screen that has a title: the Albums wall used to name
+       itself in FieldLabel at 12.5 while Settings shouted at 28 Bold, and the
+       About card had already been overridden to 20 by hand, which is the usual
+       sign that the shared value was wrong rather than the one screen.
+
+       The handoff also asks for -0.01em of tracking. A WPF TextBlock has no
+       letter-spacing property at all, and at 20px that is 0.2 DIP, so it is
+       dropped rather than faked with a Typography setting that means something
+       else. -->
   <Style x:Key="Heading" TargetType="TextBlock">
-    <Setter Property="FontSize" Value="28" />
-    <Setter Property="FontWeight" Value="Bold" />
+    <Setter Property="FontSize" Value="20" />
+    <Setter Property="FontWeight" Value="SemiBold" />
     <Setter Property="Foreground" Value="{DynamicResource Editor.Foreground}" />
     <Setter Property="Margin" Value="0,0,0,12" />
   </Style>
@@ -912,10 +983,13 @@
     <Setter Property="Margin" Value="0,0,0,6" />
   </Style>
 
+  <!-- The caption grey, not the placeholder one. Eight units apart, and the
+       handoff gives them separate rows: a hint under a field and a caption
+       under a cover are the quieter of the two. -->
   <Style x:Key="HintText" TargetType="TextBlock">
     <Setter Property="FontSize" Value="12" />
     <Setter Property="TextWrapping" Value="Wrap" />
-    <Setter Property="Foreground" Value="{DynamicResource Editor.Placeholder}" />
+    <Setter Property="Foreground" Value="{DynamicResource TextCaption}" />
     <Setter Property="Margin" Value="0,7,0,0" />
   </Style>
 
@@ -1147,6 +1221,15 @@
     </Setter>
   </Style>
 
+  <!-- And the same thing implicitly, for a plain CheckBox. The Duplicates card
+       had the only one in the app and it was drawing in Windows' own chrome -
+       a square blue system tick sitting in the middle of an Apple-grey shell,
+       the one control in the window that did not follow the theme. Implicit
+       rather than keyed, so the next screen that needs a tick cannot forget to
+       ask; BasedOn rather than a second template, because a CheckBox IS a
+       ToggleButton and this is the tick the app already draws. -->
+  <Style TargetType="CheckBox" BasedOn="{StaticResource CheckRow}" />
+
   <Style x:Key="AlbumCard" TargetType="Button">
     <Setter Property="Background" Value="Transparent" />
     <Setter Property="Cursor" Value="Hand" />
@@ -1357,10 +1440,11 @@
     as more of the wall below.
   -->
   <Style x:Key="ShelfCard" TargetType="Button">
-    <!-- The control surface, not the side bar's: against the editor ground a
-         shelf row on SideBar.Background was five steps of grey away from the
-         page and read as loose text rather than as something to press. -->
-    <Setter Property="Background" Value="{DynamicResource Neutral.3}" />
+    <!-- One step off the page, which is what the handoff asks a collection card
+         to sit on. It was a step further down the ramp, from the days when the
+         two were told apart by more than a hairline; against these neutrals the
+         card is held by its border and wants the quieter fill. -->
+    <Setter Property="Background" Value="{DynamicResource Neutral.2}" />
     <Setter Property="Cursor" Value="Hand" />
     <Setter Property="Margin" Value="0,0,10,0" />
     <Setter Property="HorizontalContentAlignment" Value="Left" />
@@ -1368,7 +1452,7 @@
       <Setter.Value>
         <ControlTemplate TargetType="Button">
           <Border x:Name="Root" Background="{TemplateBinding Background}"
-                  BorderBrush="{DynamicResource Separator}" BorderThickness="1"
+                  BorderBrush="{DynamicResource Panel.Border}" BorderThickness="1"
                   CornerRadius="{StaticResource Radius.Control}" Padding="8"
                   SnapsToDevicePixels="True">
             <ContentPresenter />
@@ -1420,19 +1504,40 @@
     </Setter>
   </Style>
 
+  <!-- The clip length on a tile. Its own scrim rather than Badge.Background,
+       because it is read against a photograph and not against the page: a pale
+       chip is lost on a pale picture. -->
   <Style x:Key="VideoBadge" TargetType="Border">
-    <Setter Property="Background" Value="{DynamicResource Badge.Background}" />
+    <Setter Property="Background" Value="{DynamicResource VideoBadge.Background}" />
     <Setter Property="HorizontalAlignment" Value="Right" />
     <Setter Property="VerticalAlignment" Value="Bottom" />
     <Setter Property="Margin" Value="0,0,6,6" />
     <Setter Property="Padding" Value="5,2" />
   </Style>
 
+  <!-- The wide one: the arrows under the picture, and the album button beside
+       them in the panel. Stepping through the library is what somebody does
+       over and over, so these are the biggest targets on the screen. -->
   <Style x:Key="ViewerButton" TargetType="Button" BasedOn="{StaticResource SecondaryButton}">
     <Setter Property="FontFamily" Value="Segoe MDL2 Assets" />
     <Setter Property="FontSize" Value="16" />
     <Setter Property="Padding" Value="14,10" />
     <Setter Property="MinWidth" Value="48" />
+  </Style>
+
+  <!-- And the square one: turn, delete, play and stop, in the corner opposite
+       the arrows. 36 by 32 with a 14px glyph, from the handoff, which is
+       smaller than the arrows on purpose - these are the things done once to a
+       photograph, not the thing done to every one of them. The 6 on the right
+       is the gap between them, so a row of these needs nothing said at each
+       use; the last one in a row overrides it. -->
+  <Style x:Key="ViewerToolButton" TargetType="Button" BasedOn="{StaticResource SecondaryButton}">
+    <Setter Property="FontFamily" Value="Segoe MDL2 Assets" />
+    <Setter Property="FontSize" Value="14" />
+    <Setter Property="Width" Value="36" />
+    <Setter Property="Height" Value="32" />
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="Margin" Value="0,0,6,0" />
   </Style>
 
   <!-- Folder tree. Stock TreeView draws its own selection in system colours,
@@ -1600,6 +1705,12 @@
   <Style x:Key="PillToggle" TargetType="ToggleButton">
     <Setter Property="Background" Value="{DynamicResource Button.SecondaryBackground}" />
     <Setter Property="Foreground" Value="{DynamicResource SideBar.Foreground}" />
+    <!-- The same outline a SecondaryButton carries. Off, this pill is the
+         control fill, which in the light palette is the page's own white; with
+         no edge it disappeared, and it now stands beside a bordered button in
+         the viewer where the missing edge read as a bug. -->
+    <Setter Property="BorderBrush" Value="{DynamicResource Input.Border}" />
+    <Setter Property="BorderThickness" Value="1" />
     <Setter Property="Padding" Value="14,7" />
     <Setter Property="FontSize" Value="12.5" />
     <Setter Property="Cursor" Value="Hand" />
@@ -1607,18 +1718,29 @@
       <Setter.Value>
         <ControlTemplate TargetType="ToggleButton">
           <Border x:Name="Face" Background="{TemplateBinding Background}"
+                  BorderBrush="{TemplateBinding BorderBrush}"
+                  BorderThickness="{TemplateBinding BorderThickness}"
                   CornerRadius="{StaticResource Radius.Control}"
                   Padding="{TemplateBinding Padding}" SnapsToDevicePixels="True">
             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
           </Border>
           <ControlTemplate.Triggers>
+            <!-- Hover first. It used to fade the whole face to 90 per cent,
+                 which once the pill gained an outline made its only visible edge
+                 FAINTER on approach - the wrong direction for a hover. -->
+            <Trigger Property="IsMouseOver" Value="True">
+              <Setter TargetName="Face" Property="Background"
+                      Value="{DynamicResource Button.SecondaryHover}" />
+            </Trigger>
+            <!-- And checked after it, because later triggers win: the chosen
+                 pill has to keep its accent under the pointer rather than grey
+                 out to the hover wash. -->
             <Trigger Property="IsChecked" Value="True">
               <Setter TargetName="Face" Property="Background"
                       Value="{DynamicResource Button.Background}" />
+              <Setter TargetName="Face" Property="BorderBrush"
+                      Value="{DynamicResource Button.Background}" />
               <Setter Property="Foreground" Value="{DynamicResource Button.Foreground}" />
-            </Trigger>
-            <Trigger Property="IsMouseOver" Value="True">
-              <Setter TargetName="Face" Property="Opacity" Value="0.9" />
             </Trigger>
           </ControlTemplate.Triggers>
         </ControlTemplate>
@@ -1627,7 +1749,12 @@
   </Style>
 
   <!-- A face outlined on the open photograph. Green once somebody has said who
-       it is, so a picture shows at a glance what is left to do. -->
+       it is, so a picture shows at a glance what is left to do.
+
+       The vivid pair, not the plain one. These two outlines are the only place
+       the handoff specifies a green and an amber, and it specifies them for a
+       line drawn over a photograph, where the darker values the rest of the app
+       writes its sentences in would read as grey. -->
   <Style x:Key="FaceBox" TargetType="Button">
     <Setter Property="Background" Value="Transparent" />
     <Setter Property="Cursor" Value="Hand" />
@@ -1635,14 +1762,14 @@
       <Setter.Value>
         <ControlTemplate TargetType="Button">
           <Border x:Name="Outline" BorderThickness="2" Background="Transparent"
-                  BorderBrush="{DynamicResource Status.Caution}"
+                  BorderBrush="{DynamicResource Status.CautionVivid}"
                   CornerRadius="{StaticResource Radius.Inner}" SnapsToDevicePixels="True">
             <ContentPresenter VerticalAlignment="Bottom" HorizontalAlignment="Center" />
           </Border>
           <ControlTemplate.Triggers>
             <DataTrigger Binding="{Binding IsNamed}" Value="True">
               <Setter TargetName="Outline" Property="BorderBrush"
-                      Value="{DynamicResource Status.Success}" />
+                      Value="{DynamicResource Status.SuccessVivid}" />
             </DataTrigger>
             <!-- Set aside: still outlined, so it can be brought back, but faded
                  out of the way of the faces that still need an answer. -->
@@ -1726,7 +1853,9 @@
        clicks would only be a way to miss them. -->
   <Style x:Key="ProposalOutline" TargetType="Border">
     <Setter Property="BorderThickness" Value="2" />
-    <Setter Property="BorderBrush" Value="{DynamicResource Status.Caution}" />
+    <!-- The vivid amber, for the same reason FaceBox takes it: this line is
+         drawn over a photograph, not over the page. -->
+    <Setter Property="BorderBrush" Value="{DynamicResource Status.CautionVivid}" />
     <Setter Property="CornerRadius" Value="{StaticResource Radius.Inner}" />
     <Setter Property="SnapsToDevicePixels" Value="True" />
     <Setter Property="IsHitTestVisible" Value="False" />
