@@ -433,6 +433,57 @@ internal sealed class Library : IDisposable
         return album;
     }
 
+    /// <summary>A shelf of albums. Always something a person typed.</summary>
+    public Collection Collection(string name, DateTime namedUtc, Guid? publicId = null)
+    {
+        var collection = new Collection
+        {
+            PublicId = publicId ?? Guid.NewGuid(),
+            Name = name,
+            CreatedUtc = namedUtc,
+            NamedUtc = namedUtc,
+        };
+
+        Db.Collections.Add(collection);
+        Db.SaveChanges();
+        return collection;
+    }
+
+    /// <summary>
+    /// Puts an album on a shelf, or takes it off one, as the tick list would.
+    /// </summary>
+    /// <remarks>
+    /// The row is fetched again rather than written through the object the test
+    /// is holding. These helpers clear the change tracker, so an entity handed
+    /// out earlier is detached by the time a test wants to change it a second
+    /// time - and writing to a detached entity saves nothing and says nothing.
+    /// </remarks>
+    public void Shelve(Album album, Collection? collection, DateTime shelvedUtc)
+    {
+        ArgumentNullException.ThrowIfNull(album);
+
+        Album row = Db.Albums.IgnoreQueryFilters().Single(other => other.Id == album.Id);
+
+        row.CollectionId = collection?.Id;
+        row.ShelvedUtc = shelvedUtc;
+        Db.SaveChanges();
+        Db.ChangeTracker.Clear();
+    }
+
+    /// <summary>Takes a shelf away, leaving the tombstone a merge travels on.</summary>
+    public void Remove(Collection collection, DateTime deletedUtc)
+    {
+        ArgumentNullException.ThrowIfNull(collection);
+
+        Collection row = Db.Collections
+            .IgnoreQueryFilters()
+            .Single(other => other.Id == collection.Id);
+
+        row.DeletedUtc = deletedUtc;
+        Db.SaveChanges();
+        Db.ChangeTracker.Clear();
+    }
+
     /// <summary>What this machine calls a photograph when telling another about it.</summary>
     public AssetKey KeyOf(Asset asset)
     {

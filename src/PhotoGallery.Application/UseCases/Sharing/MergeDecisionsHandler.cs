@@ -149,5 +149,6 @@ public sealed class MergeDecisionsHandler
             [.. first.Moves, .. second.Moves],
             second.Joins,
             second.Refused,
-            second.WasCancelled);
+            second.WasCancelled,
+            first.CollectionsChanged + second.CollectionsChanged);
 }

@@ -66,6 +66,13 @@ public sealed class SqliteDecisionRepository : IDecisionRepository
 
         progress?.Report(new MergeProgress("Albums", 0, plan.Albums.Count + plan.Moves.Count));
 
+        // Shelves before the albums that sit on them, so an album arriving on a
+        // shelf this library is hearing about in the same breath finds it there.
+        // The other order reads every such album as shelfless and drops the one
+        // fact the pair of them was carrying.
+        int collections =
+            await ApplyCollectionsAsync(plan, cancellationToken).ConfigureAwait(false);
+
         int albums = await ApplyAlbumsAsync(plan, cancellationToken).ConfigureAwait(false);
         int moved = await ApplyMovesAsync(plan, cancellationToken).ConfigureAwait(false);
         await ApplyRejectionsAsync(plan, cancellationToken).ConfigureAwait(false);
@@ -79,7 +86,147 @@ public sealed class SqliteDecisionRepository : IDecisionRepository
             gained, renamed, deleted, namesGained, namesReplaced, setAside,
             plan.Turns.Count, albums, moved, held,
             plan.Moves, plan.Joins, plan.Refused,
-            cancellationToken.IsCancellationRequested);
+            cancellationToken.IsCancellationRequested,
+            collections);
+    }
+
+    /// <summary>
+    /// Settles the shelves of albums.
+    /// </summary>
+    /// <remarks>
+    /// A collection is created outright where it is not held, rather than
+    /// waiting for anything, because there is nothing for it to wait on: it has
+    /// no photographs and no rule, so a library that has scanned nothing at all
+    /// can still be told what the shelves in this house are called.
+    ///
+    /// <para>A tombstone takes the albums off the shelf rather than deleting
+    /// them. Removing a collection has never removed what was on it - that is
+    /// what the screen does too - and a merge that deleted albums because
+    /// somebody else tidied a shelf would be the one thing this whole feature
+    /// promises it will not do.</para>
+    /// </remarks>
+    private async Task<int> ApplyCollectionsAsync(
+        MergePlan plan, CancellationToken cancellationToken)
+    {
+        if (plan.Collections.Count == 0)
+        {
+            return 0;
+        }
+
+        List<Collection> here = await _db.Collections
+            .IgnoreQueryFilters()
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        // One name per shelf still on the wall is a unique index, so a settled
+        // name another live shelf here already holds would fail the whole
+        // SaveChanges - taking the albums, the memberships, the eras and the
+        // waiting answers of that merge down with it, on this press and on every
+        // press afterwards. Every pair of libraries in the house is in exactly
+        // that state on the first merge after this release, because collections
+        // did not travel and each machine minted its own "Holidays".
+        //
+        // Numbered rather than refused, the way a second person of one name
+        // already is, and kept in step as rows below are tombstoned and renamed.
+        var taken = new HashSet<string>(
+            here.Where(row => row.DeletedUtc is null).Select(row => row.Name),
+            StringComparer.OrdinalIgnoreCase);
+
+        int changed = 0;
+
+        // In one order on every machine. Numbering depends on what has already
+        // been taken, so two libraries settling the same pair of shelves in
+        // opposite orders would number them differently and then spend every
+        // merge afterwards disagreeing about which is which.
+        foreach (SharedCollection settled in plan.Collections.OrderBy(row => row.PublicId))
+        {
+            Collection? collection =
+                here.FirstOrDefault(row => row.PublicId == settled.PublicId);
+
+            if (collection is null)
+            {
+                // One somebody has already taken away is not worth creating in
+                // order to record that it is gone: nothing here refers to it.
+                if (settled.DeletedUtc is not null)
+                {
+                    continue;
+                }
+
+                string gained = Free(settled.Name, taken);
+                taken.Add(gained);
+
+                _db.Collections.Add(new Collection
+                {
+                    PublicId = settled.PublicId,
+                    Name = gained,
+                    CreatedUtc = DateTime.UtcNow,
+                    NamedUtc = settled.NamedUtc,
+                });
+
+                changed++;
+                continue;
+            }
+
+            bool touched = false;
+
+            if (settled.DeletedUtc != collection.DeletedUtc)
+            {
+                if (collection.DeletedUtc is null)
+                {
+                    await _db.Albums
+                        .IgnoreQueryFilters()
+                        .Where(album => album.CollectionId == collection.Id)
+                        .ExecuteUpdateAsync(
+                            setters => setters.SetProperty(album => album.CollectionId, (int?)null),
+                            cancellationToken)
+                        .ConfigureAwait(false);
+
+                    // Out from under the index, so its name is free again.
+                    taken.Remove(collection.Name);
+                }
+
+                collection.DeletedUtc = settled.DeletedUtc;
+                touched = true;
+            }
+
+            // The date as well as the text. Settling only the string leaves the
+            // two libraries disagreeing about when it was typed, which is what
+            // the next disagreement would have been judged on - and leaves this
+            // shelf in every plan from now on, so merging twice stops changing
+            // nothing.
+            if (!string.Equals(collection.Name, settled.Name, StringComparison.Ordinal)
+                || collection.NamedUtc != settled.NamedUtc)
+            {
+                if (collection.DeletedUtc is null)
+                {
+                    taken.Remove(collection.Name);
+                    string free = Free(settled.Name, taken);
+                    taken.Add(free);
+                    collection.Name = free;
+                }
+                else
+                {
+                    // Under a tombstone it is outside the index, and takes the
+                    // settled name as it stands.
+                    collection.Name = settled.Name;
+                }
+
+                collection.NamedUtc = settled.NamedUtc;
+                touched = true;
+            }
+
+            // One shelf changed is one shelf, whether this merge renamed it,
+            // removed it, or both.
+            if (touched)
+            {
+                changed++;
+            }
+        }
+
+        await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        _db.ChangeTracker.Clear();
+
+        return changed;
     }
 
     /// <summary>
@@ -276,12 +423,23 @@ public sealed class SqliteDecisionRepository : IDecisionRepository
     /// numbered rather than refused, and the join offer is what settles it
     /// properly.
     /// </remarks>
-    private static string Free(string wanted, IEnumerable<Person> here)
-    {
-        var taken = new HashSet<string>(
-            here.Where(person => person.DeletedUtc is null).Select(person => person.DisplayName),
-            StringComparer.OrdinalIgnoreCase);
+    private static string Free(string wanted, IEnumerable<Person> here) =>
+        Free(
+            wanted,
+            new HashSet<string>(
+                here.Where(person => person.DeletedUtc is null)
+                    .Select(person => person.DisplayName),
+                StringComparer.OrdinalIgnoreCase));
 
+    /// <inheritdoc cref="Free(string, IEnumerable{Person})"/>
+    /// <remarks>
+    /// The same numbering over a set of names somebody else has gathered, so
+    /// that shelves can borrow it. A merge settling several of them has to keep
+    /// its own set in step as it goes - the rows it has already added are not in
+    /// the database yet, and a second one would take the same name.
+    /// </remarks>
+    private static string Free(string wanted, ISet<string> taken)
+    {
         if (!taken.Contains(wanted))
         {
             return wanted;
@@ -456,6 +614,17 @@ public sealed class SqliteDecisionRepository : IDecisionRepository
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
 
+        // Written by the pass just above this one, so a shelf arriving in the
+        // same merge is already here to be found.
+        Dictionary<Guid, int> shelves = await _db.Collections
+            .IgnoreQueryFilters()
+            .Where(collection => collection.DeletedUtc == null)
+            .ToDictionaryAsync(
+                collection => collection.PublicId,
+                collection => collection.Id,
+                cancellationToken)
+            .ConfigureAwait(false);
+
         int changed = 0;
 
         foreach (SharedAlbum settled in plan.Albums)
@@ -484,11 +653,18 @@ public sealed class SqliteDecisionRepository : IDecisionRepository
                     ProposalKey = settled.ProposalKey,
                     NamedUtc = settled.NamedUtc,
                     BuiltUtc = DateTime.UtcNow,
+                    CollectionId = Shelf(shelves, settled),
+                    ShelvedUtc = settled.ShelvedUtc,
                 });
 
                 changed++;
                 continue;
             }
+
+            // One album changed is one album, whether this merge renamed it,
+            // removed it, moved it to a shelf, or all three. Counting the
+            // branches instead reports three albums to somebody who has one.
+            bool touched = false;
 
             if (settled.DeletedUtc is not null && album.DeletedUtc is null)
             {
@@ -498,13 +674,44 @@ public sealed class SqliteDecisionRepository : IDecisionRepository
                     .ConfigureAwait(false);
 
                 album.DeletedUtc = settled.DeletedUtc;
-                changed++;
+                touched = true;
             }
 
             if (!string.Equals(album.Name, settled.Name, StringComparison.Ordinal))
             {
                 album.Name = settled.Name;
                 album.NamedUtc = settled.NamedUtc;
+                touched = true;
+            }
+
+            // Compared against the row rather than trusted from the plan: the
+            // plan carries an album because something about it differs, and the
+            // shelf is often not the thing that did.
+            int? shelf = Shelf(shelves, settled);
+
+            // The date settles even where the shelf already agrees. It is what
+            // the next disagreement about this album is judged on, and leaving
+            // it behind keeps the album in every plan from here on - which is
+            // "merging twice changes nothing" quietly ceasing to be true.
+            if (album.CollectionId != shelf || album.ShelvedUtc != settled.ShelvedUtc)
+            {
+                // Putting a suggestion on a shelf is keeping it - the same
+                // decision the tick list makes, and for the same reason. A
+                // proposal is still a question as far as a rebuild is concerned,
+                // and a rebuild removes a question nobody answered, taking the
+                // album off the shelf somebody just filled with it.
+                if (shelf is not null && album.Origin == AlbumOrigin.Proposed)
+                {
+                    album.Origin = AlbumOrigin.Accepted;
+                }
+
+                album.CollectionId = shelf;
+                album.ShelvedUtc = settled.ShelvedUtc;
+                touched = true;
+            }
+
+            if (touched)
+            {
                 changed++;
             }
         }
@@ -514,6 +721,18 @@ public sealed class SqliteDecisionRepository : IDecisionRepository
 
         return changed;
     }
+
+    /// <summary>
+    /// The row number of the shelf an album settled onto, or null for none.
+    /// </summary>
+    /// <remarks>
+    /// A shelf this library has never been told about, or one it has a tombstone
+    /// for, reads as no shelf. That is what the wall already does with an
+    /// unknown identity, and it is the only answer that cannot invent a shelf
+    /// nobody made.
+    /// </remarks>
+    private static int? Shelf(Dictionary<Guid, int> shelves, SharedAlbum album) =>
+        album.Shelf is Guid publicId && shelves.TryGetValue(publicId, out int id) ? id : null;
 
     /// <summary>
     /// The row an album names: by its run of days where it has one, and by its

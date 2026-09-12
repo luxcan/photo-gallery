@@ -30,6 +30,7 @@ public sealed record MergePlan(
     IReadOnlyList<SharedAlbumMove> Moves,
     IReadOnlyList<SharedAlbumRejection> Rejections,
     IReadOnlyList<SharedEra> Eras,
+    IReadOnlyList<SharedCollection> Collections,
     HeldAnswers Held,
     IReadOnlyList<PersonJoin> Joins,
     IReadOnlyList<RefusedSet> Refused,
@@ -38,7 +39,7 @@ public sealed record MergePlan(
     IReadOnlyList<PairingProposal> Pairings)
 {
     public static MergePlan Nothing { get; } =
-        new([], [], [], [], [], [], [], [], [], [], HeldAnswers.None, [], [],
+        new([], [], [], [], [], [], [], [], [], [], [], HeldAnswers.None, [], [],
             [], new Dictionary<Guid, Guid>(), []);
 
     /// <summary>Whether this merge would change anything at all.</summary>
@@ -58,6 +59,7 @@ public sealed record MergePlan(
         && Moves.Count == 0
         && Rejections.Count == 0
         && Eras.Count == 0
+        && Collections.Count == 0
         && Held.Count == 0
 
         // A rename is a change, and a big one: every key in this library's own

@@ -82,6 +82,7 @@ public sealed record MergeResult(
             Add(parts, Outcome.FacesSetAside, "face set aside", "faces set aside");
             Add(parts, Outcome.PhotographsTurned, "photo turned", "photos turned");
             Add(parts, Outcome.AlbumsChanged, "album", "albums");
+            Add(parts, Outcome.CollectionsChanged, "collection", "collections");
             Add(parts, Outcome.PhotographsMoved, "photo moved", "photos moved");
 
             string changed = parts.Count == 0

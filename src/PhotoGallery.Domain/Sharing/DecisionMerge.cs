@@ -140,6 +140,7 @@ public static class DecisionMerge
             moves,
             rejections,
             SeedEras(mine, accepted),
+            SettleCollections(mine, accepted),
             new HeldAnswers(
                 faces.HeldAnswers,
                 faces.HeldStrangers,
@@ -795,6 +796,96 @@ public static class DecisionMerge
         int byDate = Nullable.Compare(mine.NamedUtc, theirs.NamedUtc);
 
         SharedAlbum named = byDate != 0
+            ? (byDate > 0 ? mine : theirs)
+            : string.CompareOrdinal(mine.Name, theirs.Name) >= 0 ? mine : theirs;
+
+        // The shelf is settled on its own date, not carried by whichever side
+        // won the name. They are two decisions: somebody renaming an album on
+        // one laptop must not silently undo somebody else moving it on another,
+        // and one date for both is exactly how that would happen.
+        SharedAlbum shelved = Shelf(mine, theirs);
+
+        return named with
+        {
+            DeletedUtc = Earliest(mine.DeletedUtc, theirs.DeletedUtc),
+            Shelf = shelved.Shelf,
+            ShelvedUtc = shelved.ShelvedUtc,
+        };
+    }
+
+    /// <summary>
+    /// Which of two machines last said where an album sits.
+    /// </summary>
+    /// <remarks>
+    /// A null date is a library that has never shelved this album, and it loses
+    /// to any date - including to a machine that took the album off a shelf,
+    /// which is a decision with a moment behind it rather than an absence. The
+    /// tie-break is on the shelf's own identity so that two machines settling the
+    /// same instant land on the same answer without either being asked.
+    /// </remarks>
+    private static SharedAlbum Shelf(SharedAlbum mine, SharedAlbum theirs)
+    {
+        int byDate = Nullable.Compare(mine.ShelvedUtc, theirs.ShelvedUtc);
+
+        if (byDate != 0)
+        {
+            return byDate > 0 ? mine : theirs;
+        }
+
+        return Compare(mine.Shelf, theirs.Shelf) >= 0 ? mine : theirs;
+    }
+
+    private static int Compare(Guid? mine, Guid? theirs) => (mine, theirs) switch
+    {
+        (null, null) => 0,
+        (null, _) => -1,
+        (_, null) => 1,
+        var (ours, them) => ours.Value.CompareTo(them!.Value),
+    };
+
+    /// <summary>
+    /// The shelves, settled the way everything else with a name and a tombstone
+    /// is.
+    /// </summary>
+    /// <remarks>
+    /// The simplest settle in this file, because a collection holds no
+    /// photographs. There is nothing to match against a library's contents and
+    /// therefore nothing that can arrive before its pictures do: a shelf is
+    /// never held, and a machine that has not finished scanning still gets every
+    /// shelf in the house the first time it shares.
+    ///
+    /// <para>Unlike an album there is no proposed form to skip. Nobody can
+    /// propose a theme, so every collection in a payload is something a person
+    /// typed and every one of them is worth taking.</para>
+    /// </remarks>
+    private static List<SharedCollection> SettleCollections(
+        DecisionSet mine, List<DecisionSet> accepted)
+    {
+        Dictionary<Guid, SharedCollection> ours =
+            mine.Collections.ToDictionary(collection => collection.PublicId);
+
+        Dictionary<Guid, SharedCollection> winners = new(ours);
+
+        foreach (SharedCollection collection in accepted.SelectMany(them => them.Collections))
+        {
+            winners[collection.PublicId] =
+                winners.TryGetValue(collection.PublicId, out SharedCollection? standing)
+                    ? Settle(standing, collection)
+                    : collection;
+        }
+
+        return
+        [
+            .. winners.Values.Where(winner =>
+                !ours.TryGetValue(winner.PublicId, out SharedCollection? was) || was != winner),
+        ];
+    }
+
+    private static SharedCollection Settle(SharedCollection mine, SharedCollection theirs)
+    {
+        int byDate = mine.NamedUtc.CompareTo(theirs.NamedUtc);
+
+        SharedCollection named = byDate != 0
             ? (byDate > 0 ? mine : theirs)
             : string.CompareOrdinal(mine.Name, theirs.Name) >= 0 ? mine : theirs;
 

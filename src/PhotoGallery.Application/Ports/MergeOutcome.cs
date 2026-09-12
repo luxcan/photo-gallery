@@ -29,7 +29,8 @@ public sealed record MergeOutcome(
     IReadOnlyList<SharedAlbumMove> Moves,
     IReadOnlyList<PersonJoin> Joins,
     IReadOnlyList<RefusedSet> Refused,
-    bool WasCancelled)
+    bool WasCancelled,
+    int CollectionsChanged = 0)
 {
     public static MergeOutcome Nothing { get; } =
         new(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, [], [], [], false);
@@ -45,5 +46,6 @@ public sealed record MergeOutcome(
         && PhotographsTurned == 0
         && AlbumsChanged == 0
         && PhotographsMoved == 0
+        && CollectionsChanged == 0
         && Held == 0;
 }

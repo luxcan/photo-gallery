@@ -63,7 +63,10 @@ public sealed class SqliteDecisionReader : IDecisionReader
             await MembershipsAsync(machine, photographs, cancellationToken).ConfigureAwait(false),
             await RejectionsAsync(machine, photographs, cancellationToken).ConfigureAwait(false),
             await ErasAsync(people, cancellationToken).ConfigureAwait(false),
-            await LinksAsync(cancellationToken).ConfigureAwait(false));
+            await LinksAsync(cancellationToken).ConfigureAwait(false))
+        {
+            Collections = await CollectionsAsync(cancellationToken).ConfigureAwait(false),
+        };
     }
 
     public async Task<LibraryContents> ContentsAsync(CancellationToken cancellationToken = default)
@@ -322,19 +325,87 @@ public sealed class SqliteDecisionReader : IDecisionReader
         ];
     }
 
-    /// <summary>Albums, tombstones included, and proposals that carry a decision.</summary>
-    private async Task<IReadOnlyList<SharedAlbum>> AlbumsAsync(CancellationToken cancellationToken) =>
-        await _db.Albums
+    /// <summary>
+    /// The shelves of albums, tombstones included.
+    /// </summary>
+    /// <remarks>
+    /// Tombstones included for the reason every other tombstone in this file is:
+    /// a shelf somebody took away, left out, comes straight back on the next
+    /// merge from a machine that still holds it.
+    /// </remarks>
+    private async Task<IReadOnlyList<SharedCollection>> CollectionsAsync(
+        CancellationToken cancellationToken) =>
+        await _db.Collections
             .IgnoreQueryFilters()
-            .Select(album => new SharedAlbum(
+            .Select(collection => new SharedCollection(
+                collection.PublicId,
+                collection.Name,
+                collection.NamedUtc,
+                collection.DeletedUtc))
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+    /// <summary>Albums, tombstones included, and proposals that carry a decision.</summary>
+    /// <remarks>
+    /// The shelf travels as the collection's public identity rather than as the
+    /// row number the column holds, for the same reason every other key here
+    /// does: a row number means a different shelf on the other machine, or
+    /// nothing at all.
+    /// </remarks>
+    private async Task<IReadOnlyList<SharedAlbum>> AlbumsAsync(CancellationToken cancellationToken)
+    {
+        Dictionary<int, Guid> shelves = await _db.Collections
+            .IgnoreQueryFilters()
+            .ToDictionaryAsync(
+                collection => collection.Id,
+                collection => collection.PublicId,
+                cancellationToken)
+            .ConfigureAwait(false);
+
+        List<AlbumRow> rows = await _db.Albums
+            .IgnoreQueryFilters()
+            .Select(album => new AlbumRow(
                 album.PublicId,
                 album.Name,
                 album.Origin,
                 album.ProposalKey,
                 album.NamedUtc,
-                album.DeletedUtc))
+                album.DeletedUtc,
+                album.CollectionId,
+                album.ShelvedUtc))
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
+
+        return
+        [
+            .. rows.Select(row => new SharedAlbum(
+                row.PublicId,
+                row.Name,
+                row.Origin,
+                row.ProposalKey,
+                row.NamedUtc,
+                row.DeletedUtc,
+
+                // A shelf id the collections table does not know is read as no
+                // shelf, which is what the wall does with one too. There is no
+                // foreign key on that column on purpose - see the collections
+                // migration - so this is a state the data allows.
+                row.CollectionId is int shelf && shelves.TryGetValue(shelf, out Guid publicId)
+                    ? publicId
+                    : null,
+                row.ShelvedUtc)),
+        ];
+    }
+
+    private sealed record AlbumRow(
+        Guid PublicId,
+        string Name,
+        AlbumOrigin Origin,
+        string? ProposalKey,
+        DateTime? NamedUtc,
+        DateTime? DeletedUtc,
+        int? CollectionId,
+        DateTime? ShelvedUtc);
 
     /// <summary>
     /// Which photographs are in which album - for albums somebody made or kept,

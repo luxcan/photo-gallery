@@ -124,6 +124,26 @@ public sealed class Album
     /// </remarks>
     public int? CollectionId { get; set; }
 
+    /// <summary>
+    /// When somebody last put this album on a shelf or took it off one, or null
+    /// while nobody ever has.
+    /// </summary>
+    /// <remarks>
+    /// The date that decides whose shelf wins when two machines disagree, and it
+    /// has to be its own rather than borrowed from <see cref="NamedUtc"/>:
+    /// renaming an album and moving it are two different decisions, made at two
+    /// different moments, and settling both on one date means the machine that
+    /// typed a name last also silently wins an argument about shelves it never
+    /// had.
+    ///
+    /// <para>Null loses to any date, the same way a name nobody typed does. It
+    /// is also what an unshelving is recorded as - the column goes null and this
+    /// one takes the moment, because "taken off the shelf just now" has to beat
+    /// "put on it last week" on the other machine, and a null date with no
+    /// moment behind it could not.</para>
+    /// </remarks>
+    public DateTime? ShelvedUtc { get; set; }
+
     public List<AlbumMember> Members { get; } = [];
 
     /// <summary>Everybody a photograph must hold to fit. All of them, not any.</summary>

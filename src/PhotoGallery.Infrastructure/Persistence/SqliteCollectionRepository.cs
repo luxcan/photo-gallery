@@ -188,11 +188,17 @@ public sealed class SqliteCollectionRepository : ICollectionRepository
         int kept = 0;
         HashSet<int> left = [];
 
+        // One moment for the whole save. Every album this tick list moves was
+        // moved by the same press, and stamping them one by one would let a
+        // merge settle two halves of one decision differently.
+        DateTime nowUtc = DateTime.UtcNow;
+
         foreach (Album album in touched)
         {
             if (!wanted.Contains(album.Id))
             {
                 album.CollectionId = null;
+                album.ShelvedUtc = nowUtc;
                 removed++;
                 continue;
             }
@@ -208,6 +214,7 @@ public sealed class SqliteCollectionRepository : ICollectionRepository
                 }
 
                 album.CollectionId = collectionId;
+                album.ShelvedUtc = nowUtc;
                 added++;
             }
 
@@ -271,6 +278,7 @@ public sealed class SqliteCollectionRepository : ICollectionRepository
             : null;
 
         album.CollectionId = collectionId;
+        album.ShelvedUtc = DateTime.UtcNow;
 
         // Putting a suggestion on a shelf is keeping it, the same decision the
         // tick list makes, and in the same write so the two cannot come apart.

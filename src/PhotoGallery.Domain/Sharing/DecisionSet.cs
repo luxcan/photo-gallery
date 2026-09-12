@@ -50,6 +50,23 @@ public sealed record DecisionSet(
     IReadOnlyList<SharedEra> Eras,
     IReadOnlyList<SourceLink> Links)
 {
+    /// <summary>
+    /// The shelves of albums this library holds.
+    /// </summary>
+    /// <remarks>
+    /// Set beside the constructor rather than in it, and empty unless somebody
+    /// fills it. A set written by a release that did not carry collections is
+    /// still a set this one reads whole: the property is simply absent from the
+    /// file and arrives as nothing, which is the truth about that machine rather
+    /// than a gap to report.
+    ///
+    /// <para>That is also why adding this did not raise the schema version.
+    /// <see cref="PhotoGallery.Application.UseCases.Sharing.SharingVersion"/>
+    /// says a field nobody older reads is not a new schema, and an older release
+    /// reading a newer file ignores a property it does not know.</para>
+    /// </remarks>
+    public IReadOnlyList<SharedCollection> Collections { get; init; } = [];
+
     /// <summary>An empty set from a machine, for a library that has decided nothing.</summary>
     public static DecisionSet Empty(MachineIdentity machine, DateTime writtenUtc) =>
         new(machine, writtenUtc, [], [], [], [], [], [], [], [], [], []);
@@ -100,7 +117,20 @@ public sealed record DecisionSet(
             Rejections.Count == 0 ? DateTime.MinValue : Rejections.Max(r => r.RejectedUtc),
             People.Count == 0 ? DateTime.MinValue : People.Max(Moment),
             Albums.Count == 0 ? DateTime.MinValue : Albums.Max(Moment),
+
+            // Shelves and shelvings compete on their own dates, so they are
+            // judged on them too. A clock a year ahead would otherwise be
+            // refused for the names it typed and believed for the shelves,
+            // which is the same fault the guard exists to stop, arriving
+            // through the one door nobody had shut.
+            Collections.Count == 0 ? DateTime.MinValue : Collections.Max(Moment),
+            Albums.Count == 0 ? DateTime.MinValue : Albums.Max(album => Or(album.ShelvedUtc)),
         }.Max();
+
+    private static DateTime Moment(SharedCollection collection) =>
+        Later(collection.NamedUtc, collection.DeletedUtc);
+
+    private static DateTime Or(DateTime? moment) => moment ?? DateTime.MinValue;
 
     private static DateTime Moment(SharedPerson person) =>
         Later(person.UpdatedUtc, person.DeletedUtc);
