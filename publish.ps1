@@ -15,33 +15,28 @@ $exe = Join-Path $install 'PhotoGallery.exe'
 
 Write-Host "Publishing to $install ..."
 
-# The config that lives beside the executable is the one thing in the install
-# folder worth keeping across a republish.
-$keptConfig = Join-Path $install 'config.json'
-$savedConfig = $null
-if (Test-Path $keptConfig) {
-    $savedConfig = Get-Content $keptConfig -Raw
+# One upgrade step, and then never again. config.json used to live in the
+# install folder, and the install folder is about to be emptied - so an older
+# one is moved out to the per-user address this build reads. The application
+# adopts a stray config by itself, but it cannot adopt a file the wipe has
+# already deleted, and losing it costs the remembered library and the models
+# folder.
+$legacyConfig = Join-Path $install 'config.json'
+$configHome = Join-Path $env:LOCALAPPDATA 'PhotoGallery'
+$configFile = Join-Path $configHome 'config.json'
+if ((Test-Path $legacyConfig) -and -not (Test-Path $configFile)) {
+    New-Item -ItemType Directory -Force -Path $configHome | Out-Null
+    Move-Item $legacyConfig $configFile
+    Write-Host "  moved config.json to $configHome"
 }
 
+# Nothing else in here has to survive.
 if (Test-Path $install) {
     Get-ChildItem $install -Recurse -Force | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
 }
 
-try {
-    dotnet publish $project -c Release -o $install --nologo | Out-Null
-    if ($LASTEXITCODE -ne 0) { throw "publish failed with exit code $LASTEXITCODE" }
-}
-finally {
-    # Put back in a finally, because by the time anything can go wrong the folder
-    # has already been emptied. A publish that failed - the app still running and
-    # holding its own exe is enough - took the remembered library with it, and the
-    # next launch opened on the first-run screen with no way back to it.
-    if ($null -ne $savedConfig) {
-        New-Item -ItemType Directory -Force -Path $install | Out-Null
-        Set-Content $keptConfig $savedConfig -NoNewline
-        Write-Host "  kept the existing config.json"
-    }
-}
+dotnet publish $project -c Release -o $install --nologo | Out-Null
+if ($LASTEXITCODE -ne 0) { throw "publish failed with exit code $LASTEXITCODE" }
 
 # Everything the single-file build does not need at runtime. The .lib files come
 # from ONNX Runtime and are import libraries for building against it in C++ - the

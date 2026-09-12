@@ -79,9 +79,10 @@ public partial class App : System.Windows.Application
         base.OnStartup(e);
         DispatcherUnhandledException += OnUnhandledException;
 
-        // The one file outside any working folder: it says which folder was last
-        // used and which palette to open in, neither of which can come from a
-        // database that has not been located yet.
+        // The one file outside any working folder, and the one thing that has to
+        // be known before a library can be opened: which library. It also carries
+        // the diagnostics switch and where the models were put, neither of which
+        // can come from a database that has not been located yet.
         var configStore = new JsonAppConfigStore();
         AppConfig config = configStore.Load();
 

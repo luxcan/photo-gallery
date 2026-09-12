@@ -112,6 +112,74 @@ public sealed class JsonAppConfigStoreTests : IDisposable
         Assert.DoesNotContain("Recent", written, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void AConfigLeftAtTheOldAddressIsAdoptedAndRemoved()
+    {
+        // It used to sit beside the executable. The first run at the new address
+        // takes it over, so nobody has to re-choose a library they already chose.
+        string older = Path.Combine(_tempRoot, "old-config.json");
+        new JsonAppConfigStore(older).RememberFolder(_tempRoot);
+
+        AppConfig adopted = new JsonAppConfigStore(_configPath, older).Load();
+
+        Assert.Equal(_tempRoot, adopted.LastWorkingFolder);
+        Assert.False(File.Exists(older), "the old file is moved, not copied");
+    }
+
+    [Fact]
+    public void AdoptingIsAMigrationAndNotAFallback()
+    {
+        // The whole reason the old file is REMOVED rather than left behind.
+        // Deleting config.json has to mean a clean start; if the old address were
+        // read whenever the new one is missing, a deliberate delete would be
+        // silently undone and the app would reopen a library nobody asked for.
+        string older = Path.Combine(_tempRoot, "old-config.json");
+        new JsonAppConfigStore(older).RememberFolder(_tempRoot);
+        _ = new JsonAppConfigStore(_configPath, older).Load();
+
+        File.Delete(_configPath);
+
+        Assert.Null(new JsonAppConfigStore(_configPath, older).Load().LastWorkingFolder);
+    }
+
+    [Fact]
+    public void AdoptingNeverOverwritesTheConfigAlreadyHere()
+    {
+        string older = Path.Combine(_tempRoot, "old-config.json");
+        string current = Path.Combine(_tempRoot, "current");
+        Directory.CreateDirectory(current);
+        new JsonAppConfigStore(older).RememberFolder(_tempRoot);
+        new JsonAppConfigStore(_configPath).RememberFolder(current);
+
+        AppConfig kept = new JsonAppConfigStore(_configPath, older).Load();
+
+        Assert.Equal(current, kept.LastWorkingFolder);
+    }
+
+    [Fact]
+    public void TheDefaultAddressIsPerUserRatherThanBesideTheExecutable()
+    {
+        // Beside the exe is the folder publishing empties, which is how a failed
+        // publish used to take the remembered library with it.
+        string local = Environment.GetFolderPath(
+            Environment.SpecialFolder.LocalApplicationData,
+            Environment.SpecialFolderOption.DoNotVerify);
+
+        Assert.Equal(Path.Combine(local, "PhotoGallery"), JsonAppConfigStore.PerUserDirectory());
+        Assert.StartsWith(local, JsonAppConfigStore.DefaultFilePath(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TheEnvironmentCanAimARunSomewhereElse()
+    {
+        // How a debug run is pointed at a throwaway library. It used to happen by
+        // accident, because a build in bin\Debug had its own file beside its own
+        // exe; now both share the per-user address unless this says otherwise.
+        Assert.Equal(_tempRoot, JsonAppConfigStore.DirectoryFor(_tempRoot));
+        Assert.Equal(JsonAppConfigStore.PerUserDirectory(), JsonAppConfigStore.DirectoryFor(null));
+        Assert.Equal(JsonAppConfigStore.PerUserDirectory(), JsonAppConfigStore.DirectoryFor("   "));
+    }
+
     public void Dispose()
     {
         try
