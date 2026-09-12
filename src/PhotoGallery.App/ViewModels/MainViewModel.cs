@@ -1422,7 +1422,6 @@ public sealed partial class MainViewModel : ObservableObject
         Append(targets.Count == 1
             ? $"refreshing {targets[0].Path}"
             : $"refreshing {targets.Count:N0} folders");
-
         foreach (PhotoSourceItem item in targets)
         {
             item.IsScanning = true;
@@ -1553,7 +1552,16 @@ public sealed partial class MainViewModel : ObservableObject
                 .ConfigureAwait(true);
 
             ApplyScanResults(targets, result);
-            Append($"  {result.Summary}");
+
+            // A line per phase, not just the total. Every phase already timed
+            // itself and the result threw the numbers away, so a scan that took
+            // an hour said only that it took an hour - and which hour it was, the
+            // share or the processor, could not be answered without guessing. The
+            // total is the last of these lines, so nothing is lost by it.
+            foreach (string timing in result.Timings)
+            {
+                Append($"  {timing}");
+            }
 
             await RefreshCountsAsync();
 

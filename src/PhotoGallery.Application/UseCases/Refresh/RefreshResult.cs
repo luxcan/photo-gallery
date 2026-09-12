@@ -138,6 +138,94 @@ public sealed record RefreshResult(
         return missing;
     }
 
+    /// <summary>
+    /// One line for each phase that ran, in the order they ran, saying how long
+    /// it took and what it did.
+    /// </summary>
+    /// <remarks>
+    /// Every phase has always measured itself - each of these results carries its
+    /// own Elapsed and its own Summary - and this record threw all eight away and
+    /// printed one total. So a scan that took thirty-seven minutes said only that
+    /// it took thirty-seven minutes, and whether they went on the share, the
+    /// processor or the video decoder was a guess. Nothing could be measured
+    /// before and after a change, which is the same as saying nothing could be
+    /// optimised on purpose.
+    ///
+    /// <para>A phase that never ran is absent rather than zero: "we never got
+    /// that far" and "there was nothing to do" are the distinction the whole
+    /// record is built around, and a line of zeroes would lose it. What the
+    /// named phases do not account for is reported as one remainder, so the
+    /// lines always add up to the total.</para>
+    /// </remarks>
+    public IReadOnlyList<string> Timings
+    {
+        get
+        {
+            List<string> lines = [];
+            TimeSpan accounted = TimeSpan.Zero;
+
+            foreach (ScanResult scan in Scans)
+            {
+                lines.Add(Line("crawl", scan.Elapsed, scan.Summary));
+                accounted += scan.Elapsed;
+            }
+
+            Add("pictures", Generated?.Elapsed, Generated?.Summary);
+            Add("places", Located?.Elapsed, Located?.Summary);
+            Add("describing", Described?.Elapsed, Described?.Summary);
+            Add("videos", Videos?.Elapsed, Videos?.Summary);
+            Add("faces", Faces?.Elapsed, Faces?.Summary);
+            Add("albums", Collected?.Elapsed, Collected?.Summary);
+
+            // Whatever the named phases do not account for. Applying held
+            // answers is the one phase that has never timed itself, and giving
+            // it a stopwatch would mean changing a sharing record and the test
+            // that compares one by value - for a phase nobody is optimising. A
+            // remainder costs nothing and is strictly better than timing each
+            // one, because it also catches what no phase owns: opening the
+            // scope, the reconciliation between passes, the final counts. The
+            // lines add up to the total, and that is the property worth having.
+            TimeSpan other = Elapsed - accounted;
+            if (other > TimeSpan.FromSeconds(0.5))
+            {
+                lines.Add(Line("other", other, "everything the phases above do not own"));
+            }
+
+            lines.Add(Line("total", Elapsed, Summary));
+
+            return lines;
+
+            void Add(string name, TimeSpan? elapsed, string? summary)
+            {
+                if (elapsed is not null)
+                {
+                    lines.Add(Line(name, elapsed.Value, summary ?? string.Empty));
+                    accounted += elapsed.Value;
+                }
+            }
+        }
+    }
+
+    /// <summary>A phase, how long it took, and what it did.</summary>
+    private static string Line(string name, TimeSpan elapsed, string did) =>
+        $"{name,-11}{Took(elapsed),9}  {did}";
+
+    /// <summary>
+    /// A duration at the precision somebody reading a scan log cares about.
+    /// </summary>
+    /// <remarks>
+    /// Tenths below a minute, because the crawl and the album pass are measured
+    /// in seconds and the difference between 3.1 and 3.9 is worth seeing. Whole
+    /// minutes above it, because the long phases run for tens of minutes and the
+    /// seconds are noise once they do.
+    /// </remarks>
+    private static string Took(TimeSpan elapsed) => elapsed.TotalMinutes switch
+    {
+        < 1 => $"{elapsed.TotalSeconds:N1}s",
+        < 60 => $"{(int)elapsed.TotalMinutes}m {elapsed.Seconds:00}s",
+        _ => $"{(int)elapsed.TotalHours}h {elapsed.Minutes:00}m",
+    };
+
     public string Summary
     {
         get
