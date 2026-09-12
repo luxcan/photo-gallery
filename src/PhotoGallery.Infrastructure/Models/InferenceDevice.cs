@@ -57,11 +57,23 @@ public static class InferenceDevice
 
     /// <summary>How many graphs may run at once, given what they run on.</summary>
     /// <remarks>
-    /// Two on a card, because the queue is the bottleneck and a third only adds
-    /// memory. On the processor this is deliberately large: it does not limit
-    /// anything, because the work lists already cap themselves at half the cores.
+    /// ONE on a card, and this is a correctness limit rather than a tuning
+    /// choice. A DirectML session records its work through per-session state, and
+    /// calling Run on it from two threads at once corrupts that state: with two
+    /// it threw <c>DmlCommandRecorder.cpp(342) 80004005</c> about fifty pictures
+    /// into a real scan, and with four the process died outright with an access
+    /// violation. An access violation cannot be caught, so no amount of handling
+    /// further up would have saved the pass - the only safe number is one.
+    ///
+    /// <para>It costs less than it sounds. One picture at a time through the card
+    /// is still around thirty a second against the five a second eleven cores
+    /// managed, because the card is that much faster per picture.</para>
+    ///
+    /// <para>On the processor this is deliberately large: it does not limit
+    /// anything, because the work lists already cap themselves at half the cores
+    /// and each session there is single-threaded and safe to share.</para>
     /// </remarks>
-    public static int Concurrency => Decide().OnGpu ? 2 : int.MaxValue;
+    public static int Concurrency => Decide().OnGpu ? 1 : int.MaxValue;
 
     /// <summary>What was chosen, for the log line that says so.</summary>
     public static string Description => Decide().Description;

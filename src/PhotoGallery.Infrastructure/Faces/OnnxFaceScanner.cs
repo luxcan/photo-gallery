@@ -113,6 +113,13 @@ public sealed class OnnxFaceScanner : IFaceScanner, IDisposable
 
             return found;
         }
+        catch (OnnxRuntimeException)
+        {
+            // One photograph the graphs would not take, counted as a failure
+            // like a preview that will not decode. A refusal from the driver
+            // should cost the picture it happened on, not the pass.
+            return null;
+        }
         finally
         {
             _inUse.ExitReadLock();

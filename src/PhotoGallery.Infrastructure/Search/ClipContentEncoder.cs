@@ -79,6 +79,16 @@ public sealed class ClipContentEncoder : IContentEncoder, IDisposable
             ObjectDisposedException.ThrowIf(_disposed, this);
             return Run(VisionGraph(), "image", input);
         }
+        catch (OnnxRuntimeException)
+        {
+            // One picture the graph would not take, counted as a failure like a
+            // preview that will not decode - which is what the caller already
+            // does with null. Before this, a single refusal from the graphics
+            // driver came out of Parallel.ForEachAsync and ended the whole
+            // refresh, thirty-eight minutes in, with the phases after it never
+            // run. One photograph is the right size for that failure.
+            return null;
+        }
         finally
         {
             _inUse.ExitReadLock();
