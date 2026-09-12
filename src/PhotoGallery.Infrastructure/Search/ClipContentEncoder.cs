@@ -4,6 +4,7 @@ using Microsoft.ML.OnnxRuntime;
 using Microsoft.ML.OnnxRuntime.Tensors;
 using PhotoGallery.Application.Ports;
 using PhotoGallery.Domain.Search;
+using PhotoGallery.Infrastructure.Models;
 using PhotoGallery.Domain.Vectors;
 using PhotoGallery.Infrastructure.Faces;
 
@@ -42,10 +43,19 @@ public sealed class ClipContentEncoder : IContentEncoder, IDisposable
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(previewPath);
 
-        // Wholly synchronous, processor-bound work, and the heaviest in the app:
-        // left on the calling thread it would hold whatever asked for it.
+        // Wholly synchronous work, and the heaviest in the app: left on the
+        // calling thread it would hold whatever asked for it.
+        //
+        // The slot is what keeps eleven callers off one graphics adapter. On the
+        // processor it is free and does nothing, which is why the work list can
+        // go on choosing its own width without knowing what it is running on.
         return Task.Run<ContentEmbedding?>(
-            () => DescribePicture(previewPath, cancellationToken), cancellationToken);
+            () =>
+            {
+                using InferenceDevice.Slot slot = InferenceDevice.Enter(cancellationToken);
+                return DescribePicture(previewPath, cancellationToken);
+            },
+            cancellationToken);
     }
 
     public Task<ContentEmbedding?> DescribePhraseAsync(
@@ -161,15 +171,7 @@ public sealed class ClipContentEncoder : IContentEncoder, IDisposable
     }
 
     private InferenceSession Open(ModelId id) =>
-        new(Resolve(id), new SessionOptions
-        {
-            // One thread per graph: the pass already runs several pictures at
-            // once, and letting each session spread over every core as well
-            // would leave the machine competing with itself.
-            IntraOpNumThreads = 1,
-            InterOpNumThreads = 1,
-            GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_ALL,
-        });
+        new(Resolve(id), InferenceDevice.ForGraph());
 
     private string Resolve(ModelId id)
     {

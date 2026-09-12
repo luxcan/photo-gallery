@@ -24,6 +24,7 @@ using PhotoGallery.Application.UseCases.Refresh;
 using PhotoGallery.Application.UseCases.Scanning;
 using PhotoGallery.Application.UseCases.Sources;
 using PhotoGallery.Domain.Library;
+using PhotoGallery.Infrastructure.Models;
 
 namespace PhotoGallery.App.ViewModels;
 
@@ -1422,6 +1423,14 @@ public sealed partial class MainViewModel : ObservableObject
         Append(targets.Count == 1
             ? $"refreshing {targets[0].Path}"
             : $"refreshing {targets.Count:N0} folders");
+
+        // Which device the two model phases will run on. Worth a line of its
+        // own: it is the difference between a few minutes and the better part of
+        // half an hour on a scan this size, it is decided by what the machine
+        // turns out to have rather than by anything the user set, and when it
+        // falls back to the processor the reason is the only way to find out why.
+        Append($"  models on {InferenceDevice.Description}");
+
         foreach (PhotoSourceItem item in targets)
         {
             item.IsScanning = true;

@@ -3,6 +3,7 @@ using System.Windows.Media.Imaging;
 using Microsoft.ML.OnnxRuntime;
 using PhotoGallery.Application.Ports;
 using PhotoGallery.Domain.Faces;
+using PhotoGallery.Infrastructure.Models;
 
 namespace PhotoGallery.Infrastructure.Faces;
 
@@ -54,11 +55,19 @@ public sealed class OnnxFaceScanner : IFaceScanner, IDisposable
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(previewPath);
 
-        // Wholly synchronous, processor-bound work: decoding, then two graphs.
-        // Left on the calling thread it would hold whatever asked for it, and
-        // the pass runs several of these at once by design.
+        // Wholly synchronous work: decoding, then two graphs. Left on the
+        // calling thread it would hold whatever asked for it, and the pass runs
+        // several of these at once by design.
+        //
+        // The slot is what keeps those several off one graphics adapter; on the
+        // processor it is free and does nothing.
         return Task.Run<IReadOnlyList<ScannedFace>?>(
-            () => Scan(previewPath, cancellationToken), cancellationToken);
+            () =>
+            {
+                using InferenceDevice.Slot slot = InferenceDevice.Enter(cancellationToken);
+                return Scan(previewPath, cancellationToken);
+            },
+            cancellationToken);
     }
 
     private IReadOnlyList<ScannedFace>? Scan(string previewPath, CancellationToken cancellationToken)
@@ -151,23 +160,8 @@ public sealed class OnnxFaceScanner : IFaceScanner, IDisposable
                 $"The {id} model is {state}. It has to be installed before faces can be found.");
         }
 
-        return new InferenceSession(_models.ResolvePath(id), CreateOptions());
+        return new InferenceSession(_models.ResolvePath(id), InferenceDevice.ForGraph());
     }
-
-    /// <summary>
-    /// One thread per graph.
-    /// </summary>
-    /// <remarks>
-    /// The pass already runs several photographs at once, and letting each
-    /// session spread over every core as well would leave the machine competing
-    /// with itself. Parallelism belongs to whoever is holding the work list.
-    /// </remarks>
-    private static SessionOptions CreateOptions() => new()
-    {
-        IntraOpNumThreads = 1,
-        InterOpNumThreads = 1,
-        GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_ALL,
-    };
 
     /// <summary>
     /// The preview as plain blue-green-red bytes, or null when it will not open.

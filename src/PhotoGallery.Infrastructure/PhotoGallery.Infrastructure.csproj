@@ -37,10 +37,20 @@
     </PackageReference>
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="9.*" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="9.*" />
-    <!-- Runs the two face models. A native library with a thin managed wrapper,
-         so nothing is installed on the target machine and no interpreter is
-         involved; the single-file publish already carries native libraries. -->
-    <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.*" />
+    <!-- Runs the face models and CLIP. A native library with a thin managed
+         wrapper, so nothing is installed on the target machine and no
+         interpreter is involved; the single-file publish already carries native
+         libraries.
+
+         The DirectML build rather than the plain one, and it REPLACES it - the
+         two ship the same managed assembly and cannot both be referenced.
+         DirectML rather than CUDA because it needs nothing installed on the
+         machine, runs on any Direct3D 12 adapter including Intel and AMD
+         integrated graphics, and adds a few megabytes rather than the better
+         part of a gigabyte to a single-file publish. The provider is still
+         chosen at run time and falls back to the processor, so a machine with
+         no usable adapter behaves exactly as it did before. -->
+    <PackageReference Include="Microsoft.ML.OnnxRuntime.DirectML" Version="1.*" />
     <!-- CLIP's byte-pair tokenizer. Written by hand it is a few hundred lines
          and every one is a chance to be subtly wrong - which does not throw, it
          returns a confident vector for the wrong words. Checked against the
