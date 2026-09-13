@@ -18,8 +18,9 @@ namespace PhotoGallery.Application.UseCases.Videos;
 ///
 /// <para>Shaped like the preparing pass, because it has the same three problems:
 /// it runs for a long time, it can be stopped, and what it finished must survive
-/// that. Work is batched, a batch is read by several threads and written by one,
-/// and the write happens in a <c>finally</c>.</para>
+/// that. Every outstanding video is handed out at once and read by several
+/// threads, what they finish is written a batch at a time by one thread at a
+/// time, and a last write happens in a <c>finally</c>.</para>
 ///
 /// <para>What is outstanding is decided by the disk rather than by the row, as
 /// everywhere else here - and specifically by whether the poster is on disk. That
@@ -35,6 +36,13 @@ public sealed class BuildVideoKeyframesHandler
     /// Smaller than the preparing pass's twenty. A video costs several seeks and
     /// several decodes where a photograph costs one read, so a batch represents
     /// much more work and losing one to an interruption is worth more.
+    ///
+    /// <para>A save cadence and nothing else. It used to be the size of the
+    /// array the work was handed out in as well, which quietly made it the
+    /// ceiling on how many videos could be open at once - eight in the array
+    /// meant eight at a time however many the caller asked for - and put a
+    /// barrier at every eighth clip, where every thread stood waiting on the
+    /// slowest video in the batch before any of them went on to the next.</para>
     /// </remarks>
     private const int SaveBatchSize = 8;
 
@@ -48,13 +56,20 @@ public sealed class BuildVideoKeyframesHandler
 
     /// <summary>How many videos are opened at once when the caller has no opinion.</summary>
     /// <remarks>
-    /// Not measured, unlike the numbers the other passes carry - there is no
-    /// figure for video seeking on this library yet. Four is a deliberate
-    /// halfway house: a seek over the share waits on the network like the
-    /// preparing pass's eight, but the decode that follows competes for cores
-    /// like the face pass's half-of-them. Worth replacing with a measurement.
+    /// Eight, as the preparing pass has, and for the preparing pass's reason: a
+    /// poster comes from the shell, which spends the bulk of each call waiting
+    /// on a seek across the share rather than on a core, and each of those calls
+    /// already runs on a thread of its own. The second four are therefore spent
+    /// waiting alongside the first rather than competing with them.
+    ///
+    /// <para>What four cost is on the record, unlike the halfway house that
+    /// chose it: 1,645 clips in 28m 53s, which is a little over four seconds of
+    /// a thread each with the batch barriers counted in. Eight is not itself
+    /// measured yet, and that is the figure it has to beat - and asking for more
+    /// than eight would have got eight anyway, for the reason
+    /// <see cref="SaveBatchSize"/> gives.</para>
     /// </remarks>
-    public const int DefaultParallelism = 4;
+    public const int DefaultParallelism = 8;
 
     private readonly IGalleryReader _reader;
     private readonly IAssetRepository _assets;
@@ -108,95 +123,104 @@ public sealed class BuildVideoKeyframesHandler
         // first ten of them - which on this pass is minutes, not moments.
         progress?.Report(new VideoProgress(0, pending.Count, 0, 0, stopwatch.Elapsed));
 
+        var completed = new ConcurrentQueue<VideoKeyframeUpdate>();
+        var unreadable = new ConcurrentQueue<int>();
+
+        // One writer at a time. These saves now happen while the rest of the
+        // pass is still opening videos, and the index is SQLite behind a single
+        // context: concurrent readers it tolerates, concurrent writers it does
+        // not.
+        using var writing = new SemaphoreSlim(1, 1);
+
         try
         {
-            foreach (PendingVideo[] batch in pending.Chunk(SaveBatchSize))
-            {
-                var completed = new ConcurrentQueue<VideoKeyframeUpdate>();
-                var unreadable = new ConcurrentQueue<int>();
-
-                try
+            await Parallel.ForEachAsync(
+                pending,
+                new ParallelOptions
                 {
-                    await Parallel.ForEachAsync(
-                        batch,
-                        new ParallelOptions
-                        {
-                            MaxDegreeOfParallelism = degreeOfParallelism > 0
-                                ? degreeOfParallelism
-                                : DefaultParallelism,
-                            CancellationToken = cancellationToken,
-                        },
-                        async (item, token) =>
-                        {
-                            KeyframeReading reading = await _extractor
-                                .ExtractAsync(item.FullPath, token)
-                                .ConfigureAwait(false);
-
-                            ExtractedVideo? extracted =
-                                reading.Outcome == KeyframeOutcome.Extracted
-                                && reading.Video is { Keyframes.Count: > 0 }
-                                    ? reading.Video
-                                    : null;
-
-                            if (extracted is null)
-                            {
-                                // Only a settled answer is written down. A file
-                                // that merely could not be reached is left alone
-                                // and offered again next run - recording it as
-                                // undecodable would leave the clip blank for
-                                // good the moment the share came back, which is
-                                // exactly what this pass used to do to one video
-                                // in twenty.
-                                if (reading.Outcome == KeyframeOutcome.Undecodable)
-                                {
-                                    unreadable.Enqueue(item.AssetId);
-                                    Interlocked.Increment(ref failed);
-                                }
-                                else
-                                {
-                                    Interlocked.Increment(ref skipped);
-                                }
-                            }
-                            else
-                            {
-                                IReadOnlyList<StoredKeyframe> stored = await SaveFramesAsync(
-                                    item, extracted, token).ConfigureAwait(false);
-
-                                completed.Enqueue(new VideoKeyframeUpdate(
-                                    item.AssetId,
-                                    extracted.Duration,
-                                    extracted.SourceWidth,
-                                    extracted.SourceHeight,
-                                    stored));
-
-                                Interlocked.Increment(ref prepared);
-                            }
-
-                            int seen = Interlocked.Increment(ref done);
-                            if (seen % ReportEvery == 0)
-                            {
-                                progress?.Report(new VideoProgress(
-                                    seen,
-                                    pending.Count,
-                                    Volatile.Read(ref prepared),
-                                    Volatile.Read(ref failed),
-                                    stopwatch.Elapsed));
-                            }
-                        }).ConfigureAwait(false);
-                }
-                finally
+                    MaxDegreeOfParallelism = degreeOfParallelism > 0
+                        ? degreeOfParallelism
+                        : DefaultParallelism,
+                    CancellationToken = cancellationToken,
+                },
+                async (item, token) =>
                 {
-                    // In a finally, so a batch interrupted part way still records
-                    // the clips it did finish. Their frames are already on disk;
-                    // a row that did not name them would have the next pass seek
-                    // through those videos all over again.
-                    await SaveAsync(completed, unreadable).ConfigureAwait(false);
-                }
-            }
+                    KeyframeReading reading = await _extractor
+                        .ExtractAsync(item.FullPath, token)
+                        .ConfigureAwait(false);
+
+                    ExtractedVideo? extracted =
+                        reading.Outcome == KeyframeOutcome.Extracted
+                        && reading.Video is { Keyframes.Count: > 0 }
+                            ? reading.Video
+                            : null;
+
+                    if (extracted is null)
+                    {
+                        // Only a settled answer is written down. A file that
+                        // merely could not be reached is left alone and offered
+                        // again next run - recording it as undecodable would
+                        // leave the clip blank for good the moment the share
+                        // came back, which is exactly what this pass used to do
+                        // to one video in twenty.
+                        if (reading.Outcome == KeyframeOutcome.Undecodable)
+                        {
+                            unreadable.Enqueue(item.AssetId);
+                            Interlocked.Increment(ref failed);
+                        }
+                        else
+                        {
+                            Interlocked.Increment(ref skipped);
+                        }
+                    }
+                    else
+                    {
+                        IReadOnlyList<StoredKeyframe> stored = await SaveFramesAsync(
+                            item, extracted, token).ConfigureAwait(false);
+
+                        completed.Enqueue(new VideoKeyframeUpdate(
+                            item.AssetId,
+                            extracted.Duration,
+                            extracted.SourceWidth,
+                            extracted.SourceHeight,
+                            stored));
+
+                        Interlocked.Increment(ref prepared);
+                    }
+
+                    int seen = Interlocked.Increment(ref done);
+                    if (seen % ReportEvery == 0)
+                    {
+                        progress?.Report(new VideoProgress(
+                            seen,
+                            pending.Count,
+                            Volatile.Read(ref prepared),
+                            Volatile.Read(ref failed),
+                            stopwatch.Elapsed));
+                    }
+
+                    // Written as the work goes rather than at a barrier the
+                    // whole pass waits on. It costs the one thread that notices
+                    // a batch's worth of rows; the others carry on seeking,
+                    // which is where this pass's time actually goes.
+                    if (completed.Count + unreadable.Count >= SaveBatchSize)
+                    {
+                        await SaveAsync(completed, unreadable, writing)
+                            .ConfigureAwait(false);
+                    }
+                }).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
             cancelled = true;
+        }
+        finally
+        {
+            // In a finally, so a pass interrupted part way still records the
+            // clips it did finish. Their frames are already on disk; a row that
+            // did not name them would have the next pass seek through those
+            // videos all over again.
+            await SaveAsync(completed, unreadable, writing).ConfigureAwait(false);
         }
 
         stopwatch.Stop();
@@ -282,32 +306,55 @@ public sealed class BuildVideoKeyframesHandler
         _store.NameFor(VideoKeyframeIdentity.For(
             video.RelativePath, video.Length, video.ModifiedUtc, ordinal: 0));
 
+    /// <summary>
+    /// Writes down what has been finished so far, and empties the queues.
+    /// </summary>
+    /// <remarks>
+    /// Called from the workers themselves rather than from between batches, so
+    /// it takes the gate: two of them arriving at once must not both write, and
+    /// the second to arrive finds the queues already drained and writes nothing.
+    /// Waiting for the gate is deliberately not cancellable, for the same reason
+    /// the writes below are not.
+    /// </remarks>
     private async Task SaveAsync(
-        ConcurrentQueue<VideoKeyframeUpdate> completed, ConcurrentQueue<int> unreadable)
+        ConcurrentQueue<VideoKeyframeUpdate> completed,
+        ConcurrentQueue<int> unreadable,
+        SemaphoreSlim writing)
     {
-        var batch = new List<VideoKeyframeUpdate>(completed.Count);
-        while (completed.TryDequeue(out VideoKeyframeUpdate? update))
-        {
-            batch.Add(update);
-        }
+        await writing.WaitAsync(CancellationToken.None).ConfigureAwait(false);
 
-        if (batch.Count > 0)
+        try
         {
-            // Not cancellable: these frames are already on disk, and a row that
-            // did not record them would have the next pass redo the work.
-            await _assets.UpdateVideoKeyframesAsync(batch, CancellationToken.None)
-                .ConfigureAwait(false);
-        }
+            var batch = new List<VideoKeyframeUpdate>(completed.Count);
+            while (completed.TryDequeue(out VideoKeyframeUpdate? update))
+            {
+                batch.Add(update);
+            }
 
-        var failures = new List<int>(unreadable.Count);
-        while (unreadable.TryDequeue(out int assetId))
-        {
-            failures.Add(assetId);
-        }
+            if (batch.Count > 0)
+            {
+                // Not cancellable: these frames are already on disk, and a row
+                // that did not record them would have the next pass redo the
+                // work.
+                await _assets.UpdateVideoKeyframesAsync(batch, CancellationToken.None)
+                    .ConfigureAwait(false);
+            }
 
-        if (failures.Count > 0)
+            var failures = new List<int>(unreadable.Count);
+            while (unreadable.TryDequeue(out int assetId))
+            {
+                failures.Add(assetId);
+            }
+
+            if (failures.Count > 0)
+            {
+                await _assets.MarkFailedAsync(failures, CancellationToken.None)
+                    .ConfigureAwait(false);
+            }
+        }
+        finally
         {
-            await _assets.MarkFailedAsync(failures, CancellationToken.None).ConfigureAwait(false);
+            writing.Release();
         }
     }
 }

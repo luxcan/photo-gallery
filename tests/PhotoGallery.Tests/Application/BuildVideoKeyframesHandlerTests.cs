@@ -262,6 +262,57 @@ public sealed class BuildVideoKeyframesHandlerTests : IDisposable
         Assert.Equal(0, result.Considered);
     }
 
+    /// <summary>
+    /// That how often the pass saves no longer decides how many videos it opens.
+    /// </summary>
+    /// <remarks>
+    /// Twelve is deliberately more than a save batch holds. The work used to be
+    /// handed out in batches of that size, so twelve could never be open at once
+    /// however many were asked for - and this test would sit there until the
+    /// decoder's own wait ran out, which is what makes it a test rather than a
+    /// hope.
+    /// </remarks>
+    [Fact]
+    public async Task MoreVideosAreOpenedAtOnceThanASaveBatchHolds()
+    {
+        AddVideos(12);
+        var extractor = new GatedExtractor(expected: 12);
+
+        VideoBuildResult result = await new BuildVideoKeyframesHandler(
+            _reader, _assets, _thumbnails, extractor).HandleAsync(degreeOfParallelism: 12);
+
+        Assert.Equal(12, extractor.Peak);
+        Assert.Equal(12, result.Prepared);
+        Assert.Equal(12, ClipsWithFrames());
+    }
+
+    /// <summary>
+    /// That a stop costs only the clip it landed on, not everything since the
+    /// last save.
+    /// </summary>
+    /// <remarks>
+    /// Three finished clips, which is fewer than a save batch: they are on disk
+    /// but nothing has written them down yet, so this pins the last save - the
+    /// one in the <c>finally</c> - rather than the ones the run makes as it
+    /// goes. One video at a time, so "three finished" means exactly three.
+    /// </remarks>
+    [Fact]
+    public async Task ClipsFinishedBeforeAStopAreStillWrittenDown()
+    {
+        AddVideos(12);
+
+        using var stop = new CancellationTokenSource();
+        var extractor = new StoppingExtractor(answers: 3, stop);
+
+        VideoBuildResult result = await new BuildVideoKeyframesHandler(
+                _reader, _assets, _thumbnails, extractor)
+            .HandleAsync(degreeOfParallelism: 1, cancellationToken: stop.Token);
+
+        Assert.True(result.Cancelled);
+        Assert.Equal(3, result.Prepared);
+        Assert.Equal(3, ClipsWithFrames());
+    }
+
     private BuildVideoKeyframesHandler HandlerYielding(int frames) =>
         new(_reader, _assets, _thumbnails, new FakeExtractor(frames));
 
@@ -282,6 +333,18 @@ public sealed class BuildVideoKeyframesHandlerTests : IDisposable
         });
         _db.SaveChanges();
         _db.ChangeTracker.Clear();
+    }
+
+    /// <summary>How many clips have frames written down against them.</summary>
+    private int ClipsWithFrames() =>
+        _db.VideoKeyframes.AsNoTracking().Select(k => k.AssetId).Distinct().Count();
+
+    private void AddVideos(int count)
+    {
+        for (int i = 0; i < count; i++)
+        {
+            AddVideo($@"2023\clip{i}.mp4");
+        }
     }
 
     public void Dispose()
@@ -365,7 +428,115 @@ public sealed class BuildVideoKeyframesHandlerTests : IDisposable
         }
     }
 
+    /// <summary>
+    /// A decoder that answers nobody until enough of them are waiting.
+    /// </summary>
+    /// <remarks>
+    /// How fan-out is pinned without a sleep and without a race: every call
+    /// blocks, and the one that brings the number in flight up to what the test
+    /// asked for lets all of them go. A pass that cannot get that many videos
+    /// open at once never reaches it, so the wait runs out and the test fails
+    /// with a timeout instead of hanging or passing by accident.
+    /// </remarks>
+    private sealed class GatedExtractor : IKeyframeExtractor
+    {
+        /// <summary>How long a pass that cannot get there is given to prove it.</summary>
+        /// <remarks>
+        /// Only ever spent by a failing test: the calls this waits for are made
+        /// within moments of each other, or not at all.
+        /// </remarks>
+        private static readonly TimeSpan Patience = TimeSpan.FromSeconds(10);
+
+        private readonly int _expected;
+
+        private readonly TaskCompletionSource _allArrived =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        private int _inFlight;
+        private int _peak;
+
+        public GatedExtractor(int expected) => _expected = expected;
+
+        /// <summary>The most calls that were ever in flight together.</summary>
+        public int Peak => Volatile.Read(ref _peak);
+
+        public async Task<KeyframeReading> ExtractAsync(
+            string originalPath, CancellationToken cancellationToken = default)
+        {
+            int arrived = Interlocked.Increment(ref _inFlight);
+            RaisePeakTo(arrived);
+
+            if (arrived >= _expected)
+            {
+                _allArrived.TrySetResult();
+            }
+
+            await _allArrived.Task.WaitAsync(Patience, cancellationToken);
+            Interlocked.Decrement(ref _inFlight);
+
+            return OneFrame();
+        }
+
+        private void RaisePeakTo(int arrived)
+        {
+            int seen = Volatile.Read(ref _peak);
+            while (arrived > seen)
+            {
+                int was = Interlocked.CompareExchange(ref _peak, arrived, seen);
+                if (was == seen)
+                {
+                    return;
+                }
+
+                seen = was;
+            }
+        }
+    }
+
+    /// <summary>A decoder that presses Stop once it has answered enough times.</summary>
+    /// <remarks>
+    /// Stopped from inside the decoder rather than on a timer, so the pass is
+    /// interrupted at a point the test knows exactly: between two videos, with
+    /// the ones before it finished and on disk.
+    /// </remarks>
+    private sealed class StoppingExtractor : IKeyframeExtractor
+    {
+        private readonly int _answers;
+        private readonly CancellationTokenSource _stop;
+
+        private int _asked;
+
+        public StoppingExtractor(int answers, CancellationTokenSource stop) =>
+            (_answers, _stop) = (answers, stop);
+
+        public Task<KeyframeReading> ExtractAsync(
+            string originalPath, CancellationToken cancellationToken = default)
+        {
+            if (Interlocked.Increment(ref _asked) > _answers)
+            {
+                _stop.Cancel();
+                cancellationToken.ThrowIfCancellationRequested();
+            }
+
+            return Task.FromResult(OneFrame());
+        }
+    }
+
+    /// <summary>The answer a decoder gives when the frames themselves do not matter.</summary>
+    private static KeyframeReading OneFrame() =>
+        KeyframeReading.From(new ExtractedVideo(
+            TimeSpan.FromMinutes(2),
+            1920,
+            1080,
+            [new ExtractedKeyframe(TimeSpan.Zero, [1, 1], [1, 2])]));
+
     /// <summary>The real store, noting the order renditions are written in.</summary>
+    /// <remarks>
+    /// For one clip at a time only. The list behind the callback is a plain one,
+    /// and the pass writes renditions from as many threads as it has videos in
+    /// hand - so a test that gave this recorder several clips would be racing on
+    /// it rather than pinning anything.
+    /// </remarks>
     private sealed class RecordingThumbnailStore : IThumbnailStore
     {
         private readonly IThumbnailStore _inner;
