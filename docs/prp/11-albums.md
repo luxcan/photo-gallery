@@ -102,6 +102,15 @@ A group must still earn its place: at least **8 photographs**, and at least
 > A photo with no `TakenUtc` is left out rather than dropped into whichever group
 > it lands beside — it can still be put into an album by hand.
 
+> **That is the clusterer's rule, and only the clusterer's.** An album's own
+> rule — the dates somebody types into the Edit panel — reads
+> `AssetDates.TakenBetween`, which falls back to the file's own timestamps
+> exactly as the gallery grid does. The two differ on purpose: guessing a date
+> in order to *invent* an occasion would produce thirteen albums named after
+> bulk copies, while refusing to guess when a person has named a day means a
+> rule cannot match a single video. Not one video in this library carries a
+> capture date.
+
 ---
 
 ## Naming, and the 89% problem

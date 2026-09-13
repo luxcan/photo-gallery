@@ -76,7 +76,12 @@ preserves last-write across a copy and resets creation to the moment of copying,
 so ordering by it would collapse a fourteen-year archive into thirteen piles and
 put the oldest photos at the top of "newest first".
 
-**The chain is `TakenUtc` → `ModifiedUtc`.** Modified survived the copies.
+**The chain is `TakenUtc` → the earlier of `CreatedUtc` and `ModifiedUtc`.**
+Modified survived the copies, and where a creation date survived intact it is
+nearer the shutter: measured over 16,225 files, modified alone lands on the right
+day 7,309 times and the earlier of the two 7,527. A creation date of exactly
+`default` is the sentinel from rows indexed before creation dates were recorded,
+and an unknown date is not an earlier one. `AssetDates` holds the rule.
 
 > Today `TakenUtc` is null for every row, so the order is *entirely*
 > `ModifiedUtc` — which is right for most files and wrong for the ones that were

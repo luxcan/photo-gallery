@@ -58,6 +58,11 @@ public sealed class SqlitePlaceRepository : IPlaceRepository
             {
                 byGeoNameId[place.GeoNameId] = place.Id;
             }
+
+            // After the ids have been read off them, and before the phases that
+            // follow: one scope serves the whole scan, so anything still tracked
+            // here is carried into every later save.
+            _db.ChangeTracker.Clear();
         }
 
         return byGeoNameId;

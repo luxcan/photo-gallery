@@ -1049,7 +1049,13 @@
 
               <!-- What the rule found, waiting to be kept or refused. Above the
                    photographs already in the album, because it is a
-                   question and they are the answer to an older one. -->
+                   question and they are the answer to an older one.
+
+                   Only ever photographs. A run that finds none says so on the
+                   status line under the album's name, which is on screen
+                   whether this panel is or not - the sentence used to be
+                   written in here, where a collapsed panel swallowed it and
+                   left the button looking broken. -->
               <Border DockPanel.Dock="Top" Margin="0,0,0,12" Padding="12,10"
                       Background="{DynamicResource Status.InfoBack}"
                       BorderBrush="{DynamicResource Status.Info}" BorderThickness="1"
@@ -2961,7 +2967,8 @@
               <RowDefinition Height="*" />
             </Grid.RowDefinitions>
 
-            <Grid Grid.Row="0">
+            <StackPanel Grid.Row="0">
+            <Grid>
               <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
@@ -2996,6 +3003,28 @@
                             ToolTip="Outline the faces so you can say who they are"
                             IsChecked="{Binding Gallery.ShowFaceNames, Mode=TwoWay}" />
             </Grid>
+
+            <!-- Which picture the album shows for itself. A link rather than a
+                 button: the album is already named on the control above, and
+                 this is a quiet second thing to do about it rather than the
+                 reason anybody opened the panel.
+
+                 It says so instead of offering, once this photograph is the
+                 cover - an action that would do nothing is worse than a
+                 sentence, because it is only discovered by pressing it. -->
+            <Button Style="{DynamicResource LinkButton}" Margin="2,8,0,0" FontSize="12"
+                    Padding="0" HorizontalAlignment="Left"
+                    Content="Make this the album cover"
+                    ToolTip="Show this photograph for the album, instead of the one worked out for it"
+                    Visibility="{Binding Gallery.CanMakeAlbumCover,
+                                 Converter={StaticResource BoolToVisibility}}"
+                    Command="{Binding Gallery.MakeAlbumCoverCommand}" />
+
+            <TextBlock Style="{DynamicResource HintText}" Margin="2,8,0,0" FontSize="11.5"
+                       Text="This is the album's cover"
+                       Visibility="{Binding Gallery.IsTheAlbumCover,
+                                    Converter={StaticResource BoolToVisibility}}" />
+            </StackPanel>
 
             <Border Grid.Row="1" Height="1" Margin="0,12"
                     Background="{DynamicResource Panel.Border}"
@@ -3356,6 +3385,60 @@
           </StackPanel>
         </Grid>
       </Grid>
+    </Border>
+
+    <!-- What another computer has published, offered rather than applied.
+
+         A child of the root grid so it floats over whichever screen is open and
+         over an open picture, the way the viewer above it does - the news it
+         carries has nothing to do with the screen underneath it, and following
+         somebody around is the point.
+
+         Corner rather than centre, and no shade behind it. A centred panel is a
+         modal in this app, drawn on ModalSurface over ModalScrim, and it stops
+         everything until it is answered; this must not, because the answer to
+         "not now" is much more often yes than no. Row 0 only, so the counts along
+         the bottom stay readable beside it.
+
+         Below the pass overlay in the markup, so a pass covers it: work already
+         running outranks a question, and the question keeps until it is over. -->
+    <Border Grid.Row="0" Margin="0,0,22,22"
+            HorizontalAlignment="Right" VerticalAlignment="Bottom"
+            MaxWidth="420"
+            Background="{DynamicResource Status.InfoBack}"
+            BorderBrush="{DynamicResource Status.Info}" BorderThickness="1"
+            CornerRadius="4" Padding="12,10"
+            Visibility="{Binding Sharing.HasNotice,
+                         Converter={StaticResource BoolToVisibility}}">
+      <StackPanel>
+        <StackPanel Orientation="Horizontal">
+          <TextBlock Text="&#xE896;" FontFamily="Segoe MDL2 Assets" FontSize="12"
+                     VerticalAlignment="Top" Margin="0,2,9,0"
+                     Foreground="{DynamicResource Status.Info}" />
+          <!-- Editor.Foreground rather than HintText, for the reason the other
+               notices give: this sits on the info tint rather than on the page. -->
+          <TextBlock FontSize="12" TextWrapping="Wrap" MaxWidth="360"
+                     Foreground="{DynamicResource Editor.Foreground}"
+                     Text="{Binding Sharing.Notice}" />
+        </StackPanel>
+
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right"
+                    Margin="0,10,0,0">
+          <!-- Only while it is asking. Once it is reporting what was taken,
+               there is nothing left to agree to. -->
+          <Button Style="{DynamicResource PrimaryButton}" MinWidth="110"
+                  Content="Take them now"
+                  ToolTip="Take the answers and give this computer's back"
+                  Visibility="{Binding Sharing.NoticeAsks,
+                               Converter={StaticResource BoolToVisibility}}"
+                  Command="{Binding TakeSharedAnswersCommand}" />
+          <Button Style="{DynamicResource LinkButton}" Margin="14,0,2,0" FontSize="12"
+                  Padding="0" VerticalAlignment="Center"
+                  VerticalContentAlignment="Center" Content="Not now"
+                  ToolTip="Put this down. It will be offered again when there is something newer."
+                  Command="{Binding Sharing.DismissNoticeCommand}" />
+        </StackPanel>
+      </StackPanel>
     </Border>
 
     <!-- Both long passes cover the whole window: each rewrites the library's

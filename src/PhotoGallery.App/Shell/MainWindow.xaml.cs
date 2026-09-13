@@ -227,6 +227,12 @@ public partial class MainWindow : Window
         _viewModel.AdaptNavigationToWidth(ActualWidth);
         ApplyNavigationWidth(_viewModel.IsNavCollapsed, animate: false);
 
+        // Here rather than at start-up, because the first thing it does is reach
+        // for a folder over the network and the window should be on screen
+        // before anything waits on a share that may be asleep.
+        _viewModel.StartLookingForSharedAnswers();
+        Closed += (_, _) => _viewModel.StopLookingForSharedAnswers();
+
         _viewModel.PropertyChanged += (_, args) =>
         {
             if (args.PropertyName == nameof(MainViewModel.IsNavCollapsed))

@@ -109,8 +109,49 @@ public sealed class SuggestionReviewTests
             $"{owner.Name} has no public {member}; the binding that names it will fail silently.");
     }
 
+    /// <summary>
+    /// The answer with no photographs in it is not written inside the panel
+    /// that is only there when there are photographs.
+    /// </summary>
+    /// <remarks>
+    /// A binding is not behaviour, so no view-model test can see this: the note
+    /// above the strip is bound inside a panel gated on Albums.HasSuggestions,
+    /// which is false on exactly the path that has something to explain. The
+    /// answer therefore goes to Albums.Status, on the line under the album's
+    /// name, and this asserts the two are in different places.
+    /// </remarks>
+    [Fact]
+    public void TheAnswerWithNoPhotographsIsOutsideTheStripsOwnPanel()
+    {
+        string panel = StripPanel();
+
+        Assert.Contains("Albums.SuggestionNote", panel, StringComparison.Ordinal);
+        Assert.DoesNotContain("Albums.Status", panel, StringComparison.Ordinal);
+        Assert.Contains("{Binding Albums.Status}", Window(), StringComparison.Ordinal);
+    }
+
     private static string Window() =>
         File.ReadAllText(AppMarkup.PathTo("Shell", "MainWindow.xaml"));
+
+    /// <summary>
+    /// The strip's own panel, from the gate that hides it to the note it holds.
+    /// </summary>
+    private static string StripPanel()
+    {
+        string window = Window();
+
+        int start = window.IndexOf(
+            "Visibility=\"{Binding Albums.HasSuggestions,", StringComparison.Ordinal);
+
+        Assert.True(start > 0, "The strip's panel is no longer gated on Albums.HasSuggestions.");
+
+        int end = window.IndexOf(
+            "ItemsSource=\"{Binding Albums.Suggestions}\"", start, StringComparison.Ordinal);
+
+        Assert.True(end > start, "The strip no longer follows the gate that hides it.");
+
+        return window[start..end];
+    }
 
     /// <summary>The strip of proposals, from the ItemsControl that renders it.</summary>
     private static string SuggestionStrip()

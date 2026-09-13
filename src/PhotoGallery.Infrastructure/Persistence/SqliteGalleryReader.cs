@@ -1,4 +1,3 @@
-using System.Linq.Expressions;
 using Microsoft.EntityFrameworkCore;
 using PhotoGallery.Application.Ports;
 using PhotoGallery.Application.UseCases.Gallery;
@@ -235,8 +234,8 @@ public sealed class SqliteGalleryReader : IGalleryReader
         // It reverses with the order for the same reason - a tie-break that kept
         // its direction would make those groups run backwards against the rest.
         IQueryable<Asset> ordered = query.SortOrder == GallerySortOrder.OldestFirst
-            ? rows.OrderBy(SortDate).ThenBy(a => a.Id)
-            : rows.OrderByDescending(SortDate).ThenByDescending(a => a.Id);
+            ? rows.OrderBy(AssetDates.Taken).ThenBy(a => a.Id)
+            : rows.OrderByDescending(AssetDates.Taken).ThenByDescending(a => a.Id);
 
         if (query.Skip > 0)
         {
@@ -382,22 +381,6 @@ public sealed class SqliteGalleryReader : IGalleryReader
 
         return rows;
     }
-
-    /// <summary>
-    /// The order the grid is in, expressed so the database can sort by it.
-    /// </summary>
-    /// <remarks>
-    /// The same rule as <see cref="AssetDates.BestGuess"/> and it has to stay
-    /// that way: this decides where a picture sits and that decides what the
-    /// picture says it is. A method group cannot be translated to SQL, so the
-    /// rule is written twice - and <c>Query_OrdersByTheSameDateItReports</c>
-    /// fails the moment the two disagree.
-    /// </remarks>
-    private static readonly Expression<Func<Asset, DateTime>> SortDate =
-        asset => asset.TakenUtc
-                 ?? (asset.CreatedUtc != default && asset.CreatedUtc < asset.ModifiedUtc
-                     ? asset.CreatedUtc
-                     : asset.ModifiedUtc);
 
     private static GalleryItem ToItem(Asset asset, Dictionary<int, string> roots) =>
         new(asset.Id,

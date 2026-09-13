@@ -45,6 +45,92 @@ public sealed class AssetDatesTests
         Assert.Equal(Early, AssetDates.BestGuess(null, default, Early));
     }
 
+    /// <summary>
+    /// The rule written for the database says the same as the rule written for
+    /// memory, over every shape of input there is.
+    /// </summary>
+    /// <remarks>
+    /// A method group cannot be translated to SQL, so the rule exists twice.
+    /// This is the test the second copy's doc comment promises: it compiles the
+    /// expression and holds it against the method for every combination of a
+    /// capture date, a surviving creation date, a reset one and the sentinel.
+    /// </remarks>
+    [Fact]
+    public void TheQueryableRuleAgreesWithTheOneInMemory()
+    {
+        Func<Asset, DateTime> queryable = AssetDates.Taken.Compile();
+
+        foreach (DateTime? taken in new DateTime?[] { Taken, null })
+        {
+            foreach (DateTime created in new[] { Early, Late, default })
+            {
+                foreach (DateTime modified in new[] { Early, Late })
+                {
+                    Assert.Equal(
+                        AssetDates.BestGuess(taken, created, modified),
+                        queryable(Photo(taken, created, modified)));
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// A file carrying no capture date is still inside a day it falls on.
+    /// </summary>
+    /// <remarks>
+    /// The whole point of the range reading the fallback: every video in a real
+    /// library is this file, so the stricter reading meant a day rule could
+    /// never match a video while every screen showed it sitting on that day.
+    /// </remarks>
+    [Fact]
+    public void TakenBetween_ReachesAFileWithNoCaptureDateOfItsOwn()
+    {
+        Func<Asset, bool> thatDay = AssetDates
+            .TakenBetween(DateOnly.FromDateTime(Early), DateOnly.FromDateTime(Early))
+            .Compile();
+
+        Assert.True(thatDay(Photo(null, Late, Early)));
+        Assert.False(thatDay(Photo(null, Late, Late)));
+    }
+
+    /// <summary>One day means that day, not the instant it begins.</summary>
+    [Fact]
+    public void TakenBetween_HoldsTheLastDayWhole()
+    {
+        Func<Asset, bool> thatDay = AssetDates
+            .TakenBetween(new DateOnly(2014, 3, 11), new DateOnly(2014, 3, 11))
+            .Compile();
+
+        Assert.True(thatDay(Photo(new DateTime(2014, 3, 11, 23, 59, 59), default, Late)));
+        Assert.False(thatDay(Photo(new DateTime(2014, 3, 12, 0, 0, 0), default, Late)));
+    }
+
+    /// <summary>An end left open is no limit at that end.</summary>
+    [Fact]
+    public void TakenBetween_WithAnOpenEndIsBoundedOnlyAtTheOther()
+    {
+        Func<Asset, bool> since =
+            AssetDates.TakenBetween(new DateOnly(2020, 1, 1), null).Compile();
+
+        Assert.True(since(Photo(Late, default, Late)));
+        Assert.False(since(Photo(Taken, default, Late)));
+
+        Func<Asset, bool> anything = AssetDates.TakenBetween(null, null).Compile();
+
+        Assert.True(anything(Photo(Taken, default, Late)));
+        Assert.True(anything(Photo(null, default, Late)));
+    }
+
+    /// <summary>A photograph carrying nothing but its three dates.</summary>
+    private static Asset Photo(DateTime? taken, DateTime created, DateTime modified) =>
+        new()
+        {
+            RelativePath = "a.jpg",
+            TakenUtc = taken,
+            CreatedUtc = created,
+            ModifiedUtc = modified,
+        };
+
     [Fact]
     public void BestGuess_IsNeverLaterThanTheModifiedDate()
     {

@@ -19,6 +19,7 @@ using PhotoGallery.Application.UseCases.Albums;
 using PhotoGallery.Application.UseCases.Gallery;
 using PhotoGallery.Application.UseCases.OpenLibrary;
 using PhotoGallery.Application.UseCases.People;
+using PhotoGallery.Application.UseCases.Sharing;
 using PhotoGallery.Application.UseCases.Preferences;
 using PhotoGallery.Application.UseCases.Refresh;
 using PhotoGallery.Application.UseCases.Scanning;
@@ -360,6 +361,8 @@ public sealed partial class MainViewModel : ObservableObject
         People.LibraryChanged += OnLibraryChanged;
         Duplicates.LibraryChanged += OnLibraryChanged;
         Albums.LibraryChanged += OnLibraryChanged;
+        Albums.Looking += OnAlbumsLooking;
+        Albums.LookedEnough += OnAlbumsLookedEnough;
     }
 
     /// <remarks>
@@ -1219,6 +1222,259 @@ public sealed partial class MainViewModel : ObservableObject
     }
 
     /// <summary>
+    /// Whether the window is covered because the Albums screen is looking.
+    /// </summary>
+    /// <remarks>
+    /// Kept so that ending a look puts down only an overlay this raised. A scan
+    /// can be running while somebody presses Find photos that fit - the button
+    /// is gated on the Albums screen being idle, not on the library being - and
+    /// a look that cleared the window on its way out would take the scan's
+    /// overlay with it and leave a pass running behind a live screen.
+    /// </remarks>
+    private bool _coveredForLooking;
+
+    /// <summary>
+    /// Covers the window while a look for photographs that fit runs long enough
+    /// to be worth explaining.
+    /// </summary>
+    /// <remarks>
+    /// The Albums screen raises this rather than covering the window itself,
+    /// because there is one overlay and it belongs to the shell - the same
+    /// reason moving an album's originals is driven from here. It says nothing
+    /// for a look that answers quickly; see AlbumsViewModel.Looking.
+    ///
+    /// <para>No Stop, and not for the reason the passes have none. A look writes
+    /// nothing at all, so stopping one could only mean "do not show me the
+    /// answer" - and the strip the answer arrives in already carries Not now.
+    /// </para>
+    /// </remarks>
+    private void OnAlbumsLooking(object? sender, SuggestProgress looking)
+    {
+        if (!_coveredForLooking)
+        {
+            // Something bigger is already on screen, and a look is the smaller
+            // thing: it waits behind the pass rather than painting over it.
+            if (!IsIdle)
+            {
+                return;
+            }
+
+            _coveredForLooking = true;
+            IsTidying = true;
+            IsSettling = true;
+            OverlayPicture = null;
+            OverlayHint = string.Empty;
+        }
+
+        OverlayTitle = looking.What;
+        OverlayTarget = looking.Target;
+        OverlayIsIndeterminate = !looking.IsCountable;
+        OverlayPercent = looking.IsCountable ? looking.Done * 100d / looking.Total : 0;
+        OverlayStatus = looking.IsCountable
+            ? $"{looking.Done:N0} of {looking.Total:N0}"
+            : string.Empty;
+    }
+
+    private void OnAlbumsLookedEnough(object? sender, EventArgs e)
+    {
+        if (!_coveredForLooking)
+        {
+            return;
+        }
+
+        _coveredForLooking = false;
+        IsSettling = false;
+        IsTidying = false;
+        ClearOverlay();
+    }
+
+    /// <summary>
+    /// How often the app looks in the shared folder for answers it has not taken.
+    /// </summary>
+    /// <remarks>
+    /// Long, on purpose. The thing being watched for is another person in the
+    /// house finishing an evening of naming faces, which happens on the scale of
+    /// evenings - and every look is a network round trip to a folder that is
+    /// usually asleep. A quarter of an hour is far more often than the news
+    /// changes and far less often than anybody would notice.
+    /// </remarks>
+    private static readonly TimeSpan LookEvery = TimeSpan.FromMinutes(15);
+
+    /// <summary>
+    /// How long one look may take before it is abandoned for this round.
+    /// </summary>
+    /// <remarks>
+    /// Reaching a folder that is not there is not quick and cannot be cancelled:
+    /// the call underneath is <c>Directory.Exists</c>, which blocks until the
+    /// operating system gives up on an address nothing is answering, and on a
+    /// share that has gone that is tens of seconds. Nothing here waits for it -
+    /// the look is raced against this, and a look that loses simply does not
+    /// report. The next one is fifteen minutes away.
+    /// </remarks>
+    private static readonly TimeSpan LookPatience = TimeSpan.FromSeconds(5);
+
+    private PeriodicTimer? _looking;
+
+    /// <summary>
+    /// Starts looking for answers other computers have published.
+    /// </summary>
+    /// <remarks>
+    /// From the window rather than from the constructor, because this touches a
+    /// folder over a network and the window should already be up when it does.
+    /// Nothing it finds is ever applied on its own: the most it does is put a
+    /// sentence and a button on screen, and a person presses the button. A merge
+    /// writes names, albums and memberships into the library, and a write nobody
+    /// asked for is a write nobody thinks to look for.
+    /// </remarks>
+    public void StartLookingForSharedAnswers()
+    {
+        if (_looking is not null)
+        {
+            return;
+        }
+
+        _looking = new PeriodicTimer(LookEvery);
+        _ = LookForSharedAnswersAsync(_looking);
+    }
+
+    /// <summary>Stops looking, for a window that is closing.</summary>
+    public void StopLookingForSharedAnswers()
+    {
+        _looking?.Dispose();
+        _looking = null;
+    }
+
+    private async Task LookForSharedAnswersAsync(PeriodicTimer timer)
+    {
+        // The first look is now rather than a quarter of an hour from now: the
+        // ordinary way this feature earns its place is somebody opening the app
+        // in the morning to find last night's naming already waiting.
+        await Sharing.LookForUpdatesAsync(LookPatience).ConfigureAwait(true);
+
+        try
+        {
+            while (await timer.WaitForNextTickAsync().ConfigureAwait(true))
+            {
+                await Sharing.LookForUpdatesAsync(LookPatience).ConfigureAwait(true);
+            }
+        }
+        catch (ObjectDisposedException)
+        {
+            // The window closed while a tick was pending, which is the ordinary
+            // way this loop ends.
+        }
+    }
+
+    /// <summary>
+    /// Takes the answers the notice is offering, under the shared overlay.
+    /// </summary>
+    /// <remarks>
+    /// The overlay because this writes to the library and the library is what
+    /// every screen behind it is drawing: names change, albums change, and a
+    /// window left live over that would be showing yesterday's answers while
+    /// today's were being written underneath.
+    ///
+    /// <para>No Stop, for the reason <see cref="UnderOverlayAsync"/> has none.
+    /// A merge is seconds on a house's worth of answers, and it is one of the
+    /// few things here that is safe to interrupt only because it is safe to
+    /// repeat - so the honest offer is to let it finish rather than a button
+    /// whose meaning is "do this again later".</para>
+    ///
+    /// <para>The counts come from the merge itself, which already reports what
+    /// it is applying and how far it has got, and they are worded exactly as the
+    /// same phase words itself inside a scan - because it is the same work, and
+    /// a person who has seen one should recognise the other.</para>
+    /// </remarks>
+    [RelayCommand]
+    private async Task TakeSharedAnswersAsync()
+    {
+        if (!IsIdle)
+        {
+            return;
+        }
+
+        IsTidying = true;
+        IsSettling = true;
+        OverlayTitle = "Taking in answers from your other computer";
+        OverlayTarget = string.Empty;
+        OverlayStatus = "looking in the shared folder...";
+        OverlayIsIndeterminate = true;
+        OverlayPercent = 0;
+        OverlayPicture = null;
+        OverlayHint = string.Empty;
+
+        try
+        {
+            var progress = new Progress<MergeProgress>(p =>
+            {
+                OverlayTarget = p.What;
+                OverlayIsIndeterminate = p.Total == 0;
+                OverlayPercent = p.Total == 0 ? 0 : p.Done * 100d / p.Total;
+                OverlayStatus = p.Total == 0
+                    ? "reading..."
+                    : $"{p.Done:N0} of {p.Total:N0}";
+            });
+
+            ShareResult result = await Task.Run(async () =>
+            {
+                using IServiceScope scope = _scopeFactory.CreateScope();
+                return await scope.ServiceProvider
+                    .GetRequiredService<ShareNowHandler>()
+                    .HandleAsync(progress)
+                    .ConfigureAwait(false);
+            }).ConfigureAwait(true);
+
+            Append($"took shared answers: {result.Summary}");
+            Sharing.Report(result.Summary);
+        }
+        catch (Exception ex) when (LibraryFailure.IsExpected(ex))
+        {
+            Append($"could not take the shared answers: {ex}");
+            Sharing.Report($"Those answers could not be taken: {ex.Message}");
+        }
+        finally
+        {
+            IsSettling = false;
+            IsTidying = false;
+            ClearOverlay();
+        }
+
+        // After the overlay is down, because it re-reads the folder and the
+        // counts, and the sentence it settles is the one about photographs this
+        // library has not indexed yet - which is the half of the answer that
+        // asks for a scan.
+        await Sharing.RefreshAsync().ConfigureAwait(true);
+        await RefreshCountsAsync().ConfigureAwait(true);
+
+        if (Sharing.HasWaiting)
+        {
+            Sharing.Report($"{Sharing.Notice} {Sharing.WaitingLabel}");
+        }
+
+        LibraryChangedByShare();
+    }
+
+    /// <summary>
+    /// Puts back on screen whatever a share has just rewritten underneath it.
+    /// </summary>
+    /// <remarks>
+    /// A merge renames people, fills albums and moves photographs between them,
+    /// and every one of those is already drawn somewhere. The screens reload
+    /// themselves on their next visit, so this only has to catch the one the
+    /// reader is looking at now.
+    /// </remarks>
+    private void LibraryChangedByShare()
+    {
+        if (_galleryLoaded)
+        {
+            _ = Gallery.LoadAsync();
+        }
+
+        _ = People.ReloadAsync();
+        _ = Albums.ReloadAsync();
+    }
+
+    /// <summary>
     /// Runs a screen's own slow work under the shared overlay.
     /// </summary>
     /// <remarks>
@@ -1357,10 +1613,9 @@ public sealed partial class MainViewModel : ObservableObject
         {
             People.Status = "Stopped. What was already found is kept.";
         }
-        catch (Exception ex) when (ex is IOException or InvalidOperationException
-                                      or UnauthorizedAccessException)
+        catch (Exception ex) when (LibraryFailure.IsExpected(ex))
         {
-            Append($"could not check the people: {ex.Message}");
+            Append($"could not check the people: {ex}");
             People.Status = ex.Message;
         }
         finally
@@ -1496,6 +1751,28 @@ public sealed partial class MainViewModel : ObservableObject
                                   + (p.Failed > 0 ? $", {p.Failed:N0} could not be read"
                                                   : string.Empty);
                 }
+                else if (p.Phase == RefreshPhase.ApplyingAnswers)
+                {
+                    // Its own arm for the reason Collecting has one, and for a
+                    // second reason that cost a whole evening. Without it this
+                    // phase fell through to the branch at the end of the chain,
+                    // which paints "Preparing pictures" and asks the grid to
+                    // reload on every report - and before its first report
+                    // arrives the overlay simply went on saying "Finding faces",
+                    // which is the phase before it. So a crash in here was
+                    // reported, in good faith, as a crash while the app was
+                    // looking for faces, and the hunt for it started in the
+                    // wrong half of the pass.
+                    //
+                    // On a machine that shares with nobody this phase is one
+                    // count and is never seen. On one that does, it is where
+                    // another computer's answers land.
+                    OverlayTitle = "Taking in answers from your other computer";
+                    OverlayTarget = p.Target.Length > 0
+                        ? p.Target
+                        : "names, albums, and what was waiting for these photos";
+                    OverlayStatus = $"{p.Done:N0} of {p.Total:N0}";
+                }
                 else if (p.Phase == RefreshPhase.Locating)
                 {
                     OverlayTitle = "Working out where photos were taken";
@@ -1598,11 +1875,18 @@ public sealed partial class MainViewModel : ObservableObject
                 await Gallery.LoadAsync();
             }
         }
-        catch (Exception ex) when (ex is IOException or InvalidOperationException
-                                       or UnauthorizedAccessException)
+        catch (Exception ex) when (LibraryFailure.IsExpected(ex))
         {
-            Append($"  refresh failed: {ex.Message}");
-            SourceError = ex.Message;
+            // Widened from the three file exceptions this named before, which is
+            // what LibraryFailure's own remark asks of the next filter found to
+            // touch the library rather than to read a file. A scan writes to the
+            // library in every one of its eight phases, and a write fault from
+            // any of them - a row another pass had already deleted, most likely -
+            // matched none of the three, so it left the pass, left the command,
+            // and reached the handler in App.xaml.cs, which says the app itself
+            // is wrong and then closes it. Hours of scanning went with it.
+            Append($"  refresh failed: {ex}");
+            SourceError = $"The scan could not finish: {ex.Message}";
         }
         finally
         {

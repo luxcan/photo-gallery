@@ -172,6 +172,60 @@ public sealed class SharingSectionTests
         Assert.Contains("private async void OnChooseSharedFolderClicked", codeBehind);
     }
 
+    /// <summary>
+    /// The notice that floats over every screen keeps the same vocabulary.
+    /// </summary>
+    /// <remarks>
+    /// It lives outside the Sharing screen in the markup, because it follows the
+    /// reader around rather than waiting on one page - so the slice that polices
+    /// the screen's words does not reach it. That makes it the one piece of
+    /// sharing copy most people in the house will ever read, and the last place
+    /// that should start calling the other laptop a peer.
+    ///
+    /// <para>Both halves of it: the words in the markup, and the sentence the
+    /// view model builds and hands to it.</para>
+    /// </remarks>
+    [Fact]
+    public void TheNoticeOverTheAppNamesNoDeviceAndNoProtocol()
+    {
+        string notice = Notice();
+
+        foreach (Match text in Regex.Matches(notice, "(?:Text|Content|ToolTip)=\"([^\"]*)\""))
+        {
+            foreach (string banned in Banned)
+            {
+                Assert.DoesNotContain(
+                    banned, text.Groups[1].Value, StringComparison.OrdinalIgnoreCase);
+            }
+        }
+
+        // The sentence itself is built in the view model, and pinned by what it
+        // says rather than by what it does not. Hunting banned words through C#
+        // source finds "sync " inside every "async Task" in the file, which is
+        // how a negative test teaches people that it cries wolf.
+        Assert.Contains("this computer has not taken yet", s_viewModel, StringComparison.Ordinal);
+    }
+
+    /// <summary>The words this feature never uses for the machines in a house.</summary>
+    private static readonly string[] Banned =
+        ["NAS", "peer", "server", "protocol", "sync "];
+
+    /// <summary>
+    /// The floating notice, from the flag that shows it to the button that puts
+    /// it down.
+    /// </summary>
+    private static string Notice()
+    {
+        int start = s_window.IndexOf("Sharing.HasNotice", StringComparison.Ordinal);
+        Assert.True(start > 0, "the notice over the app is not in the window");
+
+        int end = s_window.IndexOf(
+            "Sharing.DismissNoticeCommand", start, StringComparison.Ordinal);
+        Assert.True(end > start, "the notice no longer carries the way to put it down");
+
+        return s_window[start..end];
+    }
+
     /// <summary>Just the Sharing screen's markup, so the assertions are about it.</summary>
     private static string Section()
     {

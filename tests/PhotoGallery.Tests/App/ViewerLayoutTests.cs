@@ -82,8 +82,11 @@ public sealed class ViewerLayoutTests
             .Descendants()
             .Single(e => e.Name.LocalName == "Grid" && (string?)e.Attribute("Width") == "290");
 
+        // Whatever the head is made of - it holds a row of two controls and,
+        // under them, the quiet way to change the album's cover - the claim is
+        // about where it sits, not what it is.
         XElement header = panel.Elements()
-            .Single(e => e.Name.LocalName == "Grid" && (string?)e.Attribute("Grid.Row") == "0");
+            .Single(e => (string?)e.Attribute("Grid.Row") == "0");
         XElement scroller = panel.Elements()
             .Single(e => e.Name.LocalName == "ScrollViewer");
 

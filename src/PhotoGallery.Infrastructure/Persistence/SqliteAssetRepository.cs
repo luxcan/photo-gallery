@@ -266,6 +266,17 @@ public sealed class SqliteAssetRepository : IAssetRepository
                         .SetProperty(a => a.FacesDetectedUtc, (DateTime?)null),
                     cancellationToken)
                 .ConfigureAwait(false);
+
+            // Released here like every other write in this class, and for a
+            // reason beyond the memory this file already talks about: one scope
+            // serves a whole scan, so whatever is left tracked here is still
+            // tracked when a later phase saves. The rows above are deleted by
+            // the ExecuteDelete at the top of the next turn of this loop and
+            // updated by the ExecuteUpdate just above, and neither of those
+            // tells the change tracker anything - so a later save can find
+            // itself updating a row that is no longer there, which is reported
+            // as a database operation that affected no rows.
+            _db.ChangeTracker.Clear();
         }
     }
 

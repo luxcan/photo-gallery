@@ -158,7 +158,18 @@ public sealed class SqliteAlbumRepository : IAlbumRepository
                     album.Kind,
                     album.Origin,
                     album.Members.Count,
-                    null))
+
+                    // Which picture the album shows, read the same way the wall
+                    // reads it. This was null, because the viewer only needed
+                    // the album's name - and then the viewer learned to offer
+                    // to change the cover, which it cannot do without knowing
+                    // whether the open photograph is already the one. It looked
+                    // exactly like a button that did nothing: the choice was
+                    // written and the screen went on offering to make it.
+                    _db.Assets
+                        .Where(asset => asset.Id == album.CoverAssetId)
+                        .Select(asset => asset.ThumbnailName)
+                        .FirstOrDefault()))
             .FirstOrDefaultAsync(cancellationToken)
             .ConfigureAwait(false);
     }
@@ -173,10 +184,13 @@ public sealed class SqliteAlbumRepository : IAlbumRepository
                 _db.Assets.AsNoTracking(),
                 member => member.AssetId,
                 asset => asset.Id,
-                (member, asset) => new { asset.Id, asset.TakenUtc, asset.ModifiedUtc })
-            .OrderBy(row => row.TakenUtc ?? row.ModifiedUtc)
-            .ThenBy(row => row.Id)
-            .Select(row => row.Id)
+                (member, asset) => asset)
+            // The date the rest of the app files the picture under. This was a
+            // spelling of that rule with the creation date left out, which put
+            // a photograph in one order here and another in the grid above it.
+            .OrderBy(AssetDates.Taken)
+            .ThenBy(asset => asset.Id)
+            .Select(asset => asset.Id)
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
     }
@@ -281,27 +295,47 @@ public sealed class SqliteAlbumRepository : IAlbumRepository
                          && asset.QuarantinedUtc == null
                          && asset.ThumbnailName != null
 
-                         // One album each: what is spoken for stays where
-                         // it is rather than being offered away from it.
-                         && !_db.AlbumMembers.Any(member => member.AssetId == asset.Id)
+                         // One album each, but only a person's claim counts.
+                         // A photograph the clusterer swept into a suggestion
+                         // is not spoken for - a suggestion is a question
+                         // nobody has answered yet - and letting it hold that
+                         // photograph back would put the app's own guess above
+                         // an album somebody made themselves. Half of this
+                         // library sits in suggestions, so the other reading
+                         // leaves a rule that can almost never find anything.
+                         //
+                         // Keeping one is what moves it: the key on
+                         // AlbumMembers allows a photograph one row, so
+                         // AddAsync takes it out of the suggestion on the way
+                         // in. This is the same test the clusterer's own feed
+                         // applies in GetCandidatesAsync, and for the same
+                         // reason.
+                         //
+                         // The first half of the condition is what stops an
+                         // album offering back what it already holds. That
+                         // matters when the album doing the asking is itself a
+                         // suggestion, which the second half would wave
+                         // through.
+                         && !_db.AlbumMembers.Any(member =>
+                                member.AssetId == asset.Id
+                                && (member.AlbumId == albumId
+                                    || member.Album!.Origin != AlbumOrigin.Proposed))
 
                          // And what was refused for this album is not
                          // offered for it a second time.
                          && !_db.AlbumRejections.Any(rejection =>
                                 rejection.AssetId == asset.Id && rejection.ProposalKey == span));
 
-        if (rule.From is DateOnly from)
+        if (rule.From is not null || rule.To is not null)
         {
-            DateTime start = from.ToDateTime(TimeOnly.MinValue);
-            fitting = fitting.Where(asset => asset.TakenUtc != null && asset.TakenUtc >= start);
-        }
-
-        if (rule.To is DateOnly to)
-        {
-            // The last day is included whole - somebody who types one date means
-            // that day, not the instant it begins.
-            DateTime end = to.AddDays(1).ToDateTime(TimeOnly.MinValue);
-            fitting = fitting.Where(asset => asset.TakenUtc != null && asset.TakenUtc < end);
+            // The same date the grid files the picture under, fallback and all,
+            // rather than the capture date alone. Requiring a capture date read
+            // as the careful choice and was the opposite: not one video in the
+            // library carries one, so a day rule could not match a video while
+            // every screen showed those videos sitting on that day. Where the
+            // rule lives, and what it costs, is written out in
+            // AssetDates.TakenBetween.
+            fitting = fitting.Where(AssetDates.TakenBetween(rule.From, rule.To));
         }
 
         if (rule.PlaceIds.Count > 0)
@@ -334,7 +368,10 @@ public sealed class SqliteAlbumRepository : IAlbumRepository
         }
 
         return await fitting
-            .OrderByDescending(asset => asset.TakenUtc ?? asset.ModifiedUtc)
+            // Newest first, by the same date the filter just used. This was a
+            // third spelling of the rule that left out the creation date, so a
+            // photograph could be offered in one order and filed in another.
+            .OrderByDescending(AssetDates.Taken)
             .ThenByDescending(asset => asset.Id)
             .Select(asset => asset.Id)
             .ToListAsync(cancellationToken)
@@ -466,7 +503,13 @@ public sealed class SqliteAlbumRepository : IAlbumRepository
                 _db.Albums.AsNoTracking(),
                 member => member.AlbumId,
                 album => album.Id,
-                (member, album) => new { member.AssetId, album.Name })
+                (member, album) => new
+                {
+                    member.AssetId,
+                    AlbumId = album.Id,
+                    album.Name,
+                    album.Origin,
+                })
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
 
@@ -488,7 +531,21 @@ public sealed class SqliteAlbumRepository : IAlbumRepository
             AddedUtc = now,
         }));
 
+        // Saved before any cover is chosen, because choosing one reads the
+        // memberships back out of the database and a pending insert is not
+        // there to be read. An album whose first photographs all arrived in one
+        // press would otherwise be left with no cover at all - which is what
+        // used to happen, and was hidden by the way a refusal was written: it
+        // added the photographs and took them straight out again, and the
+        // taking out chose a cover on its way past.
+        await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+
         await EnsureCoverAsync(albumId, cancellationToken).ConfigureAwait(false);
+
+        await SettleWhatTheyLeftAsync(
+            [.. leaving.Select(row => (row.AlbumId, row.Origin)).Distinct()],
+            cancellationToken).ConfigureAwait(false);
+
         await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
 
         return new AlbumAddResult(
@@ -526,6 +583,14 @@ public sealed class SqliteAlbumRepository : IAlbumRepository
 
         _db.AlbumMembers.RemoveRange(members);
 
+        // Written before a cover is chosen, for the reason AddAsync saves before
+        // choosing one: a cover is picked by reading the memberships back out of
+        // the database, and a pending delete is still there to be read. The
+        // photograph being taken out could therefore be chosen as the cover of
+        // the album it was just taken out of - and a chosen cover looked as
+        // though it were still in the album when it was not.
+        await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+
         // Taking a photograph out of something the app suggested is a rejection
         // and is remembered. Taking one out of an album somebody made
         // themselves is not - they are rearranging their own shelf.
@@ -540,6 +605,115 @@ public sealed class SqliteAlbumRepository : IAlbumRepository
 
         await EnsureCoverAsync(albumId, cancellationToken).ConfigureAwait(false);
         await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task RefuseAsync(
+        int albumId,
+        IReadOnlyList<int> assetIds,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(assetIds);
+
+        if (assetIds.Count == 0)
+        {
+            return;
+        }
+
+        bool exists = await _db.Albums
+            .AnyAsync(row => row.Id == albumId, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (!exists)
+        {
+            return;
+        }
+
+        await RememberAsync(
+            await SpanKeyAsync(albumId, cancellationToken).ConfigureAwait(false),
+            assetIds,
+            cancellationToken).ConfigureAwait(false);
+
+        await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<bool> SetCoverAsync(
+        int albumId, int assetId, CancellationToken cancellationToken = default)
+    {
+        Album? album = await _db.Albums
+            .FirstOrDefaultAsync(row => row.Id == albumId, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (album is null)
+        {
+            return false;
+        }
+
+        // An album cannot show a photograph it does not hold. The screen only
+        // offers this for a picture that is already in one, so this is the guard
+        // for every other way in rather than a case anybody will meet.
+        bool holdsIt = await _db.AlbumMembers
+            .AnyAsync(
+                member => member.AlbumId == albumId && member.AssetId == assetId,
+                cancellationToken)
+            .ConfigureAwait(false);
+
+        if (!holdsIt)
+        {
+            return false;
+        }
+
+        album.CoverAssetId = assetId;
+        album.CoverChosenUtc = DateTime.UtcNow;
+
+        await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        _db.ChangeTracker.Clear();
+
+        return true;
+    }
+
+    /// <summary>
+    /// Puts right the albums that photographs have just been taken out of.
+    /// </summary>
+    /// <remarks>
+    /// Two things, because one move causes both. A cover may have been among
+    /// the photographs that left, and an album showing a photograph it no
+    /// longer holds is the kind of wrongness a person sees on the wall before
+    /// they see anything else.
+    ///
+    /// <para>And a suggestion the move emptied is not a question any more, so
+    /// its row goes. Nothing would ever arrive to fill it again: the
+    /// clusterer's feed skips photographs an album somebody made has spoken
+    /// for, so the days this one was built from are not offered a second time.
+    /// No refusal is written for the photographs that left, because they went
+    /// somewhere better and that is the opposite of being refused. An album the
+    /// user made or kept is never removed here however empty the move leaves
+    /// it - that row is theirs, and only they may throw it away.</para>
+    /// </remarks>
+    private async Task SettleWhatTheyLeftAsync(
+        IReadOnlyList<(int AlbumId, AlbumOrigin Origin)> sources,
+        CancellationToken cancellationToken)
+    {
+        foreach ((int albumId, AlbumOrigin origin) in sources)
+        {
+            bool anyLeft = await _db.AlbumMembers
+                .AnyAsync(member => member.AlbumId == albumId, cancellationToken)
+                .ConfigureAwait(false);
+
+            if (anyLeft || origin != AlbumOrigin.Proposed)
+            {
+                await EnsureCoverAsync(albumId, cancellationToken).ConfigureAwait(false);
+                continue;
+            }
+
+            Album? emptied = await _db.Albums
+                .FirstOrDefaultAsync(row => row.Id == albumId, cancellationToken)
+                .ConfigureAwait(false);
+
+            if (emptied is not null)
+            {
+                _db.Albums.Remove(emptied);
+            }
+        }
     }
 
     /// <summary>Records that these photographs do not belong in that run of days.</summary>
@@ -596,17 +770,42 @@ public sealed class SqliteAlbumRepository : IAlbumRepository
                 _db.Assets,
                 member => member.AssetId,
                 asset => asset.Id,
-                (member, asset) => new { asset.Id, asset.TakenUtc })
-            .OrderBy(row => row.TakenUtc)
-            .Select(row => row.Id)
+                (member, asset) => asset)
+            // Not the capture date on its own: SQLite sorts a null first, so
+            // every video and every undated photograph bunched at the front
+            // and the middle of this list stopped being the middle of the
+            // album's span. Videos only started arriving in albums in numbers
+            // when a day rule learned to match them.
+            .OrderBy(AssetDates.Taken)
+            .Select(asset => asset.Id)
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
 
         if (members.Count == 0)
         {
             album.CoverAssetId = 0;
+
+            // Nothing is left to have chosen, so the next photograph to arrive
+            // gets the rule rather than a decision about an empty album.
+            album.CoverChosenUtc = null;
             return;
         }
+
+        // A cover somebody chose is left exactly where it is, which is the whole
+        // point of recording that they chose it: this method runs on every add
+        // and every remove, so without this the choice would survive until the
+        // next photograph joined the album and would then be replaced in
+        // silence.
+        if (album.CoverChosenUtc is not null && members.Contains(album.CoverAssetId))
+        {
+            return;
+        }
+
+        // The choice was about a photograph this album no longer holds - taken
+        // out, or set aside as a duplicate. The rule is a better answer than a
+        // picture that is not in here any more, and forgetting the choice is
+        // what lets it be one again later.
+        album.CoverChosenUtc = null;
 
         var withFaces = await _db.Faces
             .AsNoTracking()

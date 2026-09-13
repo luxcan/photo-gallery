@@ -65,6 +65,7 @@ public static class AppServiceCollectionExtensions
             .AddScoped<MergeDecisionsHandler>()
             .AddScoped<SetSharedFolderHandler>()
             .AddScoped<GetSharingHandler>()
+            .AddScoped<CheckForSharedUpdatesHandler>()
             .AddScoped<ShareNowHandler>()
             .AddScoped<ConfirmPairingHandler>()
             .AddScoped<ShareRenditionsHandler>()

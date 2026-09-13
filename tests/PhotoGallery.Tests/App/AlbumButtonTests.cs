@@ -3,6 +3,7 @@ using PhotoGallery.App.Albums;
 using PhotoGallery.App.Gallery;
 using PhotoGallery.Application.Ports;
 using PhotoGallery.Domain.Albums;
+using PhotoGallery.Domain.Assets;
 using PhotoGallery.Infrastructure.Storage;
 
 namespace PhotoGallery.Tests.App;
@@ -209,9 +210,81 @@ public sealed class AlbumButtonTests : IDisposable
         return picker;
     }
 
-    private static AlbumSummary Album(int id, string name) =>
+    private static AlbumSummary Album(int id, string name, string? cover = null) =>
         new(id, name, DateTime.UnixEpoch, DateTime.UnixEpoch,
-            AlbumKind.Event, AlbumOrigin.Made, 0, CoverThumbnailName: null);
+            AlbumKind.Event, AlbumOrigin.Made, 0, CoverThumbnailName: cover);
+
+    /// <summary>A picture open in the viewer, with the cached name it draws.</summary>
+    private void Open(string thumbnailName) =>
+        _gallery.OpenPhotoCommand.Execute(new GalleryTile(new GalleryItem(
+            1,
+            @"holiday\P1070491.JPG",
+            "P1070491.JPG",
+            "holiday",
+            @"C:\pictures\holiday\P1070491.JPG",
+            thumbnailName,
+            null,
+            new DateTime(2012, 3, 12, 0, 0, 0, DateTimeKind.Utc),
+            0,
+            AssetKind.Photo)));
+
+    /// <summary>
+    /// The picture an album already shows says so, rather than offering again.
+    /// </summary>
+    /// <remarks>
+    /// An action that would do nothing is worse than a sentence, because the
+    /// only way to discover it does nothing is to press it.
+    /// </remarks>
+    [Fact]
+    public void ThePhotographAnAlbumAlreadyShows_SaysSoRatherThanOffering()
+    {
+        Open("abc123.jpg");
+        _gallery.OpenPhotoAlbum = Album(7, "Taiwan", cover: "abc123.jpg");
+
+        Assert.True(_gallery.IsTheAlbumCover);
+        Assert.False(_gallery.CanMakeAlbumCover);
+    }
+
+    /// <summary>And any other photograph in that album is offered.</summary>
+    [Fact]
+    public void AnyOtherPhotographInTheAlbum_IsOfferedAsTheCover()
+    {
+        Open("abc123.jpg");
+        _gallery.OpenPhotoAlbum = Album(7, "Taiwan", cover: "something-else.jpg");
+
+        Assert.False(_gallery.IsTheAlbumCover);
+        Assert.True(_gallery.CanMakeAlbumCover);
+    }
+
+    /// <summary>
+    /// A photograph in no album is offered nothing, because there is no album
+    /// for it to be the cover of.
+    /// </summary>
+    [Fact]
+    public void APhotographInNoAlbum_IsOfferedNoCover()
+    {
+        Open("abc123.jpg");
+
+        Assert.False(_gallery.IsTheAlbumCover);
+        Assert.False(_gallery.CanMakeAlbumCover);
+    }
+
+    /// <summary>
+    /// An album with no cover yet offers the open photograph rather than
+    /// claiming it is already the one being shown.
+    /// </summary>
+    [Fact]
+    public void AnAlbumWithNoCoverYet_OffersTheOpenPhotograph()
+    {
+        // A cover of null and a picture with no cached name are both empty, and
+        // comparing one empty thing to another would say "this is the cover" of
+        // an album showing nothing at all.
+        Open(thumbnailName: null!);
+        _gallery.OpenPhotoAlbum = Album(7, "Taiwan");
+
+        Assert.False(_gallery.IsTheAlbumCover);
+        Assert.True(_gallery.CanMakeAlbumCover);
+    }
 
     private static int Occurrences(string text, string value)
     {

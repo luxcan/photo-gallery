@@ -233,6 +233,39 @@ public sealed partial class AlbumsViewModel : ObservableObject
     /// <summary>Raised when the library's albums have changed.</summary>
     public event EventHandler? LibraryChanged;
 
+    /// <summary>
+    /// What a look for photographs that fit is doing, while it does it.
+    /// </summary>
+    /// <remarks>
+    /// Raised for the shell to draw, because the overlay belongs to the window
+    /// rather than to this screen - the same reason the album file move is
+    /// driven from there. It is also why this is an event rather than a call: a
+    /// screen that reached up and covered the whole window would be a second
+    /// thing able to do that, and there is deliberately one.
+    ///
+    /// <para><strong>Nothing is raised for the first
+    /// <see cref="OverlayAfter"/> of a look.</strong> A press usually answers in
+    /// a few milliseconds, and a modal that appears and vanishes in that time is
+    /// a flash nobody can read - worse than the silence it was meant to fix. A
+    /// look that outlasts it is one somebody is waiting on, and that one says so
+    /// for as long as it runs.</para>
+    /// </remarks>
+    public event EventHandler<SuggestProgress>? Looking;
+
+    /// <summary>That the look has ended, however it ended.</summary>
+    public event EventHandler? LookedEnough;
+
+    /// <summary>
+    /// How long a look may take before it is worth covering the window for.
+    /// </summary>
+    /// <remarks>
+    /// Measured on the real library: the matching statement answers in about 137
+    /// milliseconds on the first press of a session and between one and ten
+    /// afterwards. So this is above the ordinary press and well below the point
+    /// at which somebody decides the app has stopped listening.
+    /// </remarks>
+    private static readonly TimeSpan OverlayAfter = TimeSpan.FromMilliseconds(200);
+
     /// <summary>Everything the app is offering, newest occasion first.</summary>
     public ObservableCollection<AlbumItem> Suggested { get; } = [];
 
@@ -515,7 +548,15 @@ public sealed partial class AlbumsViewModel : ObservableObject
 
     public bool HasSuggestions => Suggestions.Count > 0;
 
-    /// <summary>What the suggestion run found, said once.</summary>
+    /// <summary>
+    /// What the suggestion run found, said once.
+    /// </summary>
+    /// <remarks>
+    /// The headline above a strip of photographs, and nothing else: an answer
+    /// with no photographs in it has no strip to sit above, so it goes to
+    /// Status instead, which is the line this screen already uses to say what
+    /// just happened.
+    /// </remarks>
     [ObservableProperty]
     private string _suggestionNote = string.Empty;
 
@@ -1060,29 +1101,80 @@ public sealed partial class AlbumsViewModel : ObservableObject
         IsBusy = true;
         Suggestions.Clear();
         _suggestionGrid.Fill(Array.Empty<GalleryTile>());
+
+        // Whatever this line last said - a save, an earlier run - is not the
+        // answer to the press that just happened, and an answer with no
+        // photographs in it is written here rather than above a strip that
+        // would not be on screen to carry it.
+        Status = string.Empty;
+
+        var since = System.Diagnostics.Stopwatch.StartNew();
+
         try
         {
-            IReadOnlyList<int> fitting;
-            GalleryPage page;
-
-            using (IServiceScope scope = _scopeFactory.CreateScope())
+            // Off the UI thread, and that is the load-bearing half of this.
+            // SQLite's asynchronous methods are synchronous underneath, so every
+            // await below used to complete without ever yielding - the window
+            // could not repaint, which is what "it looks unresponsive" was. No
+            // affordance of any kind can be drawn by a thread that is busy.
+            Task<Found> looking = Task.Run(async () =>
             {
-                fitting = await scope.ServiceProvider
-                    .GetRequiredService<IAlbumRepository>()
-                    .SuggestAsync(album.Id)
-                    .ConfigureAwait(true);
+                using IServiceScope scope = _scopeFactory.CreateScope();
 
-                if (fitting.Count == 0)
+                IAlbumRepository albums = scope.ServiceProvider
+                    .GetRequiredService<IAlbumRepository>();
+
+                IReadOnlyList<int> matched = await albums
+                    .SuggestAsync(album.Id)
+                    .ConfigureAwait(false);
+
+                if (matched.Count == 0)
                 {
-                    SuggestionNote = "Nothing else fits this rule.";
-                    return;
+                    // Two empty answers, and telling them apart is most of what
+                    // the reader needs. An album with no rule was never going to
+                    // find anything and the way out is the Edit panel; an album
+                    // with a real rule that finds nothing has run into the one
+                    // rule nobody asked for, which is that a photograph lives in
+                    // one album. Saying only "nothing fits" leaves a person
+                    // checking a date they typed correctly.
+                    AlbumRule rule = await albums
+                        .GetRuleAsync(album.Id)
+                        .ConfigureAwait(false);
+
+                    return new Found(matched, rule, null);
                 }
 
-                page = await scope.ServiceProvider
+                GalleryPage found = await scope.ServiceProvider
                     .GetRequiredService<QueryGalleryHandler>()
-                    .HandleAsync(new GalleryQuery(RankedAssetIds: fitting))
-                    .ConfigureAwait(true);
+                    .HandleAsync(new GalleryQuery(RankedAssetIds: matched))
+                    .ConfigureAwait(false);
+
+                return new Found(matched, AlbumRule.None, found);
+            });
+
+            // Said only if there is a wait to explain. A look that answers in
+            // the time it takes to let go of the mouse says nothing at all.
+            if (await Task.WhenAny(looking, Task.Delay(OverlayAfter)).ConfigureAwait(true)
+                != looking)
+            {
+                Looking?.Invoke(this, SuggestProgress.Searching);
             }
+
+            Found result = await looking.ConfigureAwait(true);
+
+            if (result.Page is null)
+            {
+                Status = result.Rule.IsSomething
+                    ? "Nothing new fits this rule. What it matches is already "
+                      + "in this album, or in another album you made."
+                    : "This album has no rule, so nothing is looked for. Give "
+                      + "it one under Edit, or open a picture and choose Add "
+                      + "to an album.";
+
+                return;
+            }
+
+            GalleryPage page = result.Page;
 
             foreach (GalleryItem item in page.Items)
             {
@@ -1101,18 +1193,31 @@ public sealed partial class AlbumsViewModel : ObservableObject
                 : $"{Suggestions.Count:N0} photographs fit. Switch off any that do not belong - "
                   + "they will not be offered for this album again.";
 
-            await DecodeSuggestionsAsync().ConfigureAwait(true);
+            await DecodeSuggestionsAsync(since).ConfigureAwait(true);
         }
         catch (Exception ex) when (LibraryFailure.IsExpected(ex))
         {
-            SuggestionNote = $"Nothing could be looked for: {ex.Message}";
+            // On Status for the same reason the empty answer is: the failure
+            // can happen before a single tile exists, and the strip that would
+            // have carried the sentence is not on screen yet.
+            Status = $"Nothing could be looked for: {ex.Message}";
         }
         finally
         {
             IsBusy = false;
             OnPropertyChanged(nameof(HasSuggestions));
+            LookedEnough?.Invoke(this, EventArgs.Empty);
         }
     }
+
+    /// <summary>What one look found, carried back off the thread that found it.</summary>
+    /// <param name="Rule">
+    /// Read only when nothing matched, because the two empty answers are told
+    /// apart by it and asking for it otherwise is a query for a sentence nobody
+    /// will see.
+    /// </param>
+    private sealed record Found(
+        IReadOnlyList<int> Matched, AlbumRule Rule, GalleryPage? Page);
 
     private bool CanSuggest() => IsIdle && HasSelected;
 
@@ -1126,9 +1231,11 @@ public sealed partial class AlbumsViewModel : ObservableObject
     /// there and then and the proposal leaves the list. Nothing is left half
     /// answered if the viewer is closed in the middle.
     ///
-    /// <para>A refusal is written the way the batch answer writes it: added and
-    /// taken straight out, which is the one path that records "never offer this
-    /// here again" without inventing a second one.</para>
+    /// <para>A refusal is written the way the batch answer writes it, which is
+    /// now a refusal and nothing else. Both paths used to record one by adding
+    /// the photograph and taking it straight back out, and that moved it out of
+    /// whatever album it was in on the way past - invisible only while a
+    /// photograph already in an album could never be offered at all.</para>
     /// </remarks>
     /// <returns>True when the proposal was answered and has left the list.</returns>
     public async Task<bool> DecideSuggestionAsync(GalleryTile? tile, bool keep)
@@ -1148,11 +1255,13 @@ public sealed partial class AlbumsViewModel : ObservableObject
             IAlbumRepository albums = scope.ServiceProvider
                 .GetRequiredService<IAlbumRepository>();
 
-            await albums.AddAsync(album.Id, one).ConfigureAwait(true);
-
-            if (!keep)
+            if (keep)
             {
-                await albums.RemoveAsync(album.Id, one).ConfigureAwait(true);
+                await albums.AddAsync(album.Id, one).ConfigureAwait(true);
+            }
+            else
+            {
+                await albums.RefuseAsync(album.Id, one).ConfigureAwait(true);
             }
         }
         catch (Exception ex) when (LibraryFailure.IsExpected(ex))
@@ -1221,6 +1330,8 @@ public sealed partial class AlbumsViewModel : ObservableObject
         IsBusy = true;
         try
         {
+            AlbumAddResult kept = AlbumAddResult.Nothing;
+
             using (IServiceScope scope = _scopeFactory.CreateScope())
             {
                 IAlbumRepository albums = scope.ServiceProvider
@@ -1228,26 +1339,22 @@ public sealed partial class AlbumsViewModel : ObservableObject
 
                 if (keeping.Length > 0)
                 {
-                    await albums.AddAsync(album.Id, keeping).ConfigureAwait(true);
+                    kept = await albums.AddAsync(album.Id, keeping).ConfigureAwait(true);
                 }
 
                 if (refusing.Length > 0)
                 {
-                    // Refused without ever having been in it: added and taken
-                    // straight out is the same decision, and this is the one
-                    // path that records it without a round trip through
-                    // membership.
-                    await albums.AddAsync(album.Id, refusing).ConfigureAwait(true);
-                    await albums.RemoveAsync(album.Id, refusing).ConfigureAwait(true);
+                    // Refused without ever having been in it, and without being
+                    // moved out of wherever it is now: switching one off here
+                    // answers a question about this album and no other.
+                    await albums.RefuseAsync(album.Id, refusing).ConfigureAwait(true);
                 }
             }
 
             Suggestions.Clear();
             _suggestionGrid.Fill(Array.Empty<GalleryTile>());
             SuggestionNote = string.Empty;
-            Status = keeping.Length == 1
-                ? "1 photograph added."
-                : $"{keeping.Length:N0} photographs added.";
+            Status = Kept(keeping.Length, kept);
         }
         catch (Exception ex) when (LibraryFailure.IsExpected(ex))
         {
@@ -1276,6 +1383,41 @@ public sealed partial class AlbumsViewModel : ObservableObject
         _suggestionGrid.Fill(Array.Empty<GalleryTile>());
         SuggestionNote = string.Empty;
         OnPropertyChanged(nameof(HasSuggestions));
+    }
+
+    /// <summary>
+    /// What to say once some have been kept: how many, and what they left.
+    /// </summary>
+    /// <remarks>
+    /// A photograph is in at most one album, so keeping a suggested one takes
+    /// it out of wherever it was - most often out of a suggestion the app made
+    /// itself. Nobody asked for that rule, so it is said out loud rather than
+    /// applied quietly, which is the reason the gallery says it too when a
+    /// photograph is dropped into an album by hand.
+    ///
+    /// <para>The count is repeated only when the two differ: "12 photographs
+    /// added, 12 of them out of Sunday" tells the reader the same thing
+    /// twice.</para>
+    /// </remarks>
+    private static string Kept(int added, AlbumAddResult result)
+    {
+        if (added == 0)
+        {
+            return "None added.";
+        }
+
+        string count = added == 1 ? "1 photograph" : $"{added:N0} photographs";
+
+        if (result.From.Count == 0)
+        {
+            return $"{count} added.";
+        }
+
+        string from = string.Join(" and ", result.From);
+
+        return result.Moved == added
+            ? $"{count} added, out of {from}."
+            : $"{count} added, {result.Moved:N0} of them out of {from}.";
     }
 
     /// <summary>A picked day as the rule stores it, or null when nothing is picked.</summary>
@@ -1478,7 +1620,7 @@ public sealed partial class AlbumsViewModel : ObservableObject
     private static bool Matches(TickChoice choice, string wanted) =>
         choice.Name.Contains(wanted, StringComparison.CurrentCultureIgnoreCase);
 
-    private async Task DecodeSuggestionsAsync()
+    private async Task DecodeSuggestionsAsync(System.Diagnostics.Stopwatch since)
     {
         GalleryTile[] waiting = [.. Suggestions.Where(tile => tile.Picture is null)];
         if (waiting.Length == 0)
@@ -1486,8 +1628,26 @@ public sealed partial class AlbumsViewModel : ObservableObject
             return;
         }
 
-        var arrived = new Progress<(GalleryTile Tile, ImageSource? Picture)>(
-            pair => pair.Tile.Picture = pair.Picture);
+        int ready = 0;
+
+        // The one part of a look that can honestly name a file: a picture at a
+        // time, read from the cached copy on this machine. Reported through the
+        // same callback that puts each one on screen, so the count and the
+        // pictures cannot disagree.
+        var arrived = new Progress<(GalleryTile Tile, ImageSource? Picture)>(pair =>
+        {
+            pair.Tile.Picture = pair.Picture;
+            ready++;
+
+            if (since.Elapsed >= OverlayAfter)
+            {
+                Looking?.Invoke(this, new SuggestProgress(
+                    "Getting the photographs ready",
+                    pair.Tile.Item.FileName,
+                    ready,
+                    waiting.Length));
+            }
+        });
 
         await Task.Run(() => Parallel.ForEachAsync(
             waiting,

@@ -53,6 +53,30 @@ public sealed class Album
     /// <summary>The photograph shown for it. Zero while it has none.</summary>
     public int CoverAssetId { get; set; }
 
+    /// <summary>
+    /// When somebody chose that photograph themselves, or null while the app is
+    /// still choosing it for them.
+    /// </summary>
+    /// <remarks>
+    /// The same idea as <see cref="NamedUtc"/> and for the same reason: a cover
+    /// is worked out from the album's own photographs - the one with the most
+    /// faces in it, or the middle of the span - and that answer is recalculated
+    /// every time a photograph joins or leaves. Without a mark saying a person
+    /// has already answered, a cover somebody picked would survive exactly until
+    /// the next photograph was added to that album, and would then be replaced
+    /// by the rule with nothing said.
+    ///
+    /// <para>It carries the moment rather than a flag, so that two machines can
+    /// one day settle an argument about it the way they settle a name. Nothing
+    /// compares it today - covers do not travel - and a bare <c>bool</c> would
+    /// have to be widened into exactly this the first time they do.</para>
+    ///
+    /// <para>It goes back to null when the chosen photograph leaves the album,
+    /// because the choice was about a photograph that is no longer there and the
+    /// rule is a better answer than a picture the album does not hold.</para>
+    /// </remarks>
+    public DateTime? CoverChosenUtc { get; set; }
+
     public AlbumKind Kind { get; set; }
 
     public AlbumOrigin Origin { get; set; }

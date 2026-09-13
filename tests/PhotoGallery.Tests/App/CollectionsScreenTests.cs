@@ -1046,5 +1046,15 @@ public sealed class CollectionsScreenTests : IDisposable
             IReadOnlyList<int> assetIds,
             CancellationToken cancellationToken = default) =>
             _inner.RemoveAsync(albumId, assetIds, cancellationToken);
+
+        public Task RefuseAsync(
+            int albumId,
+            IReadOnlyList<int> assetIds,
+            CancellationToken cancellationToken = default) =>
+            _inner.RefuseAsync(albumId, assetIds, cancellationToken);
+
+        public Task<bool> SetCoverAsync(
+            int albumId, int assetId, CancellationToken cancellationToken = default) =>
+            _inner.SetCoverAsync(albumId, assetId, cancellationToken);
     }
 }

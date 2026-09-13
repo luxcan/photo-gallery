@@ -92,7 +92,8 @@ public sealed partial class GalleryViewModel : ObservableObject
     private long _searchVersion;
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsViewerOpen), nameof(OpenPhotoWhen), nameof(CanOfferPlay))]
+    [NotifyPropertyChangedFor(nameof(IsViewerOpen), nameof(OpenPhotoWhen), nameof(CanOfferPlay),
+        nameof(IsTheAlbumCover), nameof(CanMakeAlbumCover))]
     [NotifyCanExecuteChangedFor(nameof(NextPhotoCommand), nameof(PreviousPhotoCommand))]
     private GalleryTile? _openTile;
 
@@ -178,7 +179,7 @@ public sealed partial class GalleryViewModel : ObservableObject
     /// </remarks>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(AlbumLabel), nameof(AlbumTip),
-        nameof(IsInAnAlbum))]
+        nameof(IsInAnAlbum), nameof(IsTheAlbumCover), nameof(CanMakeAlbumCover))]
     private AlbumSummary? _openPhotoAlbum;
 
     /// <summary>What just happened to this photograph's album, said once.</summary>
@@ -193,6 +194,28 @@ public sealed partial class GalleryViewModel : ObservableObject
     private string _albumNotice = string.Empty;
 
     public bool IsInAnAlbum => OpenPhotoAlbum is not null;
+
+    /// <summary>
+    /// Whether the open photograph is the one its album shows for itself.
+    /// </summary>
+    /// <remarks>
+    /// Compared by the name of the cached picture rather than by an id, because
+    /// that is what an album summary carries - the wall needs a file to draw and
+    /// has never needed to know which photograph it came from. Two identical
+    /// files share that name, which would say "this is the cover" about the
+    /// second copy of a picture; the cost of being wrong there is a sentence,
+    /// and the cost of widening the summary is every screen that builds one.
+    /// </remarks>
+    public bool IsTheAlbumCover =>
+        OpenPhotoAlbum?.CoverThumbnailName is string cover
+        && cover.Length > 0
+        && OpenTile?.Item.ThumbnailName == cover;
+
+    /// <summary>
+    /// Whether there is a cover to offer to change, which there is not when the
+    /// photograph is in no album or is already the one being shown.
+    /// </summary>
+    public bool CanMakeAlbumCover => IsInAnAlbum && !IsTheAlbumCover;
 
     public bool HasAlbumNotice => AlbumNotice.Length > 0;
 
@@ -800,6 +823,60 @@ public sealed partial class GalleryViewModel : ObservableObject
             LibraryChanged?.Invoke(this, EventArgs.Empty);
         }
         catch (Exception ex) when (ex is IOException or InvalidOperationException)
+        {
+            AlbumNotice = $"That could not be done: {ex.Message}";
+        }
+    }
+
+    /// <summary>
+    /// Makes the open photograph the picture its album shows for itself.
+    /// </summary>
+    /// <remarks>
+    /// A cover was worked out and never chosen: the member with the most faces
+    /// in it, or the middle of the album's span. That is a reasonable answer and
+    /// it was the only one, and it is recalculated whenever a photograph joins
+    /// or leaves - so the choice has to be recorded rather than only applied, or
+    /// it would last until the next photograph was added and then be replaced
+    /// without a word. <c>SetCoverAsync</c> is what records it.
+    ///
+    /// <para>Offered here rather than inside the list of albums this button
+    /// opens. That list answers one question - which album is this photograph in
+    /// - and "none" is one of its answers; which picture an album shows for
+    /// itself is a different question about an album this photograph is already
+    /// in.</para>
+    /// </remarks>
+    [RelayCommand]
+    private async Task MakeAlbumCoverAsync()
+    {
+        if (OpenTile is not GalleryTile tile
+            || OpenPhotoAlbum is not AlbumSummary album)
+        {
+            return;
+        }
+
+        try
+        {
+            bool chosen;
+
+            using (IServiceScope scope = _scopeFactory.CreateScope())
+            {
+                chosen = await scope.ServiceProvider
+                    .GetRequiredService<IAlbumRepository>()
+                    .SetCoverAsync(album.Id, tile.Item.Id)
+                    .ConfigureAwait(true);
+            }
+
+            AlbumNotice = chosen
+                ? $"{album.Name} shows this photograph now"
+                : $"{album.Name} does not hold this photograph";
+
+            // Read back rather than assumed, so the line under the button stops
+            // offering what has just been done.
+            await LoadOpenAlbumAsync(tile.Item.Id).ConfigureAwait(true);
+
+            LibraryChanged?.Invoke(this, EventArgs.Empty);
+        }
+        catch (Exception ex) when (LibraryFailure.IsExpected(ex))
         {
             AlbumNotice = $"That could not be done: {ex.Message}";
         }

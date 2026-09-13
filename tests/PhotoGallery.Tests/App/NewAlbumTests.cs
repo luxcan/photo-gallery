@@ -645,6 +645,148 @@ public sealed class NewAlbumTests : IDisposable
         Assert.Null(_repository.Created);
     }
 
+    /// <summary>
+    /// A run that finds nothing says so on the line the screen is showing.
+    /// </summary>
+    /// <remarks>
+    /// It used to say so in SuggestionNote, whose only binding lives inside the
+    /// panel that appears when there are photographs to show - so the one
+    /// answer with no photographs in it was written into a collapsed panel, and
+    /// pressing the button looked exactly like pressing a button that does not
+    /// work. Status is the line that had just said the album was saved, and it
+    /// is on screen whether that panel is or not.
+    /// </remarks>
+    [Fact]
+    public async Task AnEmptyAnswerIsSaidWhereTheScreenCanShowIt()
+    {
+        await _albums.StartCreatingCommand.ExecuteAsync(null);
+        _albums.EditedName = "Zoo";
+        _albums.IsOneDay = true;
+        _albums.RuleDay = new DateTime(2019, 3, 20);
+        await _albums.SaveCommand.ExecuteAsync(null);
+
+        await _albums.SuggestCommand.ExecuteAsync(null);
+
+        Assert.True(_albums.HasStatus);
+        Assert.Contains("Nothing new fits this rule", _albums.Status, StringComparison.Ordinal);
+        Assert.Empty(_albums.SuggestionNote);
+    }
+
+    /// <summary>
+    /// And an album with no rule is told that, rather than that nothing fits.
+    /// </summary>
+    /// <remarks>
+    /// The two empty answers have nothing to do with each other. One is a rule
+    /// that found nothing, which is about the photographs; the other is an
+    /// album that was never given anything to look for, which is about the
+    /// album - and a person told "nothing fits" will go back and check a date
+    /// they typed correctly, or one they never typed at all.
+    /// </remarks>
+    [Fact]
+    public async Task AnAlbumWithNoRuleIsToldThatInsteadOfNothingFits()
+    {
+        await _albums.StartCreatingCommand.ExecuteAsync(null);
+        _albums.EditedName = "Odds and ends";
+        await _albums.SaveCommand.ExecuteAsync(null);
+
+        await _albums.SuggestCommand.ExecuteAsync(null);
+
+        Assert.True(_albums.HasStatus);
+        Assert.Contains(
+            "This album has no rule", _albums.Status, StringComparison.Ordinal);
+        Assert.Contains("under Edit", _albums.Status, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// The answer takes the place of the promise that sent the user to it.
+    /// </summary>
+    /// <remarks>
+    /// This is the shape of the original complaint. Saving an album writes
+    /// "Choose Find photos that fit to see what matches" on this line; doing
+    /// exactly that left the same sentence sitting there, because the answer
+    /// went somewhere the window does not show. A promise that survives being
+    /// kept reads as a button that did nothing.
+    /// </remarks>
+    [Fact]
+    public async Task TheAnswerTakesThePlaceOfThePromise()
+    {
+        await _albums.StartCreatingCommand.ExecuteAsync(null);
+        _albums.EditedName = "Zoo";
+        _albums.IsOneDay = true;
+        _albums.RuleDay = new DateTime(2019, 3, 20);
+        await _albums.SaveCommand.ExecuteAsync(null);
+
+        Assert.Contains("Find photos that fit", _albums.Status, StringComparison.Ordinal);
+
+        await _albums.SuggestCommand.ExecuteAsync(null);
+
+        Assert.DoesNotContain("Find photos that fit", _albums.Status, StringComparison.Ordinal);
+        Assert.NotEmpty(_albums.Status);
+    }
+
+    /// <summary>
+    /// A look that answers at once covers nothing.
+    /// </summary>
+    /// <remarks>
+    /// The press usually answers in a few milliseconds. A modal that appeared
+    /// and vanished in that time would be a flash nobody can read, and it would
+    /// happen on every single press - which is a worse answer to "it looked
+    /// unresponsive" than the silence it replaced.
+    /// </remarks>
+    [Fact]
+    public async Task AQuickLook_SaysNothingAtAll()
+    {
+        List<SuggestProgress> said = [];
+        _albums.Looking += (_, progress) => said.Add(progress);
+
+        await _albums.StartCreatingCommand.ExecuteAsync(null);
+        _albums.EditedName = "Zoo";
+        _albums.IsOneDay = true;
+        _albums.RuleDay = new DateTime(2019, 3, 20);
+        await _albums.SaveCommand.ExecuteAsync(null);
+
+        await _albums.SuggestCommand.ExecuteAsync(null);
+
+        Assert.Empty(said);
+    }
+
+    /// <summary>
+    /// And one that keeps somebody waiting says what it is doing.
+    /// </summary>
+    /// <remarks>
+    /// The whole of the complaint: the matching statement runs against twenty
+    /// thousand photographs, and until it was moved off the thread that draws
+    /// the window, the window could not be drawn while it ran.
+    /// </remarks>
+    [Fact]
+    public async Task ALookThatKeepsSomebodyWaiting_SaysWhatItIsDoing()
+    {
+        _repository.SuggestTakes = TimeSpan.FromMilliseconds(600);
+
+        List<SuggestProgress> said = [];
+        _albums.Looking += (_, progress) => said.Add(progress);
+
+        bool ended = false;
+        _albums.LookedEnough += (_, _) => ended = true;
+
+        await _albums.StartCreatingCommand.ExecuteAsync(null);
+        _albums.EditedName = "Zoo";
+        _albums.IsOneDay = true;
+        _albums.RuleDay = new DateTime(2019, 3, 20);
+        await _albums.SaveCommand.ExecuteAsync(null);
+
+        await _albums.SuggestCommand.ExecuteAsync(null);
+
+        SuggestProgress first = Assert.Single(said);
+        Assert.Equal("Looking for photographs that fit", first.What);
+
+        // Nothing to count while one statement is being answered, so the bar
+        // moves rather than filling.
+        Assert.False(first.IsCountable);
+
+        Assert.True(ended, "the look must say when it has ended, or the window stays covered");
+    }
+
     public void Dispose()
     {
         _services.Dispose();
@@ -718,9 +860,29 @@ public sealed class NewAlbumTests : IDisposable
             int assetId, CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
 
-        public Task<IReadOnlyList<int>> SuggestAsync(
-            int albumId, CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
+        /// <summary>How long a look takes, for the tests about waiting.</summary>
+        public TimeSpan SuggestTakes { get; set; } = TimeSpan.Zero;
+
+        /// <summary>
+        /// Nothing fits, which is the one answer a fake can give honestly.
+        /// </summary>
+        /// <remarks>
+        /// Handing back ids would have the screen build tiles for them, and
+        /// that needs the gallery handler, a working folder and thumbnails on
+        /// disk - a different test with a different subject. The empty answer
+        /// is the one this fixture is here for, and it was unreachable while
+        /// this threw.
+        /// </remarks>
+        public async Task<IReadOnlyList<int>> SuggestAsync(
+            int albumId, CancellationToken cancellationToken = default)
+        {
+            if (SuggestTakes > TimeSpan.Zero)
+            {
+                await Task.Delay(SuggestTakes, cancellationToken).ConfigureAwait(false);
+            }
+
+            return [];
+        }
 
         public Task AcceptAsync(int albumId, CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
@@ -745,6 +907,16 @@ public sealed class NewAlbumTests : IDisposable
             int albumId,
             IReadOnlyList<int> assetIds,
             CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public Task RefuseAsync(
+            int albumId,
+            IReadOnlyList<int> assetIds,
+            CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public Task<bool> SetCoverAsync(
+            int albumId, int assetId, CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
     }
 

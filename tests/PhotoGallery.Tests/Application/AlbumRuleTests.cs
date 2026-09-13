@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using PhotoGallery.Application.Ports;
+using PhotoGallery.Domain.Albums;
 using PhotoGallery.Domain.Assets;
 using PhotoGallery.Domain.Faces;
 using PhotoGallery.Domain.Library;
@@ -184,6 +185,56 @@ public sealed class AlbumRuleTests : IDisposable
         Assert.Empty(await Repository().SuggestAsync(album));
     }
 
+    /// <summary>
+    /// An album somebody made holds its photographs against every other album.
+    /// </summary>
+    /// <summary>
+    /// A video fits a day rule, which until now it never could.
+    /// </summary>
+    /// <remarks>
+    /// Not one of the 6,357 videos in the real library carries a capture date,
+    /// so a rule naming the day of an outing found its photographs and silently
+    /// left every clip behind - while the gallery, which files a picture under
+    /// the same fallback, showed those clips sitting on that very day.
+    /// </remarks>
+    [Fact]
+    public async Task AVideoWithNoCaptureDateFitsADayRule()
+    {
+        int clip = Add("clip.mp4", null, kind: AssetKind.Video, fileDate: March);
+        Add("later.mp4", null, kind: AssetKind.Video, fileDate: March.AddDays(3));
+
+        int album = await Rule(new AlbumRule(
+            DateOnly.FromDateTime(March), DateOnly.FromDateTime(March), [], []));
+
+        Assert.Equal([clip], await Repository().SuggestAsync(album));
+    }
+
+    /// <summary>
+    /// And the sentinel creation date does not file a row under year one.
+    /// </summary>
+    /// <remarks>
+    /// The one part of the fallback that can behave differently in the database
+    /// than in memory: rows indexed before creation dates were recorded hold
+    /// DateTime.MinValue, and SQLite compares these as text. Reading that as
+    /// "the earlier of the two" would date every such row to 0001-01-01, which
+    /// no rule a person types would ever match.
+    /// </remarks>
+    [Fact]
+    public async Task ASentinelCreationDateDoesNotFileAFileUnderYearOne()
+    {
+        int old = Add(
+            "old.mp4",
+            null,
+            kind: AssetKind.Video,
+            fileDate: March,
+            createdUtc: default(DateTime));
+
+        int album = await Rule(new AlbumRule(
+            DateOnly.FromDateTime(March), DateOnly.FromDateTime(March), [], []));
+
+        Assert.Equal([old], await Repository().SuggestAsync(album));
+    }
+
     [Fact]
     public async Task WhatIsAlreadySomewhereElseIsNotOffered()
     {
@@ -198,6 +249,175 @@ public sealed class AlbumRuleTests : IDisposable
             DateOnly.FromDateTime(March), DateOnly.FromDateTime(March), [], []));
 
         Assert.Equal([free], await Repository().SuggestAsync(album));
+    }
+
+    /// <summary>
+    /// A suggestion holds nothing back, because it is a question and not a claim.
+    /// </summary>
+    /// <remarks>
+    /// The clusterer sweeps every day carrying enough photographs into a
+    /// proposal, which on a real library is half of everything in it - so a
+    /// rule naming a day the app has already grouped could never find a single
+    /// photograph, and a day worth photographing is exactly the day somebody is
+    /// most likely to type. The same line is drawn in the clusterer's own feed,
+    /// which re-groups whatever a proposal holds and leaves alone only what a
+    /// person has spoken for.
+    /// </remarks>
+    [Fact]
+    public async Task WhatASuggestionHoldsIsStillOffered()
+    {
+        int suggested = Add("suggested.jpg", March);
+        Proposal("Eight days in March", suggested);
+
+        int album = await Rule(new AlbumRule(
+            DateOnly.FromDateTime(March), DateOnly.FromDateTime(March), [], []));
+
+        Assert.Equal([suggested], await Repository().SuggestAsync(album));
+    }
+
+    /// <summary>
+    /// A suggestion somebody kept holds them back, because they kept it.
+    /// </summary>
+    [Fact]
+    public async Task WhatAKeptSuggestionHoldsIsNotOffered()
+    {
+        int kept = Add("kept.jpg", March);
+        int free = Add("free.jpg", March);
+
+        IAlbumRepository repository = Repository();
+        int proposal = Proposal("Eight days in March", kept);
+        await repository.AcceptAsync(proposal);
+
+        int album = await Rule(new AlbumRule(
+            DateOnly.FromDateTime(March), DateOnly.FromDateTime(March), [], []));
+
+        Assert.Equal([free], await Repository().SuggestAsync(album));
+    }
+
+    /// <summary>
+    /// Nothing is ever offered back to the album already holding it.
+    /// </summary>
+    /// <remarks>
+    /// Worth its own test now that a photograph in a suggestion is offered at
+    /// all: the album doing the asking may itself be a suggestion, and the rule
+    /// that lets its photographs travel would otherwise let them travel back to
+    /// where they already are.
+    /// </remarks>
+    [Fact]
+    public async Task ASuggestionIsNeverOfferedItsOwnPhotographs()
+    {
+        int inside = Add("inside.jpg", March);
+        int proposal = Proposal("Eight days in March", inside);
+
+        await Repository().SetRuleAsync(proposal, new AlbumRule(
+            DateOnly.FromDateTime(March), DateOnly.FromDateTime(March), [], []));
+        _db.ChangeTracker.Clear();
+
+        Assert.Empty(await Repository().SuggestAsync(proposal));
+    }
+
+    /// <summary>
+    /// Keeping one takes it out of the suggestion, and says which one it left.
+    /// </summary>
+    [Fact]
+    public async Task KeepingOneTakesItOutOfTheSuggestion()
+    {
+        int moving = Add("moving.jpg", March);
+        int staying = Add("staying.jpg", March);
+        int proposal = Proposal("Eight days in March", moving, staying);
+
+        int album = await Rule(new AlbumRule(
+            DateOnly.FromDateTime(March), DateOnly.FromDateTime(March), [], []));
+
+        AlbumAddResult result = await Repository().AddAsync(album, [moving]);
+
+        Assert.Equal(1, result.Added);
+        Assert.Equal(1, result.Moved);
+        Assert.Equal(["Eight days in March"], result.From);
+        Assert.Equal([moving], await Repository().GetMembersAsync(album));
+        Assert.Equal([staying], await Repository().GetMembersAsync(proposal));
+    }
+
+    /// <summary>
+    /// A suggestion the move emptied goes; one still holding something stays.
+    /// </summary>
+    /// <remarks>
+    /// Nothing would ever arrive to fill the empty one: the clusterer's feed
+    /// skips photographs a made album has spoken for, so the days it was built
+    /// from are not offered again. Left on the wall it would be a suggested
+    /// album holding no photographs, which is not a question anybody can answer.
+    /// </remarks>
+    [Fact]
+    public async Task ASuggestionTheMoveEmptiedGoes()
+    {
+        int one = Add("one.jpg", March);
+        int two = Add("two.jpg", March);
+        int three = Add("three.jpg", March);
+
+        int emptied = Proposal("Emptied", one);
+        int partly = Proposal("Partly emptied", two, three);
+
+        int album = await Rule(new AlbumRule(
+            DateOnly.FromDateTime(March), DateOnly.FromDateTime(March), [], []));
+
+        await Repository().AddAsync(album, [one, two]);
+
+        int[] left = [.. (await Repository().GetAsync()).Select(row => row.Id)];
+
+        Assert.DoesNotContain(emptied, left);
+        Assert.Contains(partly, left);
+        Assert.Equal([three], await Repository().GetMembersAsync(partly));
+    }
+
+    /// <summary>
+    /// Refusing one records the refusal and moves the photograph nowhere.
+    /// </summary>
+    /// <remarks>
+    /// Both answer paths used to write a refusal by adding the photograph and
+    /// taking it straight back out, which was invisible only while a photograph
+    /// already in an album could never be offered. Now that it can, that round
+    /// trip would answer a question about this album by emptying a different
+    /// one, and leave the photograph in no album at all.
+    /// </remarks>
+    [Fact]
+    public async Task RefusingOneLeavesItWhereItIs()
+    {
+        int refused = Add("refused.jpg", March);
+        int proposal = Proposal("Eight days in March", refused);
+
+        int album = await Rule(new AlbumRule(
+            DateOnly.FromDateTime(March), DateOnly.FromDateTime(March), [], []));
+
+        await Repository().RefuseAsync(album, [refused]);
+
+        Assert.Equal([refused], await Repository().GetMembersAsync(proposal));
+        Assert.Empty(await Repository().GetMembersAsync(album));
+        Assert.Empty(await Repository().SuggestAsync(album));
+    }
+
+    /// <summary>
+    /// An album has a cover as soon as its first photographs arrive.
+    /// </summary>
+    /// <remarks>
+    /// A cover is chosen by reading the memberships back out of the database,
+    /// so they have to be written before it is chosen. They were not, and the
+    /// album whose photographs all arrived in one press was left with none -
+    /// hidden until now by the refusal path, which added photographs and took
+    /// them out again, and chose a cover on the way past.
+    /// </remarks>
+    [Fact]
+    public async Task ACoverIsChosenWhenTheFirstPhotographsArrive()
+    {
+        int one = Add("one.jpg", March);
+
+        int album = await Rule(new AlbumRule(
+            DateOnly.FromDateTime(March), DateOnly.FromDateTime(March), [], []));
+
+        await Repository().AddAsync(album, [one]);
+
+        AlbumSummary made = (await Repository().GetAsync()).Single(row => row.Id == album);
+
+        Assert.Equal("one.jpg", made.CoverThumbnailName);
     }
 
     [Fact]
@@ -281,19 +501,69 @@ public sealed class AlbumRuleTests : IDisposable
         return album;
     }
 
-    private int Add(string relativePath, DateTime takenUtc, int? placeId = null)
+    /// <summary>A suggestion the app made, holding these photographs.</summary>
+    /// <remarks>
+    /// Written as a row rather than through SaveProposalsAsync, because all
+    /// these tests need of a proposal is what it is and what it holds; going
+    /// through the pass would drag the clusterer in to say both.
+    /// </remarks>
+    private int Proposal(string name, params int[] assetIds)
     {
+        var album = new Album
+        {
+            Name = name,
+            StartUtc = March,
+            EndUtc = March,
+            Kind = AlbumKind.Period,
+            Origin = AlbumOrigin.Proposed,
+            ProposalKey = $"days:{name}",
+            BuiltUtc = March,
+        };
+
+        foreach (int assetId in assetIds)
+        {
+            album.Members.Add(new AlbumMember { AssetId = assetId, AddedUtc = March });
+        }
+
+        _db.Albums.Add(album);
+        _db.SaveChanges();
+        _db.ChangeTracker.Clear();
+
+        return album.Id;
+    }
+
+    /// <summary>
+    /// A photograph in the library, with or without a date of its own.
+    /// </summary>
+    /// <param name="fileDate">
+    /// What the file's own timestamps say, for the rows that carry no capture
+    /// date - which is every video in a real library.
+    /// </param>
+    /// <param name="createdUtc">
+    /// The creation date on its own, where a test needs it to differ from the
+    /// modified date: the sentinel, or a date a copy pushed later.
+    /// </param>
+    private int Add(
+        string relativePath,
+        DateTime? takenUtc,
+        int? placeId = null,
+        AssetKind kind = AssetKind.Photo,
+        DateTime? fileDate = null,
+        DateTime? createdUtc = null)
+    {
+        DateTime stamp = fileDate ?? new DateTime(2024, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+
         var asset = new Asset
         {
             PhotoSourceId = 1,
             RelativePath = relativePath,
             Length = 1024,
-            ModifiedUtc = new DateTime(2024, 1, 1, 0, 0, 0, DateTimeKind.Utc),
-            CreatedUtc = new DateTime(2024, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+            ModifiedUtc = stamp,
+            CreatedUtc = createdUtc ?? stamp,
             IndexedUtc = new DateTime(2024, 1, 1, 0, 0, 0, DateTimeKind.Utc),
             TakenUtc = takenUtc,
             PlaceId = placeId,
-            Kind = AssetKind.Photo,
+            Kind = kind,
             Status = AssetStatus.Ready,
             ThumbnailName = relativePath,
         };

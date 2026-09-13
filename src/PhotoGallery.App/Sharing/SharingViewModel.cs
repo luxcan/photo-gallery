@@ -4,6 +4,8 @@ using Microsoft.Extensions.DependencyInjection;
 using PhotoGallery.Application.Ports;
 using PhotoGallery.Application.UseCases.Sharing;
 
+using PhotoGallery.App.Shell;
+
 namespace PhotoGallery.App.Sharing;
 
 /// <summary>
@@ -47,6 +49,43 @@ public sealed partial class SharingViewModel : ObservableObject
     /// still running - and both of them touch the same folder.
     /// </remarks>
     private readonly SemaphoreSlim _gate = new(1, 1);
+
+    /// <summary>
+    /// What the notice over the app is saying, or empty while it says nothing.
+    /// </summary>
+    /// <remarks>
+    /// Two things in one panel, because they are two halves of one exchange: a
+    /// question when another computer has published something this library has
+    /// not taken, and the answer to that question once it has been taken. A
+    /// second panel for the summary would appear exactly where the first one
+    /// had been, half a minute later, saying something about the same press.
+    /// </remarks>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasNotice))]
+    private string _notice = string.Empty;
+
+    /// <summary>
+    /// Whether the notice is asking something, rather than reporting it.
+    /// </summary>
+    /// <remarks>
+    /// A question carries the button that answers it. A report carries only the
+    /// way to put it down, because the thing it reports has already happened.
+    /// </remarks>
+    [ObservableProperty]
+    private bool _noticeAsks;
+
+    /// <summary>
+    /// The moment of the newest file behind the question, so that "not now" can
+    /// mean this one rather than all of them for ever.
+    /// </summary>
+    /// <remarks>
+    /// Kept for the life of the window and no longer. Somebody who says "not
+    /// now" is answering about what is in the folder at that moment, and the
+    /// next thing published is a new question - but a machine that publishes
+    /// nightly should not be able to ask again about the same file every quarter
+    /// of an hour until the app is closed.
+    /// </remarks>
+    private DateTime _declined = DateTime.MinValue;
 
     /// <summary>The folder this library shares answers through.</summary>
     [ObservableProperty]
@@ -186,6 +225,117 @@ public sealed partial class SharingViewModel : ObservableObject
             : $"{Waiting:N0} answers are waiting for photos this library has not indexed yet. "
               + "Scanning will bring them in.";
 
+    public bool HasNotice => Notice.Length > 0;
+
+    /// <summary>
+    /// Looks for answers waiting in the folder, and says nothing when there are
+    /// none - including when the folder cannot be reached.
+    /// </summary>
+    /// <remarks>
+    /// <strong>The reason this is worth having at all:</strong> the exchange
+    /// writes to the library, so it stays something a person presses. Knowing
+    /// whether it is worth pressing should not also be theirs to remember, and a
+    /// folder every machine reaches is exactly the kind of thing that goes
+    /// quietly out of date while everybody assumes somebody else looked.
+    ///
+    /// <para><strong>Silent about every failure.</strong> The share sits on a
+    /// drive that sleeps, a laptop that is shut, or a network that is not there,
+    /// so being unable to reach it is the ordinary state rather than a fault. A
+    /// complaint on screen most times the app is opened, about something the
+    /// reader already knows and cannot act on, is how a notice teaches people to
+    /// close it without reading. Nothing is ever said here except that there is
+    /// something to take.</para>
+    ///
+    /// <para><strong>And it never waits.</strong> Reaching a folder is
+    /// <c>Directory.Exists</c> underneath, which cannot be cancelled and which
+    /// blocks for as long as the operating system takes to give up on an address
+    /// that is not answering - so the look is raced against a deadline and
+    /// abandoned if it loses. The thread it leaves behind finishes on its own
+    /// long before the next look is due.</para>
+    /// </remarks>
+    public async Task LookForUpdatesAsync(TimeSpan patience)
+    {
+        if (IsBusy || NoticeAsks)
+        {
+            return;
+        }
+
+        try
+        {
+            Task<SharedUpdate> looking = Task.Run(async () =>
+            {
+                using IServiceScope scope = _scopeFactory.CreateScope();
+                return await scope.ServiceProvider
+                    .GetRequiredService<CheckForSharedUpdatesHandler>()
+                    .HandleAsync()
+                    .ConfigureAwait(false);
+            });
+
+            Task first = await Task
+                .WhenAny(looking, Task.Delay(patience))
+                .ConfigureAwait(true);
+
+            if (first != looking)
+            {
+                return;
+            }
+
+            SharedUpdate update = await looking.ConfigureAwait(true);
+
+            if (!update.Any || update.Newest <= _declined)
+            {
+                return;
+            }
+
+            _newest = update.Newest;
+            NoticeAsks = true;
+            Notice = Asking(update.Machines);
+        }
+        catch (Exception ex) when (LibraryFailure.IsExpected(ex))
+        {
+            // Looking is not a thing anybody asked for, so it is not a thing
+            // anybody should be told has failed.
+            _log.Append($"could not look for shared answers: {ex.Message}");
+        }
+    }
+
+    /// <summary>Puts the notice down, and says nothing more about this one.</summary>
+    [RelayCommand]
+    private void DismissNotice()
+    {
+        if (NoticeAsks)
+        {
+            _declined = _newest;
+        }
+
+        Notice = string.Empty;
+        NoticeAsks = false;
+    }
+
+    /// <summary>Says what the notice reports once the answers have been taken.</summary>
+    public void Report(string summary)
+    {
+        _declined = _newest;
+        NoticeAsks = false;
+        Notice = summary;
+    }
+
+    private DateTime _newest = DateTime.MinValue;
+
+    /// <summary>
+    /// Who has something, in the plainest sentence that is still true.
+    /// </summary>
+    /// <remarks>
+    /// Named where this library has taken from them before, because a name is
+    /// what makes a person press the button - and described where it has not,
+    /// because the name lives inside a file this check deliberately does not
+    /// open.
+    /// </remarks>
+    private static string Asking(IReadOnlyList<string> machines) =>
+        machines.Count == 1
+            ? $"{machines[0]} has answers this computer has not taken yet."
+            : $"{string.Join(" and ", machines)} have answers this computer has not taken yet.";
+
     /// <summary>Reads the folder, who has shared, and what is waiting.</summary>
     /// <remarks>
     /// Skipped rather than queued when something else is running: the answer is
@@ -241,10 +391,7 @@ public sealed partial class SharingViewModel : ObservableObject
             Status = string.Empty;
             await ReadAsync().ConfigureAwait(true);
         }
-        catch (Exception ex) when (ex is IOException
-                                      or UnauthorizedAccessException
-                                      or InvalidOperationException
-                                      or DirectoryNotFoundException)
+        catch (Exception ex) when (LibraryFailure.IsExpected(ex))
         {
             // Every reason this fails is one the user can do something about, so
             // none of them may be reported as a bare failure.
@@ -315,9 +462,7 @@ public sealed partial class SharingViewModel : ObservableObject
 
             await ReadAsync().ConfigureAwait(true);
         }
-        catch (Exception ex) when (ex is IOException
-                                      or UnauthorizedAccessException
-                                      or InvalidOperationException)
+        catch (Exception ex) when (LibraryFailure.IsExpected(ex))
         {
             Status = $"Sharing could not finish: {ex.Message}";
         }
@@ -368,10 +513,7 @@ public sealed partial class SharingViewModel : ObservableObject
 
             await ReadAsync().ConfigureAwait(true);
         }
-        catch (Exception ex) when (ex is IOException
-                                      or UnauthorizedAccessException
-                                      or InvalidOperationException
-                                      or ArgumentException)
+        catch (Exception ex) when (LibraryFailure.IsExpected(ex))
         {
             Status = $"Those folders could not be paired: {ex.Message}";
         }
@@ -414,9 +556,7 @@ public sealed partial class SharingViewModel : ObservableObject
             Status = result.Summary;
             await ReadAsync().ConfigureAwait(true);
         }
-        catch (Exception ex) when (ex is IOException
-                                      or UnauthorizedAccessException
-                                      or InvalidOperationException)
+        catch (Exception ex) when (LibraryFailure.IsExpected(ex))
         {
             Status = $"The pictures could not be copied: {ex.Message}";
         }

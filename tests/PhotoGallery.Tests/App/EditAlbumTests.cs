@@ -980,6 +980,16 @@ public sealed class EditAlbumTests : IDisposable
             IReadOnlyList<int> assetIds,
             CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
+
+        public Task RefuseAsync(
+            int albumId,
+            IReadOnlyList<int> assetIds,
+            CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public Task<bool> SetCoverAsync(
+            int albumId, int assetId, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
     }
 
     /// <summary>One shelf, with the album that stands on it.</summary>

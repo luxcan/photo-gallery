@@ -65,8 +65,16 @@ public interface IAlbumRepository
     /// </summary>
     /// <remarks>
     /// Suggestions, not additions: nothing is put anywhere until the user says
-    /// so. Photographs already in another album are left out - one
-    /// album each - and so is anything refused for this one before.
+    /// so. Anything refused for this album before is left out, and so is
+    /// anything an album somebody made or kept has already spoken for - one
+    /// album each.
+    ///
+    /// <para>A photograph the app itself swept into a suggestion is offered
+    /// anyway. A suggestion is a question nobody has answered, and a question
+    /// must not outrank an album a person made on purpose; keeping the
+    /// photograph is what takes it out of the suggestion, which
+    /// <see cref="AddAsync"/> does on the way in. The clusterer's own feed
+    /// draws the same line - see <see cref="GetCandidatesAsync"/>.</para>
     /// </remarks>
     Task<IReadOnlyList<int>> SuggestAsync(
         int albumId, CancellationToken cancellationToken = default);
@@ -107,6 +115,47 @@ public interface IAlbumRepository
     /// of the sort - they are simply rearranging their own shelf.
     /// </remarks>
     Task RemoveAsync(
+        int albumId,
+        IReadOnlyList<int> assetIds,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Makes one of an album's photographs the picture shown for it.
+    /// </summary>
+    /// <remarks>
+    /// A cover is worked out from the album's own photographs - the one with the
+    /// most faces, or the middle of its span - and worked out again every time a
+    /// photograph joins or leaves. This records that a person has answered the
+    /// question instead, after which the rule leaves the album alone for as long
+    /// as it still holds that photograph.
+    ///
+    /// <para>Covers do not travel between machines. Both libraries derive the
+    /// same one from the same rule today, so there has never been anything to
+    /// disagree about; a chosen one can disagree, and putting it in the payload
+    /// is a decision of its own rather than a consequence of this.</para>
+    /// </remarks>
+    /// <returns>
+    /// False when the album has no such photograph in it, which is the only way
+    /// this refuses.
+    /// </returns>
+    Task<bool> SetCoverAsync(
+        int albumId, int assetId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Records that these photographs do not belong in this album, without
+    /// putting them into it first.
+    /// </summary>
+    /// <remarks>
+    /// Answering "not this one" about a suggested photograph must not disturb
+    /// where that photograph already is. Both answer paths used to write a
+    /// refusal by adding the photograph and taking it straight back out, which
+    /// was harmless only while a photograph in a suggestion could never be
+    /// offered at all. Now that it can, the round trip would quietly move it
+    /// out of the suggestion it came from and leave it in no album whatsoever -
+    /// as the answer to a question about a different album entirely. The
+    /// refusal is the whole of the decision, so this writes only that.
+    /// </remarks>
+    Task RefuseAsync(
         int albumId,
         IReadOnlyList<int> assetIds,
         CancellationToken cancellationToken = default);
