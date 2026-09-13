@@ -12,6 +12,7 @@ using PhotoGallery.Application.UseCases.Refresh;
 using PhotoGallery.Application.UseCases.Scanning;
 using PhotoGallery.Application.UseCases.Search;
 using PhotoGallery.Application.UseCases.Sharing;
+using PhotoGallery.Application.UseCases.Updates;
 using PhotoGallery.Application.UseCases.Sources;
 using PhotoGallery.Application.UseCases.Thumbnails;
 using PhotoGallery.Application.UseCases.Videos;
@@ -66,6 +67,7 @@ public static class AppServiceCollectionExtensions
             .AddScoped<SetSharedFolderHandler>()
             .AddScoped<GetSharingHandler>()
             .AddScoped<CheckForSharedUpdatesHandler>()
+            .AddScoped<CheckForNewVersionHandler>()
             .AddScoped<ShareNowHandler>()
             .AddScoped<ConfirmPairingHandler>()
             .AddScoped<ShareRenditionsHandler>()

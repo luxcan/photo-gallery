@@ -214,13 +214,20 @@ public sealed class SharingSectionTests
     /// The floating notice, from the flag that shows it to the button that puts
     /// it down.
     /// </summary>
+    /// <remarks>
+    /// The panel belongs to the shell rather than to this screen now, because a
+    /// newer version of the app speaks through it too - but the sentence about
+    /// another computer's answers is still sharing's, and still has to keep
+    /// sharing's vocabulary, which is why the rule is still asserted from here.
+    /// </remarks>
     private static string Notice()
     {
-        int start = s_window.IndexOf("Sharing.HasNotice", StringComparison.Ordinal);
+        int start = s_window.IndexOf(
+            "Visibility=\"{Binding HasNotice", StringComparison.Ordinal);
         Assert.True(start > 0, "the notice over the app is not in the window");
 
         int end = s_window.IndexOf(
-            "Sharing.DismissNoticeCommand", start, StringComparison.Ordinal);
+            "DismissNoticeCommand", start, StringComparison.Ordinal);
         Assert.True(end > start, "the notice no longer carries the way to put it down");
 
         return s_window[start..end];

@@ -2491,11 +2491,20 @@
                   </StackPanel>
                 </StackPanel>
 
-                <!-- Updates. No check button, and that is the point: this app
-                     makes no network call of its own, and one that quietly
-                     reached out would contradict the line three inches above it.
-                     It states where the releases are and hands the address to
-                     the browser. -->
+                <!-- Updates. This used to say that the app made no network call
+                     of its own, and that a button which quietly reached out
+                     would contradict the line three inches above it. The app now
+                     does make one - once an hour, to the public list of releases
+                     on the repository named below - so the claim has been
+                     replaced rather than left standing while it quietly stopped
+                     being true.
+
+                     The line above still holds, and is the one that matters:
+                     nothing is uploaded. The request carries no account, no key
+                     and nothing whatever about this library; it asks a public
+                     address what the newest release is called, and the most it
+                     can do with the answer is put a sentence in the corner. It
+                     never fetches or installs anything. -->
                 <Border Margin="0,18,0,0" Padding="16,15"
                         Background="{DynamicResource SideBar.Background}"
                         BorderBrush="{DynamicResource Separator}" BorderThickness="1"
@@ -2517,7 +2526,7 @@
                                FontSize="12.5" LineHeight="19.5"
                                LineStackingStrategy="BlockLineHeight"
                                Foreground="{DynamicResource Editor.Foreground}"
-                               Text="Releases are published on GitHub — open the page below to see whether a newer build is available and what changed in it." />
+                               Text="Releases are published on GitHub. This app looks for a newer one about once an hour and says so in the corner if it finds one — it asks a public page for a version number and sends nothing about your photographs, and it never installs anything itself. Open the page below to read what changed." />
 
                     <StackPanel Orientation="Horizontal" Margin="0,11,0,0">
                       <Button Style="{DynamicResource PrimaryButton}" Height="30" Padding="14,0"
@@ -3408,7 +3417,7 @@
             Background="{DynamicResource Status.InfoBack}"
             BorderBrush="{DynamicResource Status.Info}" BorderThickness="1"
             CornerRadius="4" Padding="12,10"
-            Visibility="{Binding Sharing.HasNotice,
+            Visibility="{Binding HasNotice,
                          Converter={StaticResource BoolToVisibility}}">
       <StackPanel>
         <StackPanel Orientation="Horizontal">
@@ -3419,7 +3428,7 @@
                notices give: this sits on the info tint rather than on the page. -->
           <TextBlock FontSize="12" TextWrapping="Wrap" MaxWidth="360"
                      Foreground="{DynamicResource Editor.Foreground}"
-                     Text="{Binding Sharing.Notice}" />
+                     Text="{Binding Notice}" />
         </StackPanel>
 
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right"
@@ -3427,16 +3436,15 @@
           <!-- Only while it is asking. Once it is reporting what was taken,
                there is nothing left to agree to. -->
           <Button Style="{DynamicResource PrimaryButton}" MinWidth="110"
-                  Content="Take them now"
-                  ToolTip="Take the answers and give this computer's back"
-                  Visibility="{Binding Sharing.NoticeAsks,
+                  Content="{Binding NoticeAction}"
+                  Visibility="{Binding NoticeAsks,
                                Converter={StaticResource BoolToVisibility}}"
-                  Command="{Binding TakeSharedAnswersCommand}" />
+                  Command="{Binding AnswerNoticeCommand}" />
           <Button Style="{DynamicResource LinkButton}" Margin="14,0,2,0" FontSize="12"
                   Padding="0" VerticalAlignment="Center"
                   VerticalContentAlignment="Center" Content="Not now"
                   ToolTip="Put this down. It will be offered again when there is something newer."
-                  Command="{Binding Sharing.DismissNoticeCommand}" />
+                  Command="{Binding DismissNoticeCommand}" />
         </StackPanel>
       </StackPanel>
     </Border>

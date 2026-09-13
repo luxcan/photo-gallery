@@ -51,30 +51,6 @@ public sealed partial class SharingViewModel : ObservableObject
     private readonly SemaphoreSlim _gate = new(1, 1);
 
     /// <summary>
-    /// What the notice over the app is saying, or empty while it says nothing.
-    /// </summary>
-    /// <remarks>
-    /// Two things in one panel, because they are two halves of one exchange: a
-    /// question when another computer has published something this library has
-    /// not taken, and the answer to that question once it has been taken. A
-    /// second panel for the summary would appear exactly where the first one
-    /// had been, half a minute later, saying something about the same press.
-    /// </remarks>
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasNotice))]
-    private string _notice = string.Empty;
-
-    /// <summary>
-    /// Whether the notice is asking something, rather than reporting it.
-    /// </summary>
-    /// <remarks>
-    /// A question carries the button that answers it. A report carries only the
-    /// way to put it down, because the thing it reports has already happened.
-    /// </remarks>
-    [ObservableProperty]
-    private bool _noticeAsks;
-
-    /// <summary>
     /// The moment of the newest file behind the question, so that "not now" can
     /// mean this one rather than all of them for ever.
     /// </summary>
@@ -225,8 +201,6 @@ public sealed partial class SharingViewModel : ObservableObject
             : $"{Waiting:N0} answers are waiting for photos this library has not indexed yet. "
               + "Scanning will bring them in.";
 
-    public bool HasNotice => Notice.Length > 0;
-
     /// <summary>
     /// Looks for answers waiting in the folder, and says nothing when there are
     /// none - including when the folder cannot be reached.
@@ -253,11 +227,11 @@ public sealed partial class SharingViewModel : ObservableObject
     /// abandoned if it loses. The thread it leaves behind finishes on its own
     /// long before the next look is due.</para>
     /// </remarks>
-    public async Task LookForUpdatesAsync(TimeSpan patience)
+    public async Task<string?> LookForUpdatesAsync(TimeSpan patience)
     {
-        if (IsBusy || NoticeAsks)
+        if (IsBusy)
         {
-            return;
+            return null;
         }
 
         try
@@ -277,48 +251,39 @@ public sealed partial class SharingViewModel : ObservableObject
 
             if (first != looking)
             {
-                return;
+                return null;
             }
 
             SharedUpdate update = await looking.ConfigureAwait(true);
 
             if (!update.Any || update.Newest <= _declined)
             {
-                return;
+                return null;
             }
 
             _newest = update.Newest;
-            NoticeAsks = true;
-            Notice = Asking(update.Machines);
+
+            return Asking(update.Machines);
         }
         catch (Exception ex) when (LibraryFailure.IsExpected(ex))
         {
             // Looking is not a thing anybody asked for, so it is not a thing
             // anybody should be told has failed.
             _log.Append($"could not look for shared answers: {ex.Message}");
+
+            return null;
         }
     }
 
-    /// <summary>Puts the notice down, and says nothing more about this one.</summary>
-    [RelayCommand]
-    private void DismissNotice()
-    {
-        if (NoticeAsks)
-        {
-            _declined = _newest;
-        }
-
-        Notice = string.Empty;
-        NoticeAsks = false;
-    }
-
-    /// <summary>Says what the notice reports once the answers have been taken.</summary>
-    public void Report(string summary)
-    {
-        _declined = _newest;
-        NoticeAsks = false;
-        Notice = summary;
-    }
+    /// <summary>
+    /// Remembers that this much has been answered, however it was answered.
+    /// </summary>
+    /// <remarks>
+    /// Said once the answers have been taken, and once when somebody puts the
+    /// question down - both mean the same thing to the next look, which is that
+    /// what is in the folder now is not news any more.
+    /// </remarks>
+    public void Settled() => _declined = _newest;
 
     private DateTime _newest = DateTime.MinValue;
 

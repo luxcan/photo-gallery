@@ -14,12 +14,14 @@ using PhotoGallery.App.Sharing;
 using PhotoGallery.App.People;
 using PhotoGallery.App.Shell;
 using PhotoGallery.App.Theme;
+using PhotoGallery.Application;
 using PhotoGallery.Application.Ports;
 using PhotoGallery.Application.UseCases.Albums;
 using PhotoGallery.Application.UseCases.Gallery;
 using PhotoGallery.Application.UseCases.OpenLibrary;
 using PhotoGallery.Application.UseCases.People;
 using PhotoGallery.Application.UseCases.Sharing;
+using PhotoGallery.Application.UseCases.Updates;
 using PhotoGallery.Application.UseCases.Preferences;
 using PhotoGallery.Application.UseCases.Refresh;
 using PhotoGallery.Application.UseCases.Scanning;
@@ -1289,6 +1291,102 @@ public sealed partial class MainViewModel : ObservableObject
     }
 
     /// <summary>
+    /// What the notice in the corner is saying, or empty while it says nothing.
+    /// </summary>
+    /// <remarks>
+    /// Here rather than on the screen that first needed it. Two unrelated things
+    /// now speak through this panel - another computer has answers to take, and
+    /// a newer version of the app has been published - and neither is the
+    /// other's business. A second panel for the second one would appear in the
+    /// same corner saying a different kind of thing, which is how a window ends
+    /// up with two of everything.
+    /// </remarks>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasNotice))]
+    private string _notice = string.Empty;
+
+    /// <summary>
+    /// What the notice's button offers, or empty when it only reports.
+    /// </summary>
+    /// <remarks>
+    /// The label carries the verb, because the two things this panel says want
+    /// different ones - answers are taken, a release is read. A report has no
+    /// button at all: what it reports has already happened.
+    /// </remarks>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(NoticeAsks))]
+    private string _noticeAction = string.Empty;
+
+    /// <summary>What pressing that button does, set with the question.</summary>
+    private Func<Task>? _noticeAnswer;
+
+    /// <summary>What to do when the notice is put down, set with the question.</summary>
+    private Action? _noticeDeclined;
+
+    public bool HasNotice => Notice.Length > 0;
+
+    public bool NoticeAsks => NoticeAction.Length > 0;
+
+    /// <summary>
+    /// Puts a question in the corner, with the one thing that answers it.
+    /// </summary>
+    /// <remarks>
+    /// A question already on screen is left alone. The two askers run minutes
+    /// apart on a timer, and replacing one unanswered question with another
+    /// would lose the first without anybody having read it.
+    /// </remarks>
+    public void Ask(string notice, string action, Func<Task> answer, Action? declined = null)
+    {
+        if (HasNotice)
+        {
+            return;
+        }
+
+        _noticeAnswer = answer;
+        _noticeDeclined = declined;
+        NoticeAction = action;
+        Notice = notice;
+    }
+
+    /// <summary>Says something in the corner that needs no answer.</summary>
+    public void Say(string notice)
+    {
+        _noticeAnswer = null;
+        _noticeDeclined = null;
+        NoticeAction = string.Empty;
+        Notice = notice;
+    }
+
+    [RelayCommand]
+    private async Task AnswerNoticeAsync()
+    {
+        if (_noticeAnswer is not Func<Task> answer)
+        {
+            return;
+        }
+
+        // Down before the work starts, because the work raises the overlay and a
+        // question sitting under it has already been answered.
+        Notice = string.Empty;
+        NoticeAction = string.Empty;
+        _noticeAnswer = null;
+        _noticeDeclined = null;
+
+        await answer().ConfigureAwait(true);
+    }
+
+    /// <summary>Puts the notice down, and tells whoever asked that it was.</summary>
+    [RelayCommand]
+    private void DismissNotice()
+    {
+        _noticeDeclined?.Invoke();
+        _noticeDeclined = null;
+        _noticeAnswer = null;
+        Notice = string.Empty;
+        NoticeAction = string.Empty;
+    }
+
+    /// <summary>
     /// How often the app looks in the shared folder for answers it has not taken.
     /// </summary>
     /// <remarks>
@@ -1349,13 +1447,23 @@ public sealed partial class MainViewModel : ObservableObject
         // The first look is now rather than a quarter of an hour from now: the
         // ordinary way this feature earns its place is somebody opening the app
         // in the morning to find last night's naming already waiting.
-        await Sharing.LookForUpdatesAsync(LookPatience).ConfigureAwait(true);
+        await LookOnceAsync(releasesToo: true).ConfigureAwait(true);
+
+        int looks = 0;
 
         try
         {
             while (await timer.WaitForNextTickAsync().ConfigureAwait(true))
             {
-                await Sharing.LookForUpdatesAsync(LookPatience).ConfigureAwait(true);
+                looks++;
+
+                // The folder every quarter of an hour, because somebody in the
+                // house may be naming faces right now. The releases once an
+                // hour, because a release is not a thing that happens while you
+                // wait - and asking a public service four times an hour for
+                // something that changes monthly is bad manners as much as it is
+                // waste.
+                await LookOnceAsync(releasesToo: looks % 4 == 0).ConfigureAwait(true);
             }
         }
         catch (ObjectDisposedException)
@@ -1364,6 +1472,74 @@ public sealed partial class MainViewModel : ObservableObject
             // way this loop ends.
         }
     }
+
+    private async Task LookOnceAsync(bool releasesToo)
+    {
+        if (await Sharing.LookForUpdatesAsync(LookPatience).ConfigureAwait(true)
+            is string waiting)
+        {
+            Ask(waiting, "Take them now", TakeSharedAnswersAsync, Sharing.Settled);
+        }
+
+        if (releasesToo)
+        {
+            await LookForANewVersionAsync().ConfigureAwait(true);
+        }
+    }
+
+    /// <summary>
+    /// Asks whether a newer version of the app has been published.
+    /// </summary>
+    /// <remarks>
+    /// It offers the release page and nothing more. Fetching a seventy megabyte
+    /// executable, checking it, replacing a running program and restarting it is
+    /// a different piece of work whose failure leaves somebody with half an app;
+    /// a sentence and a link is the whole of what this is for.
+    ///
+    /// <para>Silent about every failure, as the folder look is. This machine is
+    /// often on a network that reaches nothing, and a complaint about that on
+    /// every launch is how a notice teaches people to close it unread.</para>
+    /// </remarks>
+    private async Task LookForANewVersionAsync()
+    {
+        try
+        {
+            PublishedRelease? published = await Task.Run(async () =>
+            {
+                using IServiceScope scope = _scopeFactory.CreateScope();
+                return await scope.ServiceProvider
+                    .GetRequiredService<CheckForNewVersionHandler>()
+                    .HandleAsync()
+                    .ConfigureAwait(false);
+            }).ConfigureAwait(true);
+
+            if (published is null || published.Number <= _versionOffered)
+            {
+                return;
+            }
+
+            _versionOffered = published.Number;
+
+            Ask(
+                $"{published.Name} is available. You are running {AppVersion.Number}.",
+                "See what is new",
+                () =>
+                {
+                    PageInBrowser.Open(published.Page);
+                    return Task.CompletedTask;
+                });
+        }
+        catch (Exception ex) when (LibraryFailure.IsExpected(ex))
+        {
+            Append($"could not look for a new version: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// The newest version already put to the user, so one release is offered
+    /// once for the life of the window rather than every hour.
+    /// </summary>
+    private Version _versionOffered = new(0, 0);
 
     /// <summary>
     /// Takes the answers the notice is offering, under the shared overlay.
@@ -1425,12 +1601,13 @@ public sealed partial class MainViewModel : ObservableObject
             }).ConfigureAwait(true);
 
             Append($"took shared answers: {result.Summary}");
-            Sharing.Report(result.Summary);
+            Sharing.Settled();
+            Say(result.Summary);
         }
         catch (Exception ex) when (LibraryFailure.IsExpected(ex))
         {
             Append($"could not take the shared answers: {ex}");
-            Sharing.Report($"Those answers could not be taken: {ex.Message}");
+            Say($"Those answers could not be taken: {ex.Message}");
         }
         finally
         {
@@ -1448,7 +1625,7 @@ public sealed partial class MainViewModel : ObservableObject
 
         if (Sharing.HasWaiting)
         {
-            Sharing.Report($"{Sharing.Notice} {Sharing.WaitingLabel}");
+            Say($"{Notice} {Sharing.WaitingLabel}");
         }
 
         LibraryChangedByShare();

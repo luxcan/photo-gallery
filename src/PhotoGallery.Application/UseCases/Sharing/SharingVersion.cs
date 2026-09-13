@@ -1,5 +1,3 @@
-using System.Reflection;
-
 namespace PhotoGallery.Application.UseCases.Sharing;
 
 /// <summary>What this release can read, and what it calls itself.</summary>
@@ -25,9 +23,5 @@ public static class SharingVersion
     /// What to call this release on the other machine's screen, and nothing
     /// more - no decision is ever made from it.
     /// </summary>
-    public static string App { get; } =
-        typeof(SharingVersion).Assembly
-            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()
-            ?.InformationalVersion
-        ?? "1.0.0";
+    public static string App => AppVersion.Full;
 }

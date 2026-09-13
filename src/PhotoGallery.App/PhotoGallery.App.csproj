@@ -22,12 +22,6 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
     <AssemblyName>PhotoGallery</AssemblyName>
-
-    <!-- Said here rather than left to the SDK's default, which happens to be the
-         same number: a release is a decision, and a version nobody chose cannot
-         be read back as one. The build stamps the commit after it, so the
-         installed executable names both what it is and what it was built from. -->
-    <Version>1.0.0</Version>
     <!-- Both windows leave Icon unset, so they inherit this one from the
          executable, as do the taskbar and the Start menu shortcut.
          Assets\AppIcon.svg is the drawing it was rendered from. -->

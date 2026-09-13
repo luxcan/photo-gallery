@@ -1,6 +1,16 @@
 <Project>
 
   <PropertyGroup>
+    <!-- Every assembly in the solution, not only the one that ships. The app
+         reads its own version out of PhotoGallery.Application, because that is
+         where the code that asks lives - so a number set on the executable alone
+         would be a number the About screen never sees, and the two would agree
+         only until the first release that changed one of them.
+
+         The build appends the commit, giving 1.0.0+<sha>: the number is the
+         decision, and the commit says which build carried it. -->
+    <Version>1.0.0</Version>
+
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>

@@ -10,6 +10,7 @@ using PhotoGallery.Infrastructure.Sharing;
 using PhotoGallery.Infrastructure.Places;
 using PhotoGallery.Infrastructure.Search;
 using PhotoGallery.Infrastructure.Storage;
+using PhotoGallery.Infrastructure.Updates;
 
 namespace PhotoGallery.Infrastructure;
 
@@ -49,6 +50,11 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddScoped<ICollectionRepository, SqliteCollectionRepository>();
         services.AddScoped<IAlbumFileMoveRepository, SqliteAlbumFileMoveRepository>();
         services.AddScoped<IAlbumFactsReader, SqliteAlbumFactsReader>();
+        // One for the life of the app, which is what an HttpClient is for: a new
+        // one per call leaves its connection held for minutes afterwards, and the
+        // habit is what spreads rather than this app's few requests.
+        services.AddSingleton<IReleaseSource, GitHubReleases>();
+
         services.AddSingleton<IQuarantineStore, FileSystemQuarantine>();
         services.AddSingleton<IMediaFileWalker, MediaFileWalker>();
         services.AddSingleton<IThumbnailStore, FileSystemThumbnailStore>();

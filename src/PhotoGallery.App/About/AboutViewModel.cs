@@ -1,6 +1,7 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using PhotoGallery.App.Shell;
+using PhotoGallery.Application;
 
 namespace PhotoGallery.App.About;
 
@@ -20,13 +21,13 @@ public sealed partial class AboutViewModel : ObservableObject
     /// What sits under the app's name.
     /// </summary>
     /// <remarks>
-    /// A placeholder, deliberately. Nothing stamps a version into this build:
-    /// the assembly carries .NET's default 1.0.0, which on a screen would read
-    /// as a first release that has not happened, and there is no tag to take a
-    /// build date from either. When the app is published from a tag, replace
-    /// this with <c>AssemblyInformationalVersion</c> and that tag's date.
+    /// The placeholder this used to be said "not yet released", which was true
+    /// until the day it stopped being: the project file now states the version,
+    /// the build stamps the commit after it, and there is a tag to match. So it
+    /// reads the assembly rather than a literal, and can never again be a
+    /// sentence about the app that is older than the app.
     /// </remarks>
-    public string VersionLine => "Version 0.1.0 · not yet released";
+    public string VersionLine => $"Version {AppVersion.Number}";
 
     /// <summary>The repository address as it is shown, without the scheme.</summary>
     public string RepositoryLabel => "github.com/luxcan/photo-gallery";
