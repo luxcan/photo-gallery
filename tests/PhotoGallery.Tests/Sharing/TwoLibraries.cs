@@ -151,6 +151,16 @@ internal sealed class Library : IDisposable
 
     public SqliteDecisionRepository Writing => field ??= new SqliteDecisionRepository(Db);
 
+    /// <summary>
+    /// The albums as the screens read and change them.
+    /// </summary>
+    /// <remarks>
+    /// The real one, so a test that says "somebody chose this cover" goes
+    /// through the code that records a choice rather than setting the two
+    /// columns it happens to know about.
+    /// </remarks>
+    public SqliteAlbumRepository Albums => field ??= new SqliteAlbumRepository(Db);
+
     public SharedFolderExchange Exchange => field ??= new SharedFolderExchange(Index);
 
     public PublishDecisionsHandler Publishing =>
@@ -437,6 +447,46 @@ internal sealed class Library : IDisposable
         return album;
     }
 
+    /// <summary>
+    /// A run of days the app grouped, and whether anybody here kept it.
+    /// </summary>
+    /// <remarks>
+    /// No <c>publicId</c> parameter, deliberately. A proposal is derived - the
+    /// pass deletes and reinserts the row - so every machine mints its own
+    /// identity for the same days, and two of these built with the same key on
+    /// two libraries is exactly the state a test about proposals needs.
+    /// </remarks>
+    public Album Suggestion(string name, string proposalKey, bool kept)
+    {
+        var album = new Album
+        {
+            Name = name,
+            StartUtc = new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+            EndUtc = new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+            Kind = AlbumKind.Period,
+            Origin = kept ? AlbumOrigin.Accepted : AlbumOrigin.Proposed,
+            ProposalKey = proposalKey,
+            BuiltUtc = new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+        };
+
+        Db.Albums.Add(album);
+        Db.SaveChanges();
+        return album;
+    }
+
+    /// <summary>Throws an album away, leaving the tombstone a merge travels on.</summary>
+    public void Remove(Album album, DateTime deletedUtc)
+    {
+        ArgumentNullException.ThrowIfNull(album);
+
+        Album row = Db.Albums.IgnoreQueryFilters().Single(other => other.Id == album.Id);
+
+        Db.AlbumMembers.RemoveRange(Db.AlbumMembers.Where(m => m.AlbumId == row.Id));
+        row.DeletedUtc = deletedUtc;
+        Db.SaveChanges();
+        Db.ChangeTracker.Clear();
+    }
+
     /// <summary>A shelf of albums. Always something a person typed.</summary>
     public Collection Collection(string name, DateTime namedUtc, Guid? publicId = null)
     {
@@ -470,6 +520,29 @@ internal sealed class Library : IDisposable
 
         row.CollectionId = collection?.Id;
         row.ShelvedUtc = shelvedUtc;
+        Db.SaveChanges();
+        Db.ChangeTracker.Clear();
+    }
+
+    /// <summary>Puts a photograph in an album, as adding it would.</summary>
+    /// <remarks>
+    /// The row rather than the repository, because these tests are about what
+    /// crosses between two machines: going through the real add would also
+    /// choose a cover here, which is the very thing the merge is being asked to
+    /// do at the other end.
+    /// </remarks>
+    public void Put(Album album, Asset photo, DateTime addedUtc)
+    {
+        ArgumentNullException.ThrowIfNull(album);
+        ArgumentNullException.ThrowIfNull(photo);
+
+        Db.AlbumMembers.Add(new AlbumMember
+        {
+            AlbumId = album.Id,
+            AssetId = photo.Id,
+            AddedUtc = addedUtc,
+        });
+
         Db.SaveChanges();
         Db.ChangeTracker.Clear();
     }

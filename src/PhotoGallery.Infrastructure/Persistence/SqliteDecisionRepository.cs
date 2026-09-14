@@ -74,7 +74,14 @@ public sealed class SqliteDecisionRepository : IDecisionRepository
             await ApplyCollectionsAsync(plan, cancellationToken).ConfigureAwait(false);
 
         int albums = await ApplyAlbumsAsync(plan, cancellationToken).ConfigureAwait(false);
-        int moved = await ApplyMovesAsync(plan, cancellationToken).ConfigureAwait(false);
+
+        (int moved, HashSet<int> settling) =
+            await ApplyMovesAsync(plan, cancellationToken).ConfigureAwait(false);
+
+        // After the photographs have moved and been saved, because which picture
+        // an album shows is worked out by reading its memberships back out.
+        await SettleCoversAsync(plan, settling, cancellationToken).ConfigureAwait(false);
+
         await ApplyRejectionsAsync(plan, cancellationToken).ConfigureAwait(false);
         await ApplyErasAsync(plan, cancellationToken).ConfigureAwait(false);
 
@@ -637,8 +644,45 @@ public sealed class SqliteDecisionRepository : IDecisionRepository
                 // is derived, so its row is this machine's own to build - what
                 // travels about one is a name, and a name with nothing to sit on
                 // waits for the rebuild that makes it.
-                if (settled.Origin == AlbumOrigin.Proposed || settled.DeletedUtc is not null)
+                if (settled.Origin == AlbumOrigin.Proposed)
                 {
+                    continue;
+                }
+
+                // One already taken away is written as a tombstone rather than
+                // skipped, which is the opposite of what a shelf does and for a
+                // reason a shelf has not got: photographs point at albums. With
+                // no row, this library cannot tell "deleted" from "never heard
+                // of", so a third machine that still holds the album goes on
+                // offering its memberships, they cannot be placed, and every
+                // merge from now on plans the same moves and applies none of
+                // them - "Nothing new" on screen, for ever. The row is invisible
+                // to every query in the app and is what lets the next merge
+                // settle.
+                //
+                // A proposal's is not worth keeping: its key is what a rebuild
+                // matches on, and a tombstone carrying one would be a second row
+                // answering to days this machine is about to group again.
+                if (settled.DeletedUtc is not null)
+                {
+                    if (settled.ProposalKey is null)
+                    {
+                        _db.Albums.Add(new Album
+                        {
+                            PublicId = settled.PublicId,
+                            Name = settled.Name,
+                            StartUtc = DateTime.UtcNow,
+                            EndUtc = DateTime.UtcNow,
+                            Kind = AlbumKind.Period,
+                            Origin = settled.Origin,
+                            NamedUtc = settled.NamedUtc,
+                            DeletedUtc = settled.DeletedUtc,
+                            BuiltUtc = DateTime.UtcNow,
+                        });
+
+                        changed++;
+                    }
+
                     continue;
                 }
 
@@ -744,11 +788,12 @@ public sealed class SqliteDecisionRepository : IDecisionRepository
             : here.FirstOrDefault(row => row.ProposalKey == album.ProposalKey)
               ?? here.FirstOrDefault(row => row.PublicId == album.PublicId);
 
-    private async Task<int> ApplyMovesAsync(MergePlan plan, CancellationToken cancellationToken)
+    private async Task<(int Moved, HashSet<int> Settling)> ApplyMovesAsync(
+        MergePlan plan, CancellationToken cancellationToken)
     {
         if (plan.Moves.Count == 0)
         {
-            return 0;
+            return (0, []);
         }
 
         Dictionary<AssetKey, int> assets =
@@ -759,15 +804,51 @@ public sealed class SqliteDecisionRepository : IDecisionRepository
             .ToDictionaryAsync(album => album.PublicId, album => album.Id, cancellationToken)
             .ConfigureAwait(false);
 
+        // Where these photographs are now, asked before any of them moves. An
+        // album a photograph leaves has to be settled as much as the one it
+        // joins - it may have been showing the picture that just left - and
+        // after the delete below there is nothing left to ask. Read in one
+        // query rather than one per move, because a merge that fills a holiday
+        // album moves a thousand photographs and they are nearly all in the
+        // same two or three albums.
+        HashSet<int> moving =
+        [
+            .. plan.Moves
+                .Where(move => assets.ContainsKey(move.Photo))
+                .Select(move => assets[move.Photo]),
+        ];
+
+        HashSet<int> settling =
+        [
+            .. await _db.AlbumMembers
+                .AsNoTracking()
+                .Where(member => moving.Contains(member.AssetId))
+                .Select(member => member.AlbumId)
+                .Distinct()
+                .ToListAsync(cancellationToken)
+                .ConfigureAwait(false),
+        ];
+
         int moved = 0;
 
         foreach (SharedAlbumMove move in plan.Moves)
         {
+            // A guard rather than a decision, and the difference matters. This
+            // used to be where a membership quietly died: an album is named by
+            // the identity the machine that published it uses, a proposal's
+            // identity is different on every machine, and the lookup simply
+            // failed - so somebody's tidying was dropped with no row, no
+            // waiting answer and no count, and re-proposed on every merge
+            // afterwards. The merge now settles what an album is called here
+            // and refuses what cannot land, so nothing that reaches this loop
+            // should fail to place. See DecisionMerge's album resolution.
             if (!assets.TryGetValue(move.Photo, out int assetId)
                 || !albums.TryGetValue(move.To, out int albumId))
             {
                 continue;
             }
+
+            settling.Add(albumId);
 
             // One delete and one insert, because a photograph's row is its whole
             // primary key in that table - the schema refuses a second rather
@@ -791,7 +872,106 @@ public sealed class SqliteDecisionRepository : IDecisionRepository
         await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
         _db.ChangeTracker.Clear();
 
-        return moved;
+        return (moved, settling);
+    }
+
+    /// <summary>
+    /// Puts the right picture on every album this merge touched: the one
+    /// somebody chose where a choice arrived, and the rule everywhere else.
+    /// </summary>
+    /// <remarks>
+    /// The half of an add the merge was not doing. Every local way into an album
+    /// ends at <see cref="AlbumCovers"/>, and the merge writes its memberships
+    /// itself - so an album that arrived from another machine was created with
+    /// no cover and then filled with photographs by a path that never worked one
+    /// out. It stood on the wall as a grey square for ever, because no later
+    /// pass repairs it: the rebuild only touches the albums it proposed itself.
+    ///
+    /// <para>Last of the album passes, and that is the whole design. A cover
+    /// naming a photograph is a claim about a membership, and the memberships
+    /// arrive in the same merge - so the choice can only be checked once they
+    /// have landed and been saved. Checking it earlier would refuse every cover
+    /// that arrived with its own album.</para>
+    ///
+    /// <para>Written only where it differs, so merging twice changes nothing.
+    /// And the rule runs afterwards either way: it leaves a chosen cover exactly
+    /// where it is, and catches the one case a choice cannot cover - a
+    /// photograph this library has, but which its own copy of the album does not
+    /// hold.</para>
+    /// </remarks>
+    private async Task SettleCoversAsync(
+        MergePlan plan, HashSet<int> settling, CancellationToken cancellationToken)
+    {
+        await ApplyChosenCoversAsync(plan, settling, cancellationToken).ConfigureAwait(false);
+
+        if (settling.Count == 0)
+        {
+            return;
+        }
+
+        foreach (int albumId in settling)
+        {
+            await AlbumCovers.EnsureAsync(_db, albumId, cancellationToken).ConfigureAwait(false);
+        }
+
+        await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        _db.ChangeTracker.Clear();
+    }
+
+    /// <summary>Takes the covers somebody on another machine chose.</summary>
+    /// <remarks>
+    /// The album is named the way every other album pass names it, by its run of
+    /// days where it has one - see <see cref="Match"/> - and the photograph by
+    /// the key the two libraries share. A cover this library cannot place is
+    /// left alone rather than cleared: the merge only proposes one for a
+    /// photograph this machine has indexed, and what is left after that is an
+    /// album whose copy here does not hold the picture, which is a disagreement
+    /// about memberships rather than about covers.
+    /// </remarks>
+    private async Task ApplyChosenCoversAsync(
+        MergePlan plan, HashSet<int> settling, CancellationToken cancellationToken)
+    {
+        List<SharedAlbum> chosen =
+            [.. plan.Albums.Where(album => album.Cover is not null && album.DeletedUtc is null)];
+
+        if (chosen.Count == 0)
+        {
+            return;
+        }
+
+        Dictionary<AssetKey, int> assets =
+            await AssetRowsAsync(cancellationToken).ConfigureAwait(false);
+
+        List<Album> here = await _db.Albums
+            .IgnoreQueryFilters()
+            .Where(album => album.DeletedUtc == null)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        foreach (SharedAlbum settled in chosen)
+        {
+            if (Match(here, settled) is not Album album
+                || !assets.TryGetValue(settled.Cover!.Value, out int assetId))
+            {
+                continue;
+            }
+
+            // The rule below runs over this album either way, which is what
+            // turns a choice this library cannot honour back into a picture it
+            // can - so it is added whether or not the choice is written.
+            settling.Add(album.Id);
+
+            if (album.CoverAssetId == assetId && album.CoverChosenUtc == settled.CoverChosenUtc)
+            {
+                continue;
+            }
+
+            album.CoverAssetId = assetId;
+            album.CoverChosenUtc = settled.CoverChosenUtc;
+        }
+
+        await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        _db.ChangeTracker.Clear();
     }
 
     private async Task ApplyRejectionsAsync(MergePlan plan, CancellationToken cancellationToken)

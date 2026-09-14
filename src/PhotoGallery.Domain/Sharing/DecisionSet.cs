@@ -125,6 +125,11 @@ public sealed record DecisionSet(
             // through the one door nobody had shut.
             Collections.Count == 0 ? DateTime.MinValue : Collections.Max(Moment),
             Albums.Count == 0 ? DateTime.MinValue : Albums.Max(album => Or(album.ShelvedUtc)),
+
+            // And covers, through the same door and for the same reason. A
+            // clock a year ahead would be refused for the names it typed and
+            // believed for the picture it put on every album.
+            Albums.Count == 0 ? DateTime.MinValue : Albums.Max(album => Or(album.CoverChosenUtc)),
         }.Max();
 
     private static DateTime Moment(SharedCollection collection) =>

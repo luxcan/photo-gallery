@@ -59,7 +59,7 @@ public sealed class SqliteDecisionReader : IDecisionReader
             await AnswersAsync(machine, faceKeys, people, cancellationToken).ConfigureAwait(false),
             Strangers(machine, faces, faceKeys),
             await TurnsAsync(machine, photographs, cancellationToken).ConfigureAwait(false),
-            await AlbumsAsync(cancellationToken).ConfigureAwait(false),
+            await AlbumsAsync(photographs, cancellationToken).ConfigureAwait(false),
             await MembershipsAsync(machine, photographs, cancellationToken).ConfigureAwait(false),
             await RejectionsAsync(machine, photographs, cancellationToken).ConfigureAwait(false),
             await ErasAsync(people, cancellationToken).ConfigureAwait(false),
@@ -350,9 +350,12 @@ public sealed class SqliteDecisionReader : IDecisionReader
     /// The shelf travels as the collection's public identity rather than as the
     /// row number the column holds, for the same reason every other key here
     /// does: a row number means a different shelf on the other machine, or
-    /// nothing at all.
+    /// nothing at all. A cover travels as the photograph's own key for the same
+    /// reason again, which is why this needs the map every other answer here is
+    /// keyed through.
     /// </remarks>
-    private async Task<IReadOnlyList<SharedAlbum>> AlbumsAsync(CancellationToken cancellationToken)
+    private async Task<IReadOnlyList<SharedAlbum>> AlbumsAsync(
+        Dictionary<int, AssetKey> photographs, CancellationToken cancellationToken)
     {
         Dictionary<int, Guid> shelves = await _db.Collections
             .IgnoreQueryFilters()
@@ -372,7 +375,9 @@ public sealed class SqliteDecisionReader : IDecisionReader
                 album.NamedUtc,
                 album.DeletedUtc,
                 album.CollectionId,
-                album.ShelvedUtc))
+                album.ShelvedUtc,
+                album.CoverAssetId,
+                album.CoverChosenUtc))
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
 
@@ -393,9 +398,28 @@ public sealed class SqliteDecisionReader : IDecisionReader
                 row.CollectionId is int shelf && shelves.TryGetValue(shelf, out Guid publicId)
                     ? publicId
                     : null,
-                row.ShelvedUtc)),
+                row.ShelvedUtc,
+
+                // Only a cover somebody chose, and only while this machine can
+                // still say which photograph it is. A cover the app worked out
+                // is a guess the other machine will make better for itself, and
+                // one whose photograph has left the library is a key nobody
+                // could match - so both travel as nothing, which is the truth
+                // about this album rather than a gap to report.
+                Chosen(photographs, row),
+
+                // The date only travels with the photograph it is about. A
+                // moment on its own would win the argument and then have
+                // nothing to put on the wall.
+                Chosen(photographs, row) is null ? null : row.CoverChosenUtc)),
         ];
     }
+
+    private static AssetKey? Chosen(Dictionary<int, AssetKey> photographs, AlbumRow row) =>
+        row.CoverChosenUtc is not null
+        && photographs.TryGetValue(row.CoverAssetId, out AssetKey cover)
+            ? cover
+            : null;
 
     private sealed record AlbumRow(
         Guid PublicId,
@@ -405,7 +429,9 @@ public sealed class SqliteDecisionReader : IDecisionReader
         DateTime? NamedUtc,
         DateTime? DeletedUtc,
         int? CollectionId,
-        DateTime? ShelvedUtc);
+        DateTime? ShelvedUtc,
+        int CoverAssetId,
+        DateTime? CoverChosenUtc);
 
     /// <summary>
     /// Which photographs are in which album - for albums somebody made or kept,

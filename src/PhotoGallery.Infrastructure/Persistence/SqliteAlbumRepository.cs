@@ -593,7 +593,7 @@ public sealed class SqliteAlbumRepository : IAlbumRepository
         // taking out chose a cover on its way past.
         await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
 
-        await EnsureCoverAsync(albumId, cancellationToken).ConfigureAwait(false);
+        await AlbumCovers.EnsureAsync(_db, albumId, cancellationToken).ConfigureAwait(false);
 
         await SettleWhatTheyLeftAsync(
             [.. leaving.Select(row => (row.AlbumId, row.Origin)).Distinct()],
@@ -656,7 +656,7 @@ public sealed class SqliteAlbumRepository : IAlbumRepository
             [.. members.Select(member => member.AssetId)],
             cancellationToken).ConfigureAwait(false);
 
-        await EnsureCoverAsync(albumId, cancellationToken).ConfigureAwait(false);
+        await AlbumCovers.EnsureAsync(_db, albumId, cancellationToken).ConfigureAwait(false);
         await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
     }
 
@@ -754,7 +754,7 @@ public sealed class SqliteAlbumRepository : IAlbumRepository
 
             if (anyLeft || origin != AlbumOrigin.Proposed)
             {
-                await EnsureCoverAsync(albumId, cancellationToken).ConfigureAwait(false);
+                await AlbumCovers.EnsureAsync(_db, albumId, cancellationToken).ConfigureAwait(false);
                 continue;
             }
 
@@ -795,82 +795,6 @@ public sealed class SqliteAlbumRepository : IAlbumRepository
                 ProposalKey = span,
                 RejectedUtc = now,
             }));
-    }
-
-    /// <summary>
-    /// Gives an album a cover if it has none, or has lost the one it had.
-    /// </summary>
-    /// <remarks>
-    /// One with people in it, and the middle of the span only when there are
-    /// none - the same rule the pass uses, because an album whose cover
-    /// changed depending on which code path last touched it would be worse than
-    /// either rule on its own.
-    /// </remarks>
-    private async Task EnsureCoverAsync(int albumId, CancellationToken cancellationToken)
-    {
-        Album? album = await _db.Albums
-            .FirstOrDefaultAsync(row => row.Id == albumId, cancellationToken)
-            .ConfigureAwait(false);
-
-        if (album is null)
-        {
-            return;
-        }
-
-        List<int> members = await _db.AlbumMembers
-            .Where(member => member.AlbumId == albumId)
-            .Join(
-                _db.Assets,
-                member => member.AssetId,
-                asset => asset.Id,
-                (member, asset) => asset)
-            // Not the capture date on its own: SQLite sorts a null first, so
-            // every video and every undated photograph bunched at the front
-            // and the middle of this list stopped being the middle of the
-            // album's span. Videos only started arriving in albums in numbers
-            // when a day rule learned to match them.
-            .OrderBy(AssetDates.Taken)
-            .Select(asset => asset.Id)
-            .ToListAsync(cancellationToken)
-            .ConfigureAwait(false);
-
-        if (members.Count == 0)
-        {
-            album.CoverAssetId = 0;
-
-            // Nothing is left to have chosen, so the next photograph to arrive
-            // gets the rule rather than a decision about an empty album.
-            album.CoverChosenUtc = null;
-            return;
-        }
-
-        // A cover somebody chose is left exactly where it is, which is the whole
-        // point of recording that they chose it: this method runs on every add
-        // and every remove, so without this the choice would survive until the
-        // next photograph joined the album and would then be replaced in
-        // silence.
-        if (album.CoverChosenUtc is not null && members.Contains(album.CoverAssetId))
-        {
-            return;
-        }
-
-        // The choice was about a photograph this album no longer holds - taken
-        // out, or set aside as a duplicate. The rule is a better answer than a
-        // picture that is not in here any more, and forgetting the choice is
-        // what lets it be one again later.
-        album.CoverChosenUtc = null;
-
-        var withFaces = await _db.Faces
-            .AsNoTracking()
-            .Where(face => members.Contains(face.AssetId))
-            .GroupBy(face => face.AssetId)
-            .Select(photo => new { AssetId = photo.Key, Faces = photo.Count() })
-            .OrderByDescending(photo => photo.Faces)
-            .ThenBy(photo => photo.AssetId)
-            .FirstOrDefaultAsync(cancellationToken)
-            .ConfigureAwait(false);
-
-        album.CoverAssetId = withFaces?.AssetId ?? members[members.Count / 2];
     }
 
     private static Album New(ProposedAlbum proposal, DateTime now)

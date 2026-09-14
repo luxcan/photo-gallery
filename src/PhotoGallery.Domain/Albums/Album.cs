@@ -66,10 +66,17 @@ public sealed class Album
     /// the next photograph was added to that album, and would then be replaced
     /// by the rule with nothing said.
     ///
-    /// <para>It carries the moment rather than a flag, so that two machines can
-    /// one day settle an argument about it the way they settle a name. Nothing
-    /// compares it today - covers do not travel - and a bare <c>bool</c> would
-    /// have to be widened into exactly this the first time they do.</para>
+    /// <para>It carries the moment rather than a flag, which is what two
+    /// machines settle an argument about a cover on - the way they settle one
+    /// about a name. See <see cref="Sharing.SharedAlbum.CoverChosenUtc"/>, and
+    /// the contest itself in <c>DecisionMerge</c>. A bare <c>bool</c> would have
+    /// had to be widened into exactly this the day covers began to travel, and
+    /// that day came.</para>
+    ///
+    /// <para>Only a cover with this date on it travels. The one the app works
+    /// out is a guess, and the other machine makes its own from its own faces -
+    /// so sending it would put one library's guess against another's equally
+    /// good one, and win again on every merge afterwards.</para>
     ///
     /// <para>It goes back to null when the chosen photograph leaves the album,
     /// because the choice was about a photograph that is no longer there and the

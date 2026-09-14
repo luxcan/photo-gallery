@@ -389,6 +389,92 @@ public sealed class DecisionMergeTests
         Assert.Equal(chingay, move.To);
     }
 
+    /// <summary>
+    /// A photograph is not put into an album this library has thrown away.
+    /// </summary>
+    /// <remarks>
+    /// The plan has to be the place this is settled, not the write. A tombstone
+    /// is kept for ever and beats any date, so the album is never coming back -
+    /// and a move that reaches the database naming it is dropped there with no
+    /// row, no waiting answer and no count, then planned again on the next merge
+    /// and the one after. An empty plan is the only answer that leaves "merging
+    /// twice changes nothing" true.
+    /// </remarks>
+    [Fact]
+    public void APhotographDoesNotJoinAnAlbumThisLibraryHasDeleted()
+    {
+        Guid genting = Guid.NewGuid();
+        AssetKey photo = Pictures.Photo(@"2019\a.jpg");
+
+        MergePlan plan = Merge(
+            mine: new Machine("Dad")
+                .HasAlbum(Pictures.Album(genting, "Genting", Monday) with { DeletedUtc = Tuesday }),
+            theirs: new Machine("Mum")
+                .HasAlbum(Pictures.Album(genting, "Genting", Monday))
+                .Puts(photo, genting, Wednesday),
+            here: Pictures.Indexed(photo));
+
+        Assert.Empty(plan.Moves);
+        Assert.True(plan.ChangesNothing, "a move that cannot land must not sit in the plan");
+    }
+
+    /// <summary>
+    /// A suggestion both machines kept is one album, whatever each calls it.
+    /// </summary>
+    /// <remarks>
+    /// The run of days is the only name two machines share for a proposal - the
+    /// pass deletes and reinserts the row, so the identity is this machine's
+    /// own. A membership names its album by that identity, so it has to be read
+    /// through the same rule the albums themselves are, or every photograph put
+    /// into a kept suggestion is dropped on arrival.
+    /// </remarks>
+    [Fact]
+    public void PhotographsPutIntoAKeptSuggestionArriveUnderThisLibrarysOwnName()
+    {
+        const string days = "2019-03-03..2019-03-05";
+        AssetKey photo = Pictures.Photo(@"2019\a.jpg");
+
+        SharedAlbum his = Pictures.Proposal(days, "March 2019", Monday);
+        SharedAlbum hers = Pictures.Proposal(days, "March 2019", Monday);
+
+        // The same days, kept on both machines, and two different identities -
+        // which is what a rebuild leaves behind and what this has to see past.
+        Assert.NotEqual(his.PublicId, hers.PublicId);
+
+        MergePlan plan = Merge(
+            mine: new Machine("Dad").HasAlbum(his),
+            theirs: new Machine("Mum").HasAlbum(hers).Puts(photo, hers.PublicId, Wednesday),
+            here: Pictures.Indexed(photo));
+
+        Assert.Equal(his.PublicId, Assert.Single(plan.Moves).To);
+    }
+
+    /// <summary>
+    /// And a suggestion nobody here has kept takes nothing.
+    /// </summary>
+    /// <remarks>
+    /// The mirror of the rule that stops a proposal's contents being published:
+    /// they are derived, and this machine's next rebuild owns them. Taking
+    /// another machine's answers into one would put them against that rebuild,
+    /// which prunes whatever its own clustering no longer claims. Refused here
+    /// rather than written and then quietly undone.
+    /// </remarks>
+    [Fact]
+    public void PhotographsAreNotTakenIntoAnAlbumThisLibraryOnlySuggests()
+    {
+        const string days = "2019-03-03..2019-03-05";
+        AssetKey photo = Pictures.Photo(@"2019\a.jpg");
+
+        SharedAlbum hers = Pictures.Proposal(days, "March 2019", Monday);
+
+        MergePlan plan = Merge(
+            mine: new Machine("Dad").HasAlbum(Pictures.Proposal(days, "March 2019")),
+            theirs: new Machine("Mum").HasAlbum(hers).Puts(photo, hers.PublicId, Wednesday),
+            here: Pictures.Indexed(photo));
+
+        Assert.Empty(plan.Moves);
+    }
+
     [Fact]
     public void ARenameOfAProposedAlbumTravelsOnItsDaysRatherThanItsRow()
     {
@@ -417,6 +503,83 @@ public sealed class DecisionMergeTests
             here: Pictures.Indexed());
 
         Assert.Empty(plan.Albums);
+    }
+
+    /// <summary>
+    /// The picture somebody chose crosses, and on its own date.
+    /// </summary>
+    /// <remarks>
+    /// Not carried by whoever won the name, for the reason the shelf is not
+    /// either: renaming an album and choosing the picture it shows are two
+    /// decisions, made at two moments, and settling both on the name's date
+    /// hands every argument about pictures to whoever typed last.
+    /// </remarks>
+    [Fact]
+    public void TheCoverChosenLastIsTheOneThatTravels()
+    {
+        Guid album = Guid.NewGuid();
+        AssetKey hers = Pictures.Photo(@"2019\hers.jpg");
+        AssetKey his = Pictures.Photo(@"2019\his.jpg");
+
+        MergePlan plan = Merge(
+            mine: new Machine("Dad").HasAlbum(
+                Pictures.Album(album, "Bali", Tuesday) with { Cover = his, CoverChosenUtc = Monday }),
+            theirs: new Machine("Mum").HasAlbum(
+                Pictures.Album(album, "Bali", Monday) with { Cover = hers, CoverChosenUtc = Tuesday }),
+            here: Pictures.Indexed(hers, his));
+
+        SharedAlbum settled = Assert.Single(plan.Albums);
+
+        // His name, hers the picture - which is the whole point of the two
+        // dates being separate.
+        Assert.Equal(hers, settled.Cover);
+        Assert.Equal(Tuesday, settled.CoverChosenUtc);
+    }
+
+    /// <summary>
+    /// A cover about a photograph this library has not indexed is not proposed
+    /// at all.
+    /// </summary>
+    /// <remarks>
+    /// Left out rather than held. A decision set is whole state, so the machine
+    /// that chose it goes on saying so and it lands by itself on the first merge
+    /// after the scan that finds the picture. What it must not do meanwhile is
+    /// sit in the plan: an album that differs for ever is "merging twice changes
+    /// nothing" quietly ceasing to be true, on the one album nobody could see a
+    /// change in.
+    /// </remarks>
+    [Fact]
+    public void ACoverForAPhotographThisLibraryHasNotGotIsNotProposedYet()
+    {
+        Guid album = Guid.NewGuid();
+
+        MergePlan plan = Merge(
+            mine: new Machine("Dad").HasAlbum(Pictures.Album(album, "Bali", Monday)),
+            theirs: new Machine("Mum").HasAlbum(
+                Pictures.Album(album, "Bali", Monday) with
+                {
+                    Cover = Pictures.Photo(@"2019\hers.jpg"),
+                    CoverChosenUtc = Tuesday,
+                }),
+            here: Pictures.Indexed());
+
+        Assert.Empty(plan.Albums);
+    }
+
+    /// <summary>And it is proposed the moment the scan finds that photograph.</summary>
+    [Fact]
+    public void ACoverLandsOnceThePhotographItNamesHasBeenIndexed()
+    {
+        Guid album = Guid.NewGuid();
+        AssetKey hers = Pictures.Photo(@"2019\hers.jpg");
+
+        MergePlan plan = Merge(
+            mine: new Machine("Dad").HasAlbum(Pictures.Album(album, "Bali", Monday)),
+            theirs: new Machine("Mum").HasAlbum(
+                Pictures.Album(album, "Bali", Monday) with { Cover = hers, CoverChosenUtc = Tuesday }),
+            here: Pictures.Indexed(hers));
+
+        Assert.Equal(hers, Assert.Single(plan.Albums).Cover);
     }
 
     [Fact]

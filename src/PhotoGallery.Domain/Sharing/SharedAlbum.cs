@@ -23,6 +23,22 @@ namespace PhotoGallery.Domain.Sharing;
 /// one date for both hands every argument about shelves to whoever typed a name
 /// last.
 /// </param>
+/// <param name="Cover">
+/// The photograph somebody chose for it, or null where nobody has and the app is
+/// still working one out.
+/// </param>
+/// <param name="CoverChosenUtc">
+/// When they chose it. Null loses to any date, the same way a name nobody typed
+/// does.
+/// </param>
+/// <remarks>
+/// <strong>Only a chosen cover travels.</strong> The one the app works out is a
+/// guess, and the other machine makes its own from its own faces - so sending it
+/// would be one library's guess beating another library's equally good guess,
+/// and then beating it again on every merge afterwards. It is the rule
+/// <see cref="DecisionSet.WithoutProposals"/> follows for a name, arriving at the
+/// same place from the other end.
+/// </remarks>
 public sealed record SharedAlbum(
     Guid PublicId,
     string Name,
@@ -31,4 +47,6 @@ public sealed record SharedAlbum(
     DateTime? NamedUtc,
     DateTime? DeletedUtc,
     Guid? Shelf = null,
-    DateTime? ShelvedUtc = null);
+    DateTime? ShelvedUtc = null,
+    AssetKey? Cover = null,
+    DateTime? CoverChosenUtc = null);

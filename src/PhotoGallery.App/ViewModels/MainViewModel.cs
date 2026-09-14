@@ -393,6 +393,21 @@ public sealed partial class MainViewModel : ObservableObject
             {
                 await People.ReloadAsync();
             }
+
+            // The same hole, one screen along. Which picture an album shows for
+            // itself is chosen in that viewer, and the wall behind it is drawn
+            // from rows read before the choice was made - so the card kept the
+            // old picture, and pressing Back only uncovered it. Leaving the
+            // section and coming back put it right, which is the shape of a
+            // screen nobody told.
+            //
+            // The whole screen rather than the one album: the wall carries the
+            // band of shelves above it, and their mosaics are made of album
+            // covers too.
+            if (ShowAlbums && sender is GalleryViewModel)
+            {
+                await Albums.ReloadAsync();
+            }
         }
         catch (Exception ex) when (LibraryFailure.IsExpected(ex))
         {

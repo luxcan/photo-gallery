@@ -129,10 +129,13 @@ public interface IAlbumRepository
     /// question instead, after which the rule leaves the album alone for as long
     /// as it still holds that photograph.
     ///
-    /// <para>Covers do not travel between machines. Both libraries derive the
-    /// same one from the same rule today, so there has never been anything to
-    /// disagree about; a chosen one can disagree, and putting it in the payload
-    /// is a decision of its own rather than a consequence of this.</para>
+    /// <para>A cover recorded here travels, and the one the app works out does
+    /// not. Both libraries derive the same answer from the same rule, so there
+    /// is nothing to disagree about until somebody answers instead - and then
+    /// the album on the other machine showed a different photograph from the one
+    /// the person had picked, which is what putting it in the payload fixed. It
+    /// is settled on this date rather than on the album's name, because renaming
+    /// an album and choosing its picture are two decisions.</para>
     /// </remarks>
     /// <returns>
     /// False when the album has no such photograph in it, which is the only way

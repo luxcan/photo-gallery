@@ -123,9 +123,9 @@ public static class DecisionMerge
         List<SharedPerson> people = SettlePeople(mine, accepted);
         Faces faces = SettleFaces(mine, accepted, here);
         (List<PhotoTurn> turns, List<PhotoTurn> heldTurns) = SettleTurns(mine, accepted, here);
-        List<SharedAlbum> albums = SettleAlbums(mine, accepted);
+        List<SharedAlbum> albums = SettleAlbums(mine, accepted, here);
         (List<SharedAlbumMove> moves, List<SharedAlbumMembership> heldMoves) =
-            SettleMemberships(mine, accepted, here);
+            SettleMemberships(mine, accepted, here, albums);
         (List<SharedAlbumRejection> rejections, List<SharedAlbumRejection> heldRejections) =
             SettleRejections(mine, accepted, here);
 
@@ -212,7 +212,7 @@ public static class DecisionMerge
         Faces faces = SettleFaces(mine, parked, here);
         (List<PhotoTurn> turns, List<PhotoTurn> heldTurns) = SettleTurns(mine, parked, here);
         (List<SharedAlbumMove> moves, List<SharedAlbumMembership> heldMoves) =
-            SettleMemberships(mine, parked, here);
+            SettleMemberships(mine, parked, here, []);
         (List<SharedAlbumRejection> rejections, List<SharedAlbumRejection> heldRejections) =
             SettleRejections(mine, parked, here);
 
@@ -747,7 +747,13 @@ public static class DecisionMerge
 
     // ---------------------------------------------------------------- albums
 
-    private static List<SharedAlbum> SettleAlbums(DecisionSet mine, List<DecisionSet> accepted)
+    /// <param name="here">
+    /// What this machine has actually indexed, which is what decides whether a
+    /// cover can be taken. A cover names a photograph, so it is the one thing
+    /// about an album that can arrive before its picture does.
+    /// </param>
+    private static List<SharedAlbum> SettleAlbums(
+        DecisionSet mine, List<DecisionSet> accepted, LibraryContents here)
     {
         Dictionary<string, SharedAlbum> ours = mine.Albums.ToDictionary(Identity);
         Dictionary<string, SharedAlbum> winners = new(ours);
@@ -773,9 +779,43 @@ public static class DecisionMerge
 
         return
         [
-            .. winners.Values.Where(winner =>
-                !ours.TryGetValue(Identity(winner), out SharedAlbum? was) || was != winner),
+            .. winners.Values
+                .Select(winner => Keepable(winner, ours, here))
+                .Where(winner =>
+                    !ours.TryGetValue(Identity(winner), out SharedAlbum? was) || was != winner),
         ];
+    }
+
+    /// <summary>
+    /// The same album with a cover this library cannot honour put back to the
+    /// one it already had.
+    /// </summary>
+    /// <remarks>
+    /// A cover naming a photograph this machine has not indexed is not refused
+    /// and is not held: it is simply not taken yet. Decision sets are whole
+    /// state rather than a log, so the machine that chose it goes on saying so,
+    /// and the choice lands by itself on the first merge after the scan that
+    /// finds the picture. Holding it would buy one thing - surviving that
+    /// machine later forgetting the photograph - at the price of a fifth kind of
+    /// waiting answer, a count on the Sharing screen and a second way for the
+    /// same fact to arrive.
+    ///
+    /// <para>Put back rather than dropped, because the plan is a difference: a
+    /// winner carrying a cover that will not be written is an album that differs
+    /// from this library's for ever, and "merging twice changes nothing" would
+    /// quietly stop being true on the album nobody could see the change in.</para>
+    /// </remarks>
+    private static SharedAlbum Keepable(
+        SharedAlbum winner, Dictionary<string, SharedAlbum> ours, LibraryContents here)
+    {
+        if (winner.Cover is not AssetKey cover || here.Photographs.Contains(cover))
+        {
+            return winner;
+        }
+
+        SharedAlbum? was = ours.TryGetValue(Identity(winner), out SharedAlbum? mine) ? mine : null;
+
+        return winner with { Cover = was?.Cover, CoverChosenUtc = was?.CoverChosenUtc };
     }
 
     /// <summary>
@@ -805,13 +845,45 @@ public static class DecisionMerge
         // and one date for both is exactly how that would happen.
         SharedAlbum shelved = Shelf(mine, theirs);
 
+        // And the cover on its own date again, for the third time and the third
+        // reason: which picture an album shows is not an opinion about its name
+        // or its shelf, and somebody renaming it must not quietly replace a
+        // photograph somebody else chose.
+        SharedAlbum covered = Cover(mine, theirs);
+
         return named with
         {
             DeletedUtc = Earliest(mine.DeletedUtc, theirs.DeletedUtc),
             Shelf = shelved.Shelf,
             ShelvedUtc = shelved.ShelvedUtc,
+            Cover = covered.Cover,
+            CoverChosenUtc = covered.CoverChosenUtc,
         };
     }
+
+    /// <summary>
+    /// Which of two machines last chose the picture an album shows.
+    /// </summary>
+    /// <remarks>
+    /// A null date is a library where nobody has chosen one and the app is still
+    /// working it out, and it loses to any date - because a guess losing to an
+    /// answer is the whole of what this settles. The tie-break is on the key's
+    /// own text, so two machines settling the same instant land on the same
+    /// photograph without either being asked.
+    /// </remarks>
+    private static SharedAlbum Cover(SharedAlbum mine, SharedAlbum theirs)
+    {
+        int byDate = Nullable.Compare(mine.CoverChosenUtc, theirs.CoverChosenUtc);
+
+        if (byDate != 0)
+        {
+            return byDate > 0 ? mine : theirs;
+        }
+
+        return string.CompareOrdinal(Text(mine.Cover), Text(theirs.Cover)) >= 0 ? mine : theirs;
+    }
+
+    private static string Text(AssetKey? cover) => cover?.ToString() ?? string.Empty;
 
     /// <summary>
     /// Which of two machines last said where an album sits.
@@ -892,26 +964,71 @@ public static class DecisionMerge
         return named with { DeletedUtc = Earliest(mine.DeletedUtc, theirs.DeletedUtc) };
     }
 
+    /// <param name="settling">
+    /// The albums this merge has just settled, so that a membership naming one
+    /// this library has never held can tell a row about to be written from a
+    /// row nobody will write.
+    /// </param>
     private static (List<SharedAlbumMove> Moves, List<SharedAlbumMembership> Held) SettleMemberships(
-        DecisionSet mine, List<DecisionSet> accepted, LibraryContents here)
+        DecisionSet mine,
+        List<DecisionSet> accepted,
+        LibraryContents here,
+        IReadOnlyList<SharedAlbum> settling)
     {
         Dictionary<AssetKey, SharedAlbumMembership> ours = mine.Memberships.ToDictionary(m => m.Photo);
         Dictionary<AssetKey, SharedAlbumMembership> winners = new(ours);
         List<SharedAlbumMembership> held = [];
 
-        foreach (SharedAlbumMembership membership in accepted.SelectMany(them => them.Memberships))
+        Albums albums = Albums.Of(mine, settling);
+
+        // One machine at a time, because an album is named by the identity the
+        // machine that published it uses, and working out what that names here
+        // needs that machine's own album rows.
+        foreach (DecisionSet them in accepted)
         {
-            if (!here.Photographs.Contains(membership.Photo))
+            Dictionary<Guid, SharedAlbum> theirs = [];
+            foreach (SharedAlbum album in them.Albums)
             {
-                held.Add(membership);
-                continue;
+                theirs[album.PublicId] = album;
             }
 
-            winners[membership.Photo] =
-                winners.TryGetValue(membership.Photo, out SharedAlbumMembership? standing)
-                && Wins(standing.AddedUtc, standing.DecidedBy, membership.AddedUtc, membership.DecidedBy)
-                    ? standing
-                    : membership;
+            foreach (SharedAlbumMembership membership in them.Memberships)
+            {
+                // Refused before it is parked rather than after. A scan cannot
+                // make an answer takeable that this library has already refused,
+                // so holding one buys a waiting answer that the very sweep which
+                // reads it back will drop - and release as applied on the way
+                // out, having written nothing.
+                if (albums.Placed(membership.Album, theirs) is not Guid album)
+                {
+                    continue;
+                }
+
+                if (!here.Photographs.Contains(membership.Photo))
+                {
+                    // Parked under the name this library will look the album up
+                    // by, not the one it arrived under. What comes back to
+                    // settle it later arrives without the set that carried it,
+                    // so this is the last moment the publishing machine's albums
+                    // can be read - and an answer parked under a name only that
+                    // machine uses would fail to place on the very sweep that
+                    // exists to make it land.
+                    held.Add(album == membership.Album
+                        ? membership
+                        : membership with { Album = album });
+
+                    continue;
+                }
+
+                SharedAlbumMembership settled =
+                    album == membership.Album ? membership : membership with { Album = album };
+
+                winners[settled.Photo] =
+                    winners.TryGetValue(settled.Photo, out SharedAlbumMembership? standing)
+                    && Wins(standing.AddedUtc, standing.DecidedBy, settled.AddedUtc, settled.DecidedBy)
+                        ? standing
+                        : settled;
+            }
         }
 
         return (
@@ -931,6 +1048,115 @@ public static class DecisionMerge
                         move.Winner.DecidedBy)),
             ],
             held);
+    }
+
+    /// <summary>
+    /// This library's own albums, by both of the names another machine can call
+    /// one.
+    /// </summary>
+    /// <remarks>
+    /// An album somebody made mints its identity once and keeps it everywhere -
+    /// the merge creates the row with the identity it arrived under - so those
+    /// two machines agree on. A proposal does not: the pass deletes and
+    /// reinserts it, so every machine's row for the same run of days carries a
+    /// different <see cref="SharedAlbum.PublicId"/>, and the days are the only
+    /// thing both of them can say. That is what <see cref="Identity"/> already
+    /// settles for the albums themselves, and a membership has to be read
+    /// through the same rule or the two passes disagree about what an album is.
+    /// </remarks>
+    private sealed class Albums
+    {
+        private readonly Dictionary<string, SharedAlbum> _byIdentity = [];
+        private readonly Dictionary<Guid, SharedAlbum> _byPublicId = [];
+        private readonly Dictionary<string, SharedAlbum> _arriving = [];
+
+        /// <param name="settling">
+        /// What the album pass just concluded, which is the other half of the
+        /// question. An album this library has never held is about to be created
+        /// - unless the very thing arriving about it is that somebody threw it
+        /// away, and then it is not.
+        /// </param>
+        public static Albums Of(DecisionSet mine, IReadOnlyList<SharedAlbum> settling)
+        {
+            var albums = new Albums();
+
+            foreach (SharedAlbum album in mine.Albums)
+            {
+                albums._byIdentity[Identity(album)] = album;
+                albums._byPublicId[album.PublicId] = album;
+            }
+
+            foreach (SharedAlbum album in settling)
+            {
+                albums._arriving[Identity(album)] = album;
+            }
+
+            return albums;
+        }
+
+        /// <summary>
+        /// What this library would call the album a membership names, or null
+        /// where it will not take that membership at all.
+        /// </summary>
+        /// <remarks>
+        /// Two refusals, and both are decisions rather than accidents. They were
+        /// neither before: the album was looked up by the publishing machine's
+        /// identity when the rows were written, that lookup quietly failed, and
+        /// the membership was dropped with no row, no waiting answer and no
+        /// count - which is somebody's evening of tidying disappearing without a
+        /// word. Refusing here instead means the plan never carries a move that
+        /// cannot land, so "merging twice changes nothing" stays true and the
+        /// Sharing screen stops offering answers that do nothing when taken.
+        ///
+        /// <para><strong>Gone here.</strong> A tombstone is kept for ever and
+        /// beats any date, so an album this library has deleted is not coming
+        /// back and nothing may join it. The other machine learns of the
+        /// deletion on its own next merge and stops publishing them.</para>
+        ///
+        /// <para><strong>Still only a suggestion here.</strong> A proposal's
+        /// contents are derived, and the rebuild owns them - it prunes whatever
+        /// its own clustering no longer claims. Taking another machine's
+        /// memberships into one would put that machine's answers up against this
+        /// one's next scan, which is the mirror of the rule that stops a
+        /// proposal's contents being published in the first place. What is
+        /// missing is that <em>keeping</em> a suggestion does not travel; until
+        /// it does, this is the honest answer rather than a write that a scan
+        /// may undo.</para>
+        /// </remarks>
+        public Guid? Placed(Guid named, IReadOnlyDictionary<Guid, SharedAlbum> theirs)
+        {
+            SharedAlbum? album = theirs.GetValueOrDefault(named);
+
+            SharedAlbum? mine =
+                album is not null
+                && _byIdentity.TryGetValue(Identity(album), out SharedAlbum? matched)
+                    ? matched
+                    : _byPublicId.GetValueOrDefault(named);
+
+            // One this library has never held, which this merge is about to
+            // create - but only if what is arriving about it is that it exists.
+            // An album that arrives already thrown away is never written, and
+            // promising a membership a row that nobody will make is how the
+            // same move came to be planned on every merge and applied on none.
+            if (mine is null)
+            {
+                if (album is null || !_arriving.TryGetValue(Identity(album), out SharedAlbum? coming))
+                {
+                    return named;
+                }
+
+                // The identity it will be created under is the one the album
+                // pass settled on, which is not always the one this membership
+                // arrived naming: two machines can hold the same run of days and
+                // only one of them wins.
+                return Refused(coming) ? null : coming.PublicId;
+            }
+
+            return Refused(mine) ? null : mine.PublicId;
+        }
+
+        private static bool Refused(SharedAlbum album) =>
+            album.DeletedUtc is not null || album.Origin == AlbumOrigin.Proposed;
     }
 
     private static (List<SharedAlbumRejection> Applied, List<SharedAlbumRejection> Held) SettleRejections(
