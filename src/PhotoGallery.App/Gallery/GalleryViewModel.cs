@@ -153,6 +153,18 @@ public sealed partial class GalleryViewModel : ObservableObject
     /// </remarks>
     public event EventHandler<IReadOnlyList<string>>? TurnRefusedOutOfReach;
 
+    /// <summary>
+    /// Raised when several ticked photographs are to be put in an album,
+    /// carrying its name.
+    /// </summary>
+    /// <remarks>
+    /// The write is quick and the wall rebuilt afterwards is not, so it wants
+    /// the overlay - and the overlay is the shell's. This says what was asked
+    /// for and lets the shell raise it and call back, the same way keeping a
+    /// duplicate group does.
+    /// </remarks>
+    public event EventHandler<string>? PlacingChosen;
+
     public ObservableCollection<GalleryRow> Rows => _window.Rows;
 
     public ObservableCollection<FolderNode> Folders { get; } = [];
@@ -243,6 +255,74 @@ public sealed partial class GalleryViewModel : ObservableObject
     public AlbumPicker Albums { get; }
 
     public bool IsEmpty => _window.Count == 0;
+
+    // ------------------------------------------------------- choosing several
+
+    /// <summary>
+    /// The photographs ticked on the wall, by the id everything downstream
+    /// wants.
+    /// </summary>
+    /// <remarks>
+    /// Held here rather than read off the tiles, because a tile does not live
+    /// long enough to hold it: <see cref="TileWindow.Fill"/> replaces every one
+    /// of them whenever the query runs again - a search, a folder, a reload
+    /// after a deletion. <see cref="GalleryTile.IsChosen"/> is the mirror the
+    /// wall draws, put back from this set whenever tiles are built.
+    ///
+    /// <para>Ids rather than tiles for the same reason, and because they are
+    /// already what both things this feature does take: a list of asset ids.</para>
+    /// </remarks>
+    private readonly HashSet<int> _chosen = [];
+
+    /// <summary>
+    /// The photographs the album picker is open about.
+    /// </summary>
+    /// <remarks>
+    /// One field for both ways in, so the viewer's single photograph is simply a
+    /// batch of one - the same trick the delete funnel has always used, and the
+    /// reason there is one write rather than two that have to agree.
+    /// </remarks>
+    private IReadOnlyList<int> _placing = [];
+
+    /// <summary>Whether that list came from the wall rather than the viewer.</summary>
+    private bool _placingIsBatch;
+
+    /// <summary>
+    /// Whether clicking a photograph ticks it rather than opening it.
+    /// </summary>
+    /// <remarks>
+    /// A mode rather than a modifier. Clicking a picture to see it large is a
+    /// settled rule of this screen, so the way to choose several cannot be a
+    /// different click on the same tile - and a modifier nothing on screen
+    /// mentions is a feature only the person who wrote it knows about.
+    /// </remarks>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasChosen), nameof(ChosenSummary), nameof(DeleteChosenCaption))]
+    private bool _isChoosing;
+
+    public int ChosenCount => _chosen.Count;
+
+    public bool HasChosen => _chosen.Count > 0;
+
+    /// <summary>How many are ticked, said in the strip beside the count.</summary>
+    public string ChosenSummary => _chosen.Count switch
+    {
+        0 => "None chosen",
+        1 => "1 chosen",
+        _ => $"{_chosen.Count:N0} chosen",
+    };
+
+    /// <summary>
+    /// What the delete button says, with the count in it.
+    /// </summary>
+    /// <remarks>
+    /// The same shape the duplicates screen's own delete uses. A button that
+    /// says how many it is about to destroy is the last place the number can be
+    /// noticed before the question is asked.
+    /// </remarks>
+    public string DeleteChosenCaption => _chosen.Count == 1
+        ? "Delete 1 photo"
+        : $"Delete {_chosen.Count:N0} photos";
 
     /// <summary>
     /// Says what is on screen and, plainly, what is still missing - a grid of
@@ -752,26 +832,64 @@ public sealed partial class GalleryViewModel : ObservableObject
     [RelayCommand]
     private async Task AddToAlbumAsync()
     {
-        if (OpenTile is null)
+        if (OpenTile is not GalleryTile tile)
         {
             return;
         }
 
-        IReadOnlyList<AlbumSummary> all;
-        using (IServiceScope scope = _scopeFactory.CreateScope())
-        {
-            all = await scope.ServiceProvider
-                .GetRequiredService<IAlbumRepository>()
-                .GetAsync()
-                .ConfigureAwait(true);
-        }
+        _placing = [tile.Item.Id];
+        _placingIsBatch = false;
 
         Albums.Open(
-            all,
+            await AllAlbumsAsync().ConfigureAwait(true),
             OpenPhotoAlbum?.Id ?? 0,
             "Put this photograph in an album",
             "A photograph belongs to one album, so choosing another moves it. "
                 + "Type a name that is not there to make one.");
+    }
+
+    /// <summary>
+    /// Opens the same picker on everything ticked.
+    /// </summary>
+    /// <remarks>
+    /// The same picker, deliberately. One photograph or forty is the same
+    /// question - which album do these belong in - and a second list to keep in
+    /// step would be a second place to get the wording, the filter and the
+    /// make-a-new-one box wrong.
+    ///
+    /// <para>No current album is named, because forty photographs may have come
+    /// from forty places. The picker's way out of an album hides itself when
+    /// there is no one album to leave.</para>
+    /// </remarks>
+    [RelayCommand]
+    private async Task MoveChosenToAlbumAsync()
+    {
+        if (_chosen.Count == 0)
+        {
+            return;
+        }
+
+        _placing = [.. _chosen];
+        _placingIsBatch = true;
+
+        Albums.Open(
+            await AllAlbumsAsync().ConfigureAwait(true),
+            0,
+            _chosen.Count == 1
+                ? "Put this photograph in an album"
+                : $"Put these {_chosen.Count:N0} photographs in an album",
+            "A photograph belongs to one album, so choosing another moves it. "
+                + "Type a name that is not there to make one.");
+    }
+
+    private async Task<IReadOnlyList<AlbumSummary>> AllAlbumsAsync()
+    {
+        using IServiceScope scope = _scopeFactory.CreateScope();
+
+        return await scope.ServiceProvider
+            .GetRequiredService<IAlbumRepository>()
+            .GetAsync()
+            .ConfigureAwait(true);
     }
 
     /// <summary>
@@ -782,14 +900,51 @@ public sealed partial class GalleryViewModel : ObservableObject
     /// the way to make a new one - so what comes back may name something that
     /// does not exist yet.
     /// </remarks>
-    private async Task PutInAlbumAsync(string name)
+    private Task PutInAlbumAsync(string name)
     {
-        if (OpenTile is not GalleryTile tile)
+        Albums.Close();
+
+        if (_placing.Count == 0)
         {
-            return;
+            return Task.CompletedTask;
         }
 
-        Albums.Close();
+        // A batch is handed up rather than done here. Putting forty photographs
+        // somewhere is a write and then a whole wall rebuilt, and that needs the
+        // overlay - which belongs to the shell, for the reason keeping a
+        // duplicate group does.
+        if (_placingIsBatch)
+        {
+            PlacingChosen?.Invoke(this, name);
+            return Task.CompletedTask;
+        }
+
+        return PlaceAsync(name);
+    }
+
+    /// <summary>
+    /// Puts everything ticked into the album named, making it if it is new.
+    /// </summary>
+    /// <remarks>
+    /// Public because the shell starts it: it runs under the overlay, so that
+    /// nothing else on the window can be pressed while the wall is being rebuilt
+    /// underneath it.
+    /// </remarks>
+    public async Task PlaceChosenAsync(string name)
+    {
+        await PlaceAsync(name).ConfigureAwait(true);
+
+        StopChoosing();
+        await LoadAsync().ConfigureAwait(true);
+    }
+
+    /// <summary>
+    /// The one write both ways in share: resolve the name, make it if it is new,
+    /// and move everything being placed into it.
+    /// </summary>
+    private async Task PlaceAsync(string name)
+    {
+        IReadOnlyList<int> placing = _placing;
 
         try
         {
@@ -808,18 +963,18 @@ public sealed partial class GalleryViewModel : ObservableObject
                 int id = chosen?.Id
                     ?? await albums.CreateAsync(name).ConfigureAwait(true);
 
-                moved = await albums
-                    .AddAsync(id, [tile.Item.Id])
-                    .ConfigureAwait(true);
+                moved = await albums.AddAsync(id, placing).ConfigureAwait(true);
             }
 
-            // The rule nobody asked about, said out loud rather than applied
-            // quietly: it left somewhere to be here.
-            AlbumNotice = moved.Moved > 0 && moved.From.Count > 0
-                ? $"Moved into {name}, out of {string.Join(" and ", moved.From)}"
-                : $"Added to {name}";
+            AlbumNotice = AlbumMoveNotice.For(name, placing.Count, moved);
 
-            await LoadOpenAlbumAsync(tile.Item.Id).ConfigureAwait(true);
+            // Only the viewer has an open photograph whose album line could be
+            // stale; a batch has just thrown the whole wall away and rebuilt it.
+            if (!_placingIsBatch && OpenTile is GalleryTile tile)
+            {
+                await LoadOpenAlbumAsync(tile.Item.Id).ConfigureAwait(true);
+            }
+
             LibraryChanged?.Invoke(this, EventArgs.Empty);
         }
         catch (Exception ex) when (ex is IOException or InvalidOperationException)
@@ -1586,7 +1741,21 @@ public sealed partial class GalleryViewModel : ObservableObject
             // Filling also forgets the position asked for before: different
             // pictures under the same index say nothing about what is on screen
             // now.
-            _window.Fill(page.Items.Select(item => new GalleryTile(item)));
+            _window.Fill(page.Items.Select(item => new GalleryTile(item)
+            {
+                // Put back on the new tiles, because the old ones have just been
+                // thrown away. A reload after deleting or moving arrives here
+                // with the set already emptied, so this only carries a choice
+                // across a rebuild the user did not ask for - a resize, or the
+                // grid catching up with a pass.
+                IsChosen = _chosen.Contains(item.Id),
+            }));
+
+            // Anything ticked that this query no longer shows is dropped. Acting
+            // on a photograph the wall has stopped showing would be acting on
+            // something nobody can see.
+            _chosen.IntersectWith(_window.Tiles.Select(tile => tile.Item.Id));
+            NotifyChosen();
 
             TotalCount = page.TotalCount;
             await _window.MarkPreparedAsync(cancellationToken);
@@ -1916,9 +2085,93 @@ public sealed partial class GalleryViewModel : ObservableObject
     [RelayCommand]
     private void OpenPhoto(GalleryTile? tile)
     {
+        // One place decides what a click on a photograph means, so the two
+        // answers cannot drift apart or both happen.
+        if (IsChoosing)
+        {
+            Tick(tile);
+            return;
+        }
+
         _viewerSource = null;
         IsDecidingSuggestion = false;
         Open(tile);
+    }
+
+    /// <summary>Ticks a photograph, or unticks one already ticked.</summary>
+    private void Tick(GalleryTile? tile)
+    {
+        if (tile is null)
+        {
+            return;
+        }
+
+        if (!_chosen.Remove(tile.Item.Id))
+        {
+            _chosen.Add(tile.Item.Id);
+        }
+
+        tile.IsChosen = _chosen.Contains(tile.Item.Id);
+        NotifyChosen();
+    }
+
+    /// <summary>
+    /// Ticks everything the wall is showing.
+    /// </summary>
+    /// <remarks>
+    /// Every tile, not every visible one: the whole query is in memory - only
+    /// the pictures follow the viewport - so "all" can honestly mean all of
+    /// what is on this wall. What is filtered out was never on it.
+    /// </remarks>
+    [RelayCommand]
+    private void ChooseEverything()
+    {
+        foreach (GalleryTile tile in _window.Tiles)
+        {
+            _chosen.Add(tile.Item.Id);
+            tile.IsChosen = true;
+        }
+
+        NotifyChosen();
+    }
+
+    /// <summary>Unticks everything, leaving the mode on.</summary>
+    [RelayCommand]
+    private void ChooseNothing() => Forget();
+
+    /// <summary>
+    /// Leaves the mode, which is also what Escape does.
+    /// </summary>
+    /// <remarks>
+    /// Switching off forgets what was ticked. Keeping it would mean a wall that
+    /// looks untouched and still has forty photographs spoken for, and the next
+    /// press of Delete would be about pictures nobody could see were chosen.
+    /// </remarks>
+    [RelayCommand]
+    public void StopChoosing()
+    {
+        Forget();
+        IsChoosing = false;
+    }
+
+    private void Forget()
+    {
+        _chosen.Clear();
+
+        foreach (GalleryTile tile in _window.Tiles)
+        {
+            tile.IsChosen = false;
+        }
+
+        NotifyChosen();
+    }
+
+    private void NotifyChosen()
+    {
+        OnPropertyChanged(nameof(ChosenCount));
+        OnPropertyChanged(nameof(HasChosen));
+        OnPropertyChanged(nameof(ChosenSummary));
+        OnPropertyChanged(nameof(DeleteChosenCaption));
     }
 
     /// <summary>
@@ -2081,6 +2334,77 @@ public sealed partial class GalleryViewModel : ObservableObject
         {
             DiagnosticLog.Write($"could not read {tile.FileName} to delete it", ex);
             return null;
+        }
+    }
+
+    /// <summary>
+    /// Reads what deleting everything ticked would cost, for the question the
+    /// shell is about to ask.
+    /// </summary>
+    /// <remarks>
+    /// Off the dispatcher, and that is not an optimisation. Describing one
+    /// photograph is four queries, so four hundred of them on the UI thread
+    /// froze the window solid - which is the same lesson the duplicates screen
+    /// learned and solved the same way.
+    ///
+    /// <para>A photograph that cannot be read is left out rather than failing
+    /// the whole question: the others can still be deleted, and one unreadable
+    /// row should not stand between the user and the rest of their tidying.</para>
+    /// </remarks>
+    public async Task<IReadOnlyList<PhotoToRemove>> DescribeChosenDeletionAsync()
+    {
+        int[] ids = [.. _chosen];
+
+        if (ids.Length == 0)
+        {
+            return [];
+        }
+
+        try
+        {
+            using IServiceScope scope = _scopeFactory.CreateScope();
+            RemovePhotoHandler handler = scope.ServiceProvider
+                .GetRequiredService<RemovePhotoHandler>();
+
+            return await Task.Run(async () =>
+            {
+                List<PhotoToRemove> photos = [];
+
+                foreach (int id in ids)
+                {
+                    if (await handler.DescribeAsync(id).ConfigureAwait(false) is PhotoToRemove photo)
+                    {
+                        photos.Add(photo);
+                    }
+                }
+
+                return (IReadOnlyList<PhotoToRemove>)photos;
+            }).ConfigureAwait(true);
+        }
+        catch (Exception ex) when (ex is IOException or InvalidOperationException)
+        {
+            DiagnosticLog.Write("could not read the chosen photographs to delete them", ex);
+            return [];
+        }
+    }
+
+    /// <summary>
+    /// Catches the wall up after the ticked photographs have been deleted.
+    /// </summary>
+    /// <remarks>
+    /// Runs under the same overlay the deletion did, which is what keeps the
+    /// deleted pictures off the screen before it comes down.
+    /// </remarks>
+    public async Task AfterChosenDeletedAsync(PhotoRemovalResult result)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+
+        StopChoosing();
+
+        if (result.Deleted > 0)
+        {
+            LibraryChanged?.Invoke(this, EventArgs.Empty);
+            await LoadAsync().ConfigureAwait(true);
         }
     }
 

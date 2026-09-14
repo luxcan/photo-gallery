@@ -170,6 +170,49 @@ public sealed class AlbumCoverTests : IDisposable
         Assert.Equal("chosen.jpg", found.CoverThumbnailName);
     }
 
+    /// <summary>
+    /// Deleting the photograph an album shows leaves it showing one it holds.
+    /// </summary>
+    /// <remarks>
+    /// The membership row goes by cascade when the photograph does, and nothing
+    /// followed it: the cover column is a plain int with no foreign key, so the
+    /// album was left pointing at a row that is gone and drew a grey card - the
+    /// same thing a person sees when an album has failed to arrive from another
+    /// machine, and impossible to tell apart from it.
+    /// </remarks>
+    [Fact]
+    public async Task DeletingTheCoverLeavesTheAlbumShowingOneItStillHolds()
+    {
+        int cover = Add("cover.jpg", March);
+        int kept = Add("kept.jpg", March.AddHours(1));
+
+        int album = await Repository().CreateAsync("Sunday");
+        await Repository().AddAsync(album, [cover, kept]);
+        await Repository().SetCoverAsync(album, cover);
+
+        await new SqliteAssetRepository(_db).RemoveAsync([cover]);
+
+        Assert.Equal(kept, await CoverOfAsync(album));
+
+        // And the choice is forgotten with it, so the rule owns the answer
+        // again rather than guarding a photograph nobody can see.
+        Assert.Null(await ChosenAtAsync(album));
+    }
+
+    /// <summary>And an album emptied by a deletion shows nothing at all.</summary>
+    [Fact]
+    public async Task DeletingEveryPhotographLeavesTheAlbumWithNoCover()
+    {
+        int only = Add("only.jpg", March);
+
+        int album = await Repository().CreateAsync("Sunday");
+        await Repository().AddAsync(album, [only]);
+
+        await new SqliteAssetRepository(_db).RemoveAsync([only]);
+
+        Assert.Equal(0, await CoverOfAsync(album));
+    }
+
     private IAlbumRepository Repository() => new SqliteAlbumRepository(_db);
 
     private async Task<int> CoverOfAsync(int albumId)

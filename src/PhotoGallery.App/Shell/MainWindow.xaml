@@ -308,6 +308,7 @@
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
               </Grid.ColumnDefinitions>
 
               <!-- A name, a description, or both in one line. Names are offered
@@ -425,8 +426,51 @@
                         Command="{Binding Gallery.AcceptSearchCommand}" />
               </StackPanel>
 
+              <!-- What is ticked, and what can be done with it. On this strip
+                   rather than in a bar of its own: the strip is already where
+                   this screen says what it is showing, and a row that appears
+                   and disappears above the pictures would push the whole wall
+                   down every time somebody pressed Select. -->
               <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="16,0,0,0"
-                          VerticalAlignment="Center">
+                          VerticalAlignment="Center"
+                          Visibility="{Binding Gallery.IsChoosing,
+                                       Converter={StaticResource BoolToVisibility}}">
+                <TextBlock FontSize="12" VerticalAlignment="Center"
+                           Foreground="{DynamicResource Editor.Foreground}"
+                           Text="{Binding Gallery.ChosenSummary}" />
+
+                <Button Style="{DynamicResource LinkButton}" Margin="10,0,0,0" FontSize="12"
+                        Content="Select all"
+                        ToolTip="Tick every photograph on this wall"
+                        Command="{Binding Gallery.ChooseEverythingCommand}" />
+
+                <Button Style="{DynamicResource LinkButton}" Margin="10,0,0,0" FontSize="12"
+                        Content="Clear"
+                        ToolTip="Untick everything"
+                        IsEnabled="{Binding Gallery.HasChosen}"
+                        Command="{Binding Gallery.ChooseNothingCommand}" />
+
+                <Button Style="{DynamicResource SecondaryButton}" Height="28" Padding="12,0"
+                        Margin="16,0,0,0"
+                        Content="Move to album"
+                        ToolTip="Put the ticked photographs in an album"
+                        IsEnabled="{Binding Gallery.HasChosen}"
+                        Command="{Binding Gallery.MoveChosenToAlbumCommand}" />
+
+                <!-- The count is on the button, which is the last place it can
+                     be noticed before the question is asked. -->
+                <Button Style="{DynamicResource PrimaryButton}" Height="28" Padding="12,0"
+                        Margin="8,0,0,0"
+                        Content="{Binding Gallery.DeleteChosenCaption}"
+                        ToolTip="Delete the ticked photographs"
+                        IsEnabled="{Binding Gallery.HasChosen}"
+                        Click="OnDeleteChosenPhotosClicked" />
+              </StackPanel>
+
+              <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="16,0,0,0"
+                          VerticalAlignment="Center"
+                          Visibility="{Binding Gallery.IsChoosing,
+                                       Converter={StaticResource InverseBoolToVisibility}}">
                 <TextBlock FontSize="12" VerticalAlignment="Center"
                            Foreground="{DynamicResource Editor.Placeholder}"
                            Text="{Binding Gallery.CountSummary}" />
@@ -516,6 +560,18 @@
                                IsChecked="{Binding Gallery.ShowFolders}" />
                 </UniformGrid>
               </Border>
+
+              <!-- A mode, so a standalone pill rather than a segment: it is not
+                   one of two ways to look at the library, it is something the
+                   wall is doing. Off, a click on a photograph opens it, which is
+                   what this screen has always promised. -->
+              <ToggleButton Grid.Column="4" Style="{DynamicResource PillToggle}"
+                            VerticalAlignment="Center" Margin="10,0,0,0" MinWidth="78"
+                            Content="Select"
+                            ToolTip="Choose several photographs to move or delete"
+                            AutomationProperties.Name="Select several photographs"
+                            IsEnabled="{Binding IsIdle}"
+                            IsChecked="{Binding Gallery.IsChoosing, Mode=TwoWay}" />
             </Grid>
 
             <!-- Under the box and always there, rather than an error after the
@@ -665,6 +721,22 @@
                                                Visibility="{Binding HasDuration,
                                                             Converter={StaticResource BoolToVisibility}}" />
                                   </StackPanel>
+                                </Border>
+
+                                <!-- Both gated on the tile itself, so the mark
+                                     follows the photograph through a resize,
+                                     a scroll and a container being recycled
+                                     underneath it. -->
+                                <Border Style="{DynamicResource ChosenVeil}"
+                                        Visibility="{Binding IsChosen,
+                                                     Converter={StaticResource BoolToVisibility}}" />
+                                <Border Style="{DynamicResource ChosenTick}"
+                                        Visibility="{Binding IsChosen,
+                                                     Converter={StaticResource BoolToVisibility}}">
+                                  <TextBlock Text="&#xE73E;" FontFamily="Segoe MDL2 Assets"
+                                             FontSize="12" HorizontalAlignment="Center"
+                                             VerticalAlignment="Center"
+                                             Foreground="{DynamicResource AccentForeground}" />
                                 </Border>
                               </Grid>
                             </Button>
@@ -3234,10 +3306,6 @@
                           Visibility="{Binding Gallery.Picker.IsOpen,
                                        Converter={StaticResource BoolToVisibility}}" />
 
-          <!-- And saying which occasion it belongs to. -->
-          <ContentControl Content="{Binding Gallery.Albums}"
-                          Visibility="{Binding Gallery.Albums.IsOpen,
-                                       Converter={StaticResource BoolToVisibility}}" />
         </Grid>
         </Grid>
 
@@ -3395,6 +3463,24 @@
         </Grid>
       </Grid>
     </Border>
+
+    <!-- Which album these belong in.
+
+         A child of the root grid rather than of the viewer, because the question
+         is now asked from two places: over one open photograph, and over a wall
+         with several ticked on it. Inside the viewer it could only be seen while
+         a picture was open, so choosing an album for a batch put a panel on
+         screen that nobody could see.
+
+         One picker, one host. The question is the same question - which album do
+         these belong in - and a second list to keep in step would be a second
+         place to get the wording, the filter and the make-a-new-one box wrong.
+         Above the viewer in the markup so it draws over an open picture. -->
+    <Grid Background="{DynamicResource ModalScrim}"
+          Visibility="{Binding Gallery.Albums.IsOpen,
+                       Converter={StaticResource BoolToVisibility}}">
+      <ContentControl Content="{Binding Gallery.Albums}" />
+    </Grid>
 
     <!-- What another computer has published, offered rather than applied.
 

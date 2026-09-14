@@ -161,6 +161,13 @@ public sealed class SqliteAssetRepository : IAssetRepository
             return;
         }
 
+        // Which albums are about to lose a photograph, asked while the
+        // membership rows are still there to ask. They go by cascade a moment
+        // from now, and afterwards there is nothing left that remembers where
+        // these pictures were.
+        List<int> albums = await AlbumsHoldingAsync(assetIds, cancellationToken)
+            .ConfigureAwait(false);
+
         // Chunked: SQLite has a hard limit on parameters per statement, and a
         // library can easily lose more rows than that in one go.
         foreach (int[] chunk in assetIds.Chunk(400))
@@ -170,6 +177,62 @@ public sealed class SqliteAssetRepository : IAssetRepository
                 .ExecuteDeleteAsync(cancellationToken)
                 .ConfigureAwait(false);
         }
+
+        await SettleCoversAsync(albums, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>The albums these photographs are in, before they go.</summary>
+    private async Task<List<int>> AlbumsHoldingAsync(
+        IReadOnlyList<int> assetIds, CancellationToken cancellationToken)
+    {
+        List<int> albums = [];
+
+        foreach (int[] chunk in assetIds.Chunk(400))
+        {
+            albums.AddRange(await _db.AlbumMembers
+                .AsNoTracking()
+                .Where(member => chunk.Contains(member.AssetId))
+                .Select(member => member.AlbumId)
+                .Distinct()
+                .ToListAsync(cancellationToken)
+                .ConfigureAwait(false));
+        }
+
+        return [.. albums.Distinct()];
+    }
+
+    /// <summary>
+    /// Gives an album that has just lost photographs a picture it still holds.
+    /// </summary>
+    /// <remarks>
+    /// A membership row goes by cascade when its photograph is deleted, and
+    /// nothing followed it: <see cref="Album.CoverAssetId"/> is a plain column
+    /// with an index and no foreign key, so the album was left showing a row
+    /// that is gone. The join that reads a cover is a left join and quietly
+    /// finds nothing, so the album simply drew a grey card - which is the same
+    /// thing a person sees when an album has failed to arrive from another
+    /// machine, and indistinguishable from it.
+    ///
+    /// <para>Here rather than in the handler that deletes, because this is the
+    /// one place every deletion passes through, and because the rule itself
+    /// lives in this assembly. One picture at a time rarely hit it; choosing
+    /// fifty at once will.</para>
+    /// </remarks>
+    private async Task SettleCoversAsync(
+        IReadOnlyList<int> albumIds, CancellationToken cancellationToken)
+    {
+        if (albumIds.Count == 0)
+        {
+            return;
+        }
+
+        foreach (int albumId in albumIds)
+        {
+            await AlbumCovers.EnsureAsync(_db, albumId, cancellationToken).ConfigureAwait(false);
+        }
+
+        await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        _db.ChangeTracker.Clear();
     }
 
     public Task<int> CountAsync(int photoSourceId, CancellationToken cancellationToken = default) =>

@@ -1515,6 +1515,38 @@
     <Setter Property="Padding" Value="5,2" />
   </Style>
 
+  <!-- A photograph the user has ticked on the wall.
+
+       A tick rather than a border, because a border is already taken: the
+       gallery cell spends the focus colour at two pixels on hover AND on
+       keyboard focus, so a third meaning on the same edge would be a signal
+       nobody could read. The mark sits in the corner the way the video badge and
+       the crop button already do - the opposite corner from the badge, so a
+       chosen video says both things at once.
+
+       Not FaceChoice, which is the app's other "this one is chosen" and means
+       the opposite by default: it starts everything on and dims what is off,
+       which suits a screenful of proposals and not a wall of sixteen thousand
+       pictures where almost nothing is chosen. -->
+  <Style x:Key="ChosenTick" TargetType="Border">
+    <Setter Property="Background" Value="{DynamicResource AccentBackground}" />
+    <Setter Property="HorizontalAlignment" Value="Left" />
+    <Setter Property="VerticalAlignment" Value="Top" />
+    <Setter Property="Margin" Value="6" />
+    <Setter Property="Width" Value="22" />
+    <Setter Property="Height" Value="22" />
+    <Setter Property="CornerRadius" Value="11" />
+  </Style>
+
+  <!-- And the picture underneath dimmed, so a screenful reads at a glance
+       rather than one corner at a time. The same idea the duplicates card uses
+       when a copy is kept: the whole thing changes, not a small mark on it. -->
+  <Style x:Key="ChosenVeil" TargetType="Border">
+    <Setter Property="Background" Value="{DynamicResource List.ActiveSelection}" />
+    <Setter Property="Opacity" Value="0.45" />
+    <Setter Property="IsHitTestVisible" Value="False" />
+  </Style>
+
   <!-- The wide one: the arrows under the picture, and the album button beside
        them in the panel. Stepping through the library is what somebody does
        over and over, so these are the biggest targets on the screen. -->

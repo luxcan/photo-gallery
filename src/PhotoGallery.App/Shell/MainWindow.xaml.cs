@@ -837,6 +837,11 @@ public partial class MainWindow : Window
             () => albums.Collections.IsPicking, albums.Collections.CancelPickingCommand);
         yield return (
             () => albums.Collections.IsNaming, albums.Collections.CancelNamingCommand);
+
+        // Last, because it is a mode rather than something on top of the screen:
+        // anything in the list above can be open over it, and Escape should put
+        // that down first and leave what was ticked alone.
+        yield return (() => gallery.IsChoosing, gallery.StopChoosingCommand);
     }
 
     private void OnDuplicateInspectorKeyDown(object sender, KeyEventArgs e)
@@ -1265,6 +1270,20 @@ public partial class MainWindow : Window
 
         await ConfirmAndDeleteAsync(Open, _viewModel.Gallery.AfterOpenPhotoDeletedAsync);
     }
+
+    /// <summary>
+    /// Deletes every photograph ticked on the wall.
+    /// </summary>
+    /// <remarks>
+    /// The same question and the same overlay as deleting one, handed a longer
+    /// list - which is what the funnel has always taken. A `Click` rather than a
+    /// command for the reason all four of these are: the confirmation is a modal
+    /// that pumps messages, and `CanExecute` cannot be trusted across it.
+    /// </remarks>
+    private async void OnDeleteChosenPhotosClicked(object sender, RoutedEventArgs e) =>
+        await ConfirmAndDeleteAsync(
+            _viewModel.Gallery.DescribeChosenDeletionAsync,
+            _viewModel.Gallery.AfterChosenDeletedAsync);
 
     /// <summary>
     /// Deletes the photograph a proposal was found in, from the review screen.
