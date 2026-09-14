@@ -115,13 +115,38 @@ public sealed class SqliteAlbumRepository : IAlbumRepository
         }
 
         DateTime now = DateTime.UtcNow;
+
+        // Every membership this pass gives up, before a single one is claimed.
+        foreach (ProposedAlbum proposal in proposals)
+        {
+            if (byKey.TryGetValue(proposal.ProposalKey, out Album? row))
+            {
+                Prune(row, proposal);
+            }
+        }
+
+        // Delete then insert, in that order and in one save each - the rule
+        // AddAsync states and for the same reason, which is the key on
+        // AlbumMembers: a photograph has one membership row, and its own id is
+        // the whole of that row's identity.
+        //
+        // A run of days the clusterer no longer makes is removed above, and the
+        // photographs it held are very often offered by the run of days either
+        // side of it. That is one row deleted and another inserted under the
+        // same key, and asked for in one breath Entity Framework writes them in
+        // an order it chooses rather than the only order that works. What comes
+        // back is "expected to affect 1 row(s), but actually affected 0", six
+        // phases into a nine-minute scan, naming neither the photograph nor the
+        // album. Saving the removals first is the whole fix.
+        await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+
         int written = 0;
 
         foreach (ProposedAlbum proposal in proposals)
         {
             if (byKey.TryGetValue(proposal.ProposalKey, out Album? row))
             {
-                Rewrite(row, proposal, now);
+                Fill(row, proposal, now);
             }
             else
             {
@@ -874,7 +899,30 @@ public sealed class SqliteAlbumRepository : IAlbumRepository
     /// A name the user typed is never written over, which is the difference
     /// between a suggestion and an imposition.
     /// </remarks>
-    private void Rewrite(Album row, ProposedAlbum proposal, DateTime now)
+    /// <summary>
+    /// What this proposal gives up: the photographs it held and no longer wants.
+    /// </summary>
+    /// <remarks>
+    /// Split from the half that claims them, and written first, because a
+    /// photograph has one membership row keyed by its own id: the run of days
+    /// either side of a group that has gone will claim what it held, and the
+    /// delete has to reach the database before that insert does.
+    /// </remarks>
+    private void Prune(Album row, ProposedAlbum proposal)
+    {
+        var wanted = new HashSet<int>(proposal.AssetIds);
+
+        foreach (AlbumMember gone in row.Members.Where(m => !wanted.Contains(m.AssetId)))
+        {
+            _db.AlbumMembers.Remove(gone);
+        }
+    }
+
+    /// <summary>
+    /// What it is now: its facts brought up to date, and the photographs it has
+    /// gained.
+    /// </summary>
+    private void Fill(Album row, ProposedAlbum proposal, DateTime now)
     {
         if (row.NamedUtc is null)
         {
@@ -888,14 +936,12 @@ public sealed class SqliteAlbumRepository : IAlbumRepository
         row.CoverAssetId = proposal.CoverAssetId;
         row.BuiltUtc = now;
 
-        var wanted = new HashSet<int>(proposal.AssetIds);
+        // Read after the removals have been written, so a photograph this
+        // proposal is giving up and taking back again is not counted as held.
+        var held = new HashSet<int>(
+            row.Members.Where(member => _db.Entry(member).State != EntityState.Deleted)
+                .Select(member => member.AssetId));
 
-        foreach (AlbumMember gone in row.Members.Where(m => !wanted.Contains(m.AssetId)))
-        {
-            _db.AlbumMembers.Remove(gone);
-        }
-
-        var held = new HashSet<int>(row.Members.Select(member => member.AssetId));
         foreach (int assetId in proposal.AssetIds.Where(assetId => !held.Contains(assetId)))
         {
             row.Members.Add(new AlbumMember { AssetId = assetId, AddedUtc = now });

@@ -94,6 +94,65 @@ public sealed class ProposalRewriteTests : IDisposable
         Assert.Equal([first, second], album.Members.Select(m => m.AssetId).Order());
     }
 
+    /// <summary>
+    /// A photograph moving from one proposal to another in a single pass.
+    /// </summary>
+    /// <remarks>
+    /// The real failure, reduced. A membership is keyed by the photograph alone
+    /// - one album each - so moving one between two proposals means deleting a
+    /// row and inserting another with the very same key, inside one save.
+    /// </remarks>
+    [Fact]
+    public async Task APhotographMovingBetweenTwoProposals_DoesNotLoseThePass()
+    {
+        int staying = Add("staying.jpg");
+        int moving = Add("moving.jpg");
+        int other = Add("other.jpg");
+
+        await Repository().SaveProposalsAsync(
+            [Proposal("days:one", staying, moving), Proposal("days:two", other)]);
+
+        await Repository().SaveProposalsAsync(
+            [Proposal("days:one", staying), Proposal("days:two", other, moving)]);
+
+        _db.ChangeTracker.Clear();
+
+        int holder = await _db.AlbumMembers
+            .Where(member => member.AssetId == moving)
+            .Select(member => member.AlbumId)
+            .SingleAsync();
+
+        string key = await _db.Albums
+            .Where(album => album.Id == holder)
+            .Select(album => album.ProposalKey!)
+            .SingleAsync();
+
+        Assert.Equal("days:two", key);
+    }
+
+    /// <summary>
+    /// And when the proposal it was in is not offered at all any more.
+    /// </summary>
+    [Fact]
+    public async Task APhotographWhoseProposalIsGone_MovesToTheOneThatWantsIt()
+    {
+        int moving = Add("moving.jpg");
+        int other = Add("other.jpg");
+
+        await Repository().SaveProposalsAsync([Proposal("days:one", moving)]);
+
+        // "days:one" is no longer a run of days the pass makes, so its row goes -
+        // and the photograph it held is offered by a different proposal in the
+        // same breath.
+        await Repository().SaveProposalsAsync([Proposal("days:two", other, moving)]);
+
+        _db.ChangeTracker.Clear();
+
+        Assert.Equal(
+            1,
+            await _db.AlbumMembers.CountAsync(member => member.AssetId == moving));
+    }
+
     private IAlbumRepository Repository() => new SqliteAlbumRepository(_db);
 
     private static ProposedAlbum Proposal(string key, params int[] assetIds) =>
