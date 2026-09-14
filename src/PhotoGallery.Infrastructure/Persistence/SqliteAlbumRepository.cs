@@ -57,6 +57,25 @@ public sealed class SqliteAlbumRepository : IAlbumRepository
     {
         ArgumentNullException.ThrowIfNull(proposals);
 
+        // A clean slate before anything is read, and this is not tidiness.
+        //
+        // One scope serves a whole scan, so this context has been used by every
+        // phase before this one, and some of them leave what they loaded
+        // tracked. Others delete rows with ExecuteDelete, which is a statement
+        // the change tracker is never told about - and deleting an asset takes
+        // its album memberships with it through the database's own cascade.
+        //
+        // Put those two together and the Include below hands back a membership
+        // that no longer exists: a query does not refresh an entity the context
+        // is already tracking, it returns the instance it has. Rewrite then asks
+        // for that row to be deleted, the delete matches nothing, and the whole
+        // pass ends in "expected to affect 1 row(s), but actually affected 0".
+        // That is exactly how a six-minute scan was lost.
+        //
+        // Nothing is discarded by this: every write in this layer saves before
+        // it returns, so what is tracked here is what was already written.
+        _db.ChangeTracker.Clear();
+
         List<Album> existing = await _db.Albums
             .Include(album => album.Members)
             .Where(album => album.Origin == AlbumOrigin.Proposed)
@@ -113,6 +132,10 @@ public sealed class SqliteAlbumRepository : IAlbumRepository
         }
 
         await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+
+        // And released again, so the phases after this one start as clean as
+        // this one insisted on starting.
+        _db.ChangeTracker.Clear();
 
         return written;
     }

@@ -6,6 +6,15 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- So that a detail can be tested without being made part of the surface,
+         as the infrastructure project already does. WriteFault is the case that
+         earned it: it turns a failed write into the one line that says which row
+         could not be written, and a helper that quietly returned nothing would
+         look exactly like a failure with nothing to report. -->
+    <InternalsVisibleTo Include="PhotoGallery.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="9.*" />
     <!-- The diagnostic log, off unless switched on. The activity log is for the

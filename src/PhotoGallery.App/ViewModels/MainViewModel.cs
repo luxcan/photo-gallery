@@ -2063,6 +2063,16 @@ public sealed partial class MainViewModel : ObservableObject
             // and reached the handler in App.xaml.cs, which says the app itself
             // is wrong and then closes it. Hours of scanning went with it.
             Append($"  refresh failed: {ex}");
+
+            // Which row, not only which method. Without this the log says a
+            // write expected one row and found none, and leaves the reader to
+            // guess which one - which cost a day of guessing once already.
+            if (WriteFault.Rows(ex) is { Length: > 0 } rows)
+            {
+                Append("  rows it could not write:");
+                Append(rows);
+            }
+
             SourceError = $"The scan could not finish: {ex.Message}";
         }
         finally
