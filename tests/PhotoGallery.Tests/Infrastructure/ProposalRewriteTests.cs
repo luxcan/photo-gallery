@@ -11,17 +11,21 @@ namespace PhotoGallery.Tests.Infrastructure;
 /// Writing the pass's proposals over a context other phases have already used.
 /// </summary>
 /// <remarks>
-/// This is the shape of a real failure, reported twice and finally caught with a
-/// stack. One scope serves a whole scan, so the same context runs all eight
-/// phases; some of them leave what they loaded tracked, and others delete rows
-/// with ExecuteDelete, which the change tracker is never told about - as is the
+/// One scope serves a whole scan, so the same context runs all eight phases;
+/// some of them leave what they loaded tracked, and others delete rows with
+/// ExecuteDelete, which the change tracker is never told about - as is the
 /// database's own cascade when an asset goes.
 ///
 /// <para>A query does not refresh an entity the context already tracks: it hands
 /// back the instance it has. So the last phase could load an album, be given a
-/// membership that no longer existed, ask for it to be deleted, and lose a
-/// six-minute scan to "expected to affect 1 row(s), but actually affected
-/// 0".</para>
+/// membership that no longer existed, and ask for it to be deleted. That is the
+/// first two tests here.</para>
+///
+/// <para>It is not, though, what the scan kept dying of. Made to name the row it
+/// could not write, the failure named an insert - and the last two tests are
+/// that one: a membership is keyed by the photograph alone, so a photograph
+/// moving between proposals is a row deleted and another inserted under the very
+/// same key, and the delete has to reach the database first.</para>
 /// </remarks>
 public sealed class ProposalRewriteTests : IDisposable
 {

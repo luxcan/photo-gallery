@@ -67,10 +67,15 @@ public sealed class SqliteAlbumRepository : IAlbumRepository
         //
         // Put those two together and the Include below hands back a membership
         // that no longer exists: a query does not refresh an entity the context
-        // is already tracking, it returns the instance it has. Rewrite then asks
+        // is already tracking, it returns the instance it has. Pruning then asks
         // for that row to be deleted, the delete matches nothing, and the whole
         // pass ends in "expected to affect 1 row(s), but actually affected 0".
-        // That is exactly how a six-minute scan was lost.
+        //
+        // That was the first explanation offered for the scan this pass kept
+        // losing, and it was the wrong one - the row the write could not account
+        // for turned out to be an insert, which is what Prune and Fill below are
+        // for. This stays because the hazard above is real on its own terms and
+        // a test holds it, not because it was ever the cause.
         //
         // Nothing is discarded by this: every write in this layer saves before
         // it returns, so what is tracked here is what was already written.
