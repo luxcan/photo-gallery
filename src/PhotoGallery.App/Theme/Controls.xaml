@@ -2146,9 +2146,14 @@
           <!-- Beside the box whether or not anything matches: an album can want a
                name that is a prefix of one already there, and hiding this until
                nothing matched would make that name impossible to give. -->
+          <!-- The tooltip comes from the picker, because it is the one thing
+               that differs between asking about one photograph and asking about
+               forty: the label stays "Make", which is all that fits beside the
+               box and all that is needed under a prompt that already says how
+               many are being filed. -->
           <Button Grid.Column="1" Style="{DynamicResource SecondaryButton}"
                   Margin="6,0,0,0" MinWidth="52" Content="Make"
-                  ToolTip="Make an album with this name and put the photograph in it"
+                  ToolTip="{Binding MakeTip}"
                   Command="{Binding AddCommand}" />
         </Grid>
 
@@ -2163,25 +2168,36 @@
           <ItemsControl ItemsSource="{Binding Choices}">
             <ItemsControl.ItemTemplate>
               <DataTemplate>
-                <Button Style="{DynamicResource SearchResult}" Padding="10,6"
-                        Command="{Binding DataContext.ChooseCommand,
-                                  RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                        CommandParameter="{Binding}">
-                  <Grid>
-                    <StackPanel HorizontalAlignment="Left">
-                      <TextBlock Text="{Binding Name}"
-                                 Style="{DynamicResource FaceChoiceName}" />
-                      <TextBlock Text="{Binding Caption}" FontSize="11"
-                                 Foreground="{DynamicResource Editor.Placeholder}" />
-                    </StackPanel>
-                    <TextBlock Text="&#xE73E;" FontFamily="Segoe MDL2 Assets"
-                               FontSize="11" HorizontalAlignment="Right"
-                               VerticalAlignment="Center"
-                               Foreground="{DynamicResource Status.Success}"
-                               Visibility="{Binding IsCurrent,
-                                            Converter={StaticResource BoolToVisibility}}" />
-                  </Grid>
-                </Button>
+                <StackPanel>
+                  <!-- On the row that begins a band rather than two lists, the
+                       way the wall's own date headings work: one list keeps the
+                       scrolling and the narrowing as one thing. Outside the
+                       button, so a heading is not something anybody can press. -->
+                  <TextBlock Style="{DynamicResource HintText}" Margin="10,8,0,3"
+                             FontWeight="SemiBold" Text="{Binding Heading}"
+                             Visibility="{Binding HasHeading,
+                                          Converter={StaticResource BoolToVisibility}}" />
+
+                  <Button Style="{DynamicResource SearchResult}" Padding="10,6"
+                          Command="{Binding DataContext.ChooseCommand,
+                                    RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                          CommandParameter="{Binding}">
+                    <Grid>
+                      <StackPanel HorizontalAlignment="Left">
+                        <TextBlock Text="{Binding Name}"
+                                   Style="{DynamicResource FaceChoiceName}" />
+                        <TextBlock Text="{Binding Caption}" FontSize="11"
+                                   Foreground="{DynamicResource Editor.Placeholder}" />
+                      </StackPanel>
+                      <TextBlock Text="&#xE73E;" FontFamily="Segoe MDL2 Assets"
+                                 FontSize="11" HorizontalAlignment="Right"
+                                 VerticalAlignment="Center"
+                                 Foreground="{DynamicResource Status.Success}"
+                                 Visibility="{Binding IsCurrent,
+                                              Converter={StaticResource BoolToVisibility}}" />
+                    </Grid>
+                  </Button>
+                </StackPanel>
               </DataTemplate>
             </ItemsControl.ItemTemplate>
           </ItemsControl>

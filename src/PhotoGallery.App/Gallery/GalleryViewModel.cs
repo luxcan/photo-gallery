@@ -1038,7 +1038,11 @@ public sealed partial class GalleryViewModel : ObservableObject
                 ? "Put this photograph in an album"
                 : $"Put these {_chosen.Count:N0} photographs in an album",
             "A photograph belongs to one album, so choosing another moves it. "
-                + "Type a name that is not there to make one.");
+                + "Type a name that is not there to make one.",
+            _chosen.Count == 1
+                ? "Make an album with this name and put the photograph in it"
+                : $"Make an album with this name and put the {_chosen.Count:N0} "
+                    + "ticked photographs in it");
     }
 
     private async Task<IReadOnlyList<AlbumSummary>> AllAlbumsAsync()

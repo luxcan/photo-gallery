@@ -188,7 +188,13 @@ public sealed class SqliteAlbumRepository : IAlbumRepository
                     .Where(asset => asset.Id == album.CoverAssetId)
                     .Select(asset => asset.ThumbnailName)
                     .FirstOrDefault(),
-                album.CollectionId))
+                album.CollectionId,
+
+                // When a photograph was last put in it, which is what the picker
+                // orders by. Nothing was recorded for it: AddedUtc has been
+                // written on every insert since the column existed, so this
+                // reads as far back as the library goes.
+                album.Members.Max(member => (DateTime?)member.AddedUtc)))
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
     }

@@ -371,11 +371,9 @@ public sealed partial class MainViewModel : ObservableObject
         // worked. Every screen that can change the library says so instead.
         Gallery.LibraryChanged += OnLibraryChanged;
 
-        // The wall asks; the shell raises the overlay and calls back. Putting
-        // forty photographs in an album is one quick write and then a whole wall
-        // read again, and doing the second half with the window live would leave
-        // the moved pictures sitting there looking untouched - and clickable.
-        Gallery.PlacingChosen += OnPlacingChosen;
+        // PlacingChosen is answered by the window, not here: the answer begins
+        // with a question, and a question is a modal that needs an owner. It
+        // calls UnderOverlayAsync below once it has one.
         People.LibraryChanged += OnLibraryChanged;
         Duplicates.LibraryChanged += OnLibraryChanged;
         Albums.LibraryChanged += OnLibraryChanged;
@@ -1797,37 +1795,6 @@ public sealed partial class MainViewModel : ObservableObject
                 "putting the list back together...",
                 () => Duplicates.KeepEverythingAsync(set));
 
-    /// <summary>
-    /// Puts the photographs chosen on the wall into an album, under the overlay.
-    /// </summary>
-    /// <remarks>
-    /// <c>async void</c> because it is an event handler, and the failure is
-    /// caught rather than left to become an unobserved task. The work itself
-    /// already says what went wrong on the screen it came from.
-    ///
-    /// <para>No Stop, and this is the one place it differs from deleting. A
-    /// deletion is a run of photographs and stopping between two of them leaves
-    /// a library that makes sense; moving is one write - the memberships, the
-    /// covers, and the suggestions the move emptied - so half of it is a library
-    /// disagreeing with itself. <see cref="UnderOverlayAsync"/> offers none for
-    /// exactly that reason.</para>
-    /// </remarks>
-    private async void OnPlacingChosen(object? sender, string album)
-    {
-        try
-        {
-            int count = Gallery.ChosenCount;
-
-            await UnderOverlayAsync(
-                $"Moving into {album}",
-                count == 1 ? "1 photograph..." : $"{count:N0} photographs...",
-                () => Gallery.PlaceChosenAsync(album));
-        }
-        catch (Exception ex) when (LibraryFailure.IsExpected(ex))
-        {
-            DiagnosticLog.Write("could not put the chosen photographs in an album", ex);
-        }
-    }
 
     /// <summary>Stops whichever pass is running. All of them stop gracefully.</summary>
     [RelayCommand(CanExecute = nameof(CanStopPass))]

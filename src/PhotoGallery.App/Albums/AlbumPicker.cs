@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using PhotoGallery.Application.Ports;
+using PhotoGallery.Domain.Albums;
 
 namespace PhotoGallery.App.Albums;
 
@@ -24,7 +25,18 @@ public sealed partial class AlbumPicker : ObservableObject
     private readonly Func<Task>? _removed;
     private readonly Action? _closed;
 
+    /// <summary>
+    /// How many of your own albums stand under the RECENT heading.
+    /// </summary>
+    /// <remarks>
+    /// Four rather than three: the list is about 300 DIP tall and shows seven,
+    /// so four leaves the heading under it on screen. A band that fills the fold
+    /// is a band nobody learns there is anything below.
+    /// </remarks>
+    private const int RecentCount = 4;
+
     private IReadOnlyList<AlbumSummary> _all = [];
+    private int _yours;
     private int _current;
 
     [ObservableProperty]
@@ -49,6 +61,13 @@ public sealed partial class AlbumPicker : ObservableObject
 
     [ObservableProperty]
     private string _hint = string.Empty;
+
+    /// <summary>What the Make button promises to do with what is typed.</summary>
+    [ObservableProperty]
+    private string _makeTip = DefaultMakeTip;
+
+    private const string DefaultMakeTip =
+        "Make an album with this name and put the photograph in it";
 
     /// <param name="chosen">
     /// Told the name that was picked or typed. A name rather than an id, because
@@ -106,12 +125,23 @@ public sealed partial class AlbumPicker : ObservableObject
     /// putting it somewhere else moves it, and the user should be able to see
     /// what they are moving it out of.
     /// </param>
-    public void Open(IReadOnlyList<AlbumSummary> all, int current, string prompt, string hint)
+    /// <param name="makeTip">
+    /// What the Make button promises, for the one thing that differs between
+    /// asking about one photograph and asking about forty.
+    /// </param>
+    public void Open(
+        IReadOnlyList<AlbumSummary> all,
+        int current,
+        string prompt,
+        string hint,
+        string? makeTip = null)
     {
-        _all = all ?? [];
+        _all = Ordered(all ?? []);
+        _yours = _all.Count(album => album.Origin != AlbumOrigin.Proposed);
         _current = current;
         Prompt = prompt;
         Hint = hint;
+        MakeTip = makeTip ?? DefaultMakeTip;
 
         CurrentName = _all.FirstOrDefault(album => album.Id == current)?.Name
             ?? string.Empty;
@@ -132,9 +162,48 @@ public sealed partial class AlbumPicker : ObservableObject
 
     partial void OnTypedChanged(string value) => Narrow();
 
+    /// <summary>
+    /// Your own albums first, the one you filed into most recently at the top.
+    /// </summary>
+    /// <remarks>
+    /// The list arrives in the order the albums wall wants - by the span of the
+    /// photographs in them - which for filing is no order at all: a 2019 holiday
+    /// you added to last night sits near the bottom of three hundred.
+    ///
+    /// <para>Recency is measured over albums you made or kept, and only those,
+    /// which is the whole point. A rebuild writes every proposal's memberships
+    /// in one go: on the first real library 284 of 291 albums share a last-added
+    /// moment to the millisecond, so ordering everything by it would put
+    /// whatever the last scan happened to touch at the top and call it recent.
+    /// The seven albums a person actually made are the seven they file into.</para>
+    ///
+    /// <para><see cref="Enumerable.OrderByDescending{T, TKey}(IEnumerable{T},
+    /// Func{T, TKey})"/> is stable, so an album nobody has put anything in keeps
+    /// the place it arrived in rather than being shuffled against its
+    /// equals.</para>
+    /// </remarks>
+    private static IReadOnlyList<AlbumSummary> Ordered(IReadOnlyList<AlbumSummary> all)
+    {
+        List<AlbumSummary> yours = [];
+        List<AlbumSummary> rest = [];
+
+        foreach (AlbumSummary album in all)
+        {
+            (album.Origin == AlbumOrigin.Proposed ? rest : yours).Add(album);
+        }
+
+        return [.. yours.OrderByDescending(album => album.LastAddedUtc ?? DateTime.MinValue), .. rest];
+    }
+
     private void Narrow()
     {
         string typed = Typed.Trim();
+
+        // Headings only over the whole list. On a narrowed one they would band
+        // three rows into two, and "recent" is not what somebody who has typed
+        // four letters is looking at the list for.
+        int split = Math.Min(RecentCount, _yours);
+        bool banded = typed.Length == 0 && _yours > 0 && _all.Count > split;
 
         Choices.Clear();
         foreach (AlbumSummary album in _all)
@@ -145,7 +214,14 @@ public sealed partial class AlbumPicker : ObservableObject
                 continue;
             }
 
-            Choices.Add(new AlbumChoice(album, album.Id == _current));
+            string heading = banded switch
+            {
+                true when Choices.Count == 0 => "RECENT",
+                true when Choices.Count == split => "EVERYTHING ELSE",
+                _ => string.Empty,
+            };
+
+            Choices.Add(new AlbumChoice(album, album.Id == _current) { Heading = heading });
         }
 
         OnPropertyChanged(nameof(HasNoMatch));

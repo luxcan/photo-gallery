@@ -49,6 +49,12 @@ public partial class MainWindow : Window
         viewModel.Gallery.TurnRefusedOutOfReach += OnTurnRefusedOutOfReach;
         viewModel.People.TurnRefusedOutOfReach += OnTurnRefusedOutOfReach;
 
+        // The wall asks which album; the window asks whether, and then raises
+        // the overlay. Here rather than in the view model because the question
+        // is a modal and a modal needs a window to be modal over - the same
+        // reason every delete in this app is answered from the code-behind.
+        viewModel.Gallery.PlacingChosen += OnPlacingChosen;
+
         // The viewer only receives Escape and the arrow keys once it holds
         // focus, and it cannot take focus until it is actually visible.
         viewModel.Gallery.PropertyChanged += (_, e) =>
@@ -1280,6 +1286,71 @@ public partial class MainWindow : Window
     /// command for the reason all four of these are: the confirmation is a modal
     /// that pumps messages, and `CanExecute` cannot be trusted across it.
     /// </remarks>
+    /// <summary>
+    /// Asks before a batch of photographs moves, then moves them under the
+    /// overlay.
+    /// </summary>
+    /// <remarks>
+    /// Filing a selection was the one thing on this wall that happened the
+    /// instant it was asked for. Choosing an album from a list is a single
+    /// click, the list is three hundred long, and pressing Select all first is
+    /// one more click - so the gesture that files five photographs and the one
+    /// that moves twenty thousand out of wherever they were are the same gesture
+    /// with a different number in front of it. That number is what the question
+    /// puts in front of somebody.
+    ///
+    /// <para>The count is named and the rule is said, because a photograph
+    /// belongs to one album and adding therefore moves - which is nobody's
+    /// expectation until it happens to them. What actually moved out of where is
+    /// counted afterwards, in the notice.</para>
+    ///
+    /// <para>Cancel leaves the selection exactly as it was: the picker has
+    /// closed, but nothing is unticked, so saying no costs the album and not the
+    /// hour of ticking.</para>
+    ///
+    /// <para><c>async void</c> because it is an event handler, and the failure
+    /// is caught rather than left to become an unobserved task. No Stop on the
+    /// overlay, which is the one place this differs from deleting: a deletion is
+    /// a run of photographs and stopping between two of them leaves a library
+    /// that makes sense, whereas moving is one write - the memberships, the
+    /// covers, and the suggestions the move emptied - so half of it is a library
+    /// disagreeing with itself.</para>
+    /// </remarks>
+    private async void OnPlacingChosen(object? sender, string album)
+    {
+        try
+        {
+            int count = _viewModel.Gallery.ChosenCount;
+
+            if (count == 0)
+            {
+                return;
+            }
+
+            string photographs = count == 1 ? "1 photograph" : $"{count:N0} photographs";
+
+            if (!AppDialog.Confirm(
+                this,
+                $"Put {photographs} in {album}?",
+                "A photograph belongs to one album, so any of these that are already "
+                    + "in another album will move out of it. The pictures themselves are "
+                    + "not touched.",
+                $"Put in {album}"))
+            {
+                return;
+            }
+
+            await _viewModel.UnderOverlayAsync(
+                $"Moving into {album}",
+                count == 1 ? "1 photograph..." : $"{count:N0} photographs...",
+                () => _viewModel.Gallery.PlaceChosenAsync(album));
+        }
+        catch (Exception ex) when (LibraryFailure.IsExpected(ex))
+        {
+            DiagnosticLog.Write("could not put the chosen photographs in an album", ex);
+        }
+    }
+
     /// <summary>
     /// The circle on a photograph: ticks it, and with Shift held, the run from
     /// the last one ticked to this.
