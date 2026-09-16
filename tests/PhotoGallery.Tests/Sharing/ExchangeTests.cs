@@ -126,7 +126,7 @@ public sealed class ExchangeTests : IDisposable
     }
 
     [Fact]
-    public async Task TheSummarySaysWhatChangedAndWhatIsStillWaiting()
+    public async Task TheSummarySaysWhatChangedAndLeavesWhatIsWaitingToTheScreen()
     {
         // A merge that says nothing is a merge nobody can trust or undo.
         Both(@"2019\a.jpg");
@@ -143,7 +143,15 @@ public sealed class ExchangeTests : IDisposable
 
         Assert.Contains("1 name", merged.Summary);
         Assert.Contains("1 person", merged.Summary);
-        Assert.Contains("waiting", merged.Summary);
+
+        // This used to append "N answers are waiting ... scanning will bring them
+        // in", from this merge's own held count. The screen says it a few
+        // elements below, from the whole table and split into the three things it
+        // can mean - so saying it here too put two numbers that need not agree
+        // side by side, both described by a sentence that was false for most of
+        // what it counted. The merge still knows; it just stops narrating it.
+        Assert.DoesNotContain("waiting", merged.Summary, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(1, merged.Outcome.Held);
     }
 
     [Fact]
@@ -154,7 +162,7 @@ public sealed class ExchangeTests : IDisposable
         MergeResult merged = await Dad.Merging.HandleAsync();
 
         Assert.True(merged.Merged);
-        Assert.Equal("No other computer has shared anything yet.", merged.Summary);
+        Assert.Equal("No other computer has synced anything yet.", merged.Summary);
     }
 
     [Fact]

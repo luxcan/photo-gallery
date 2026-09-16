@@ -88,7 +88,7 @@ public sealed class SharedFolderRulesTests : IDisposable
         InvalidOperationException refused = await Assert.ThrowsAsync<InvalidOperationException>(
             () => AddSourceAsync(Folder("outer")));
 
-        Assert.Contains("shares answers through", refused.Message);
+        Assert.Contains("syncs through", refused.Message);
     }
 
     [Fact]

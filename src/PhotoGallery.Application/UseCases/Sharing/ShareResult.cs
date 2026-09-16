@@ -42,11 +42,11 @@ public sealed record ShareResult(MergeResult Merged, PublishResult Published)
             // taken answers nobody else will see until it is shared again.
             if (!Published.Published)
             {
-                return $"{Merged.Summary} Your own answers could not be shared back: "
+                return $"{Merged.Summary} Your own answers could not be synced back: "
                      + Published.Problem;
             }
 
-            return $"{Merged.Summary} Your answers are shared.";
+            return $"{Merged.Summary} Your answers are synced.";
         }
     }
 }

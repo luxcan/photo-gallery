@@ -297,12 +297,33 @@ public sealed partial class GalleryViewModel : ObservableObject
     /// mentions is a feature only the person who wrote it knows about.
     /// </remarks>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasChosen), nameof(ChosenSummary), nameof(DeleteChosenCaption))]
+    [NotifyPropertyChangedFor(
+        nameof(HasChosen),
+        nameof(ChosenSummary),
+        nameof(DeleteChosenCaption),
+        nameof(EverythingChosen))]
     private bool _isChoosing;
 
     public int ChosenCount => _chosen.Count;
 
     public bool HasChosen => _chosen.Count > 0;
+
+    /// <summary>
+    /// Whether everything on the wall is already ticked, so Select all has
+    /// nothing left to do.
+    /// </summary>
+    /// <remarks>
+    /// Read by the strip to switch Select all off once it would do nothing. A
+    /// control that stays lit and then does nothing when pressed is how somebody
+    /// concludes there is no way out of a selection - which is exactly what
+    /// happened: the obvious gesture after Select all is to press it again, and
+    /// it was a silent no-op. Switched off, the eye goes to Select none instead,
+    /// which is the control that does have something to do.
+    /// </remarks>
+    public bool EverythingChosen => _chosen.Count > 0 && _chosen.Count == _window.Tiles.Count;
+
+    /// <summary>Whether Select all would change anything.</summary>
+    public bool CanChooseEverything => _window.Tiles.Count > 0 && !EverythingChosen;
 
     /// <summary>How many are ticked, said in the strip beside the count.</summary>
     public string ChosenSummary => _chosen.Count switch
@@ -2172,6 +2193,8 @@ public sealed partial class GalleryViewModel : ObservableObject
         OnPropertyChanged(nameof(HasChosen));
         OnPropertyChanged(nameof(ChosenSummary));
         OnPropertyChanged(nameof(DeleteChosenCaption));
+        OnPropertyChanged(nameof(EverythingChosen));
+        OnPropertyChanged(nameof(CanChooseEverything));
     }
 
     /// <summary>

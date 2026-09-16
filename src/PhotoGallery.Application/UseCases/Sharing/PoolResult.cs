@@ -59,7 +59,7 @@ public sealed record PoolResult(
 
             if (Offered > 0)
             {
-                parts.Add($"{Offered:N0} shared for the other computers");
+                parts.Add($"{Offered:N0} put there for the other computers");
             }
 
             if (Faces > 0)

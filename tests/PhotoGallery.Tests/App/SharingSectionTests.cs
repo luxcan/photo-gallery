@@ -31,7 +31,12 @@ public sealed class SharingSectionTests
     [InlineData("Sharing.Folder")]
     [InlineData("Sharing.Problem")]
     [InlineData("Sharing.Status")]
-    [InlineData("Sharing.WaitingLabel")]
+    [InlineData("Sharing.HasWaitingElsewhere")]
+    [InlineData("Sharing.WaitingElsewhereLabel")]
+    [InlineData("Sharing.HasWaitingOnPhotos")]
+    [InlineData("Sharing.WaitingOnPhotosLabel")]
+    [InlineData("Sharing.HasWaitingOnFaces")]
+    [InlineData("Sharing.WaitingOnFacesLabel")]
     [InlineData("Sharing.Machines")]
     [InlineData("Sharing.HasFolder")]
     [InlineData("Sharing.HasProblem")]
@@ -88,22 +93,75 @@ public sealed class SharingSectionTests
         // could report.
         string section = Section();
 
-        Assert.Contains("Share now", section);
+        Assert.Contains("Sync now", section);
         Assert.DoesNotContain("Content=\"Publish", section);
         Assert.DoesNotContain("Content=\"Send", section);
         Assert.DoesNotContain("Content=\"Receive", section);
+    }
+
+    /// <summary>
+    /// Only the group somebody can act on is allowed to shout.
+    /// </summary>
+    /// <remarks>
+    /// Two of the three waiting groups are nobody's to fix: a photograph that
+    /// has been renamed where it lives, and a face this machine's detector will
+    /// never draw. Dressing those in the caution colours is how a screen teaches
+    /// people that its warnings mean nothing - which is exactly what the single
+    /// red banner did, every time, for ever. So the weight is asserted and not
+    /// only the wording, because "make it consistent" is a one-line edit that
+    /// would put it straight back.
+    /// </remarks>
+    [Fact]
+    public void OnlyTheGroupSomebodyCanActOnGetsACallout()
+    {
+        string waiting = Waiting();
+
+        Assert.Equal(1, Occurrences(waiting, "Status.CautionBack"));
+
+        int caution = waiting.IndexOf("Status.CautionBack", StringComparison.Ordinal);
+        int actionable = waiting.IndexOf(
+            "Sharing.WaitingElsewhereLabel", StringComparison.Ordinal);
+        int closes = waiting.IndexOf("</Border>", caution, StringComparison.Ordinal);
+
+        Assert.True(caution < actionable, "the callout does not wrap the actionable line");
+        Assert.True(actionable < closes, "the actionable line is outside the callout");
+
+        // And the other two are hints rather than anything louder.
+        foreach (string quiet in new[] { "WaitingOnPhotosLabel", "WaitingOnFacesLabel" })
+        {
+            int at = waiting.IndexOf(quiet, StringComparison.Ordinal);
+            int style = waiting.LastIndexOf("Style=\"{DynamicResource", at, StringComparison.Ordinal);
+
+            Assert.Contains(
+                "HintText",
+                waiting[style..at],
+                StringComparison.Ordinal);
+        }
+    }
+
+    /// <summary>The one worth doing something about is offered first.</summary>
+    [Fact]
+    public void TheWaitingGroupsAreOrderedByWhatCanBeDoneAboutThem()
+    {
+        string waiting = Waiting();
+
+        int elsewhere = waiting.IndexOf("WaitingElsewhereLabel", StringComparison.Ordinal);
+        int photos = waiting.IndexOf("WaitingOnPhotosLabel", StringComparison.Ordinal);
+        int faces = waiting.IndexOf("WaitingOnFacesLabel", StringComparison.Ordinal);
+
+        Assert.True(elsewhere > 0 && photos > elsewhere && faces > photos);
     }
 
     [Fact]
     public void TheScreenNamesNoDeviceAndNoProtocol()
     {
         // The app's copy rules: "the other computers in the house", not "the
-        // NAS", not "the peer", not "sync".
+        // NAS", not "the peer".
         foreach (Match text in Regex.Matches(Section(), "Text=\"([^\"]*)\""))
         {
             string copy = text.Groups[1].Value;
 
-            foreach (string banned in new[] { "NAS", "peer", "server", "protocol", "sync " })
+            foreach (string banned in Banned)
             {
                 Assert.DoesNotContain(banned, copy, StringComparison.OrdinalIgnoreCase);
             }
@@ -200,15 +258,23 @@ public sealed class SharingSectionTests
         }
 
         // The sentence itself is built in the view model, and pinned by what it
-        // says rather than by what it does not. Hunting banned words through C#
-        // source finds "sync " inside every "async Task" in the file, which is
-        // how a negative test teaches people that it cries wolf.
+        // says rather than by what it does not. A negative test over C# source
+        // is the weaker instrument anyway: it reads every doc-comment and every
+        // identifier as though they were copy, and cries wolf on both.
         Assert.Contains("this computer has not taken yet", s_viewModel, StringComparison.Ordinal);
     }
 
     /// <summary>The words this feature never uses for the machines in a house.</summary>
+    /// <remarks>
+    /// "sync" was on this list until the feature was named Sync. It was banned
+    /// alongside the others because it promises something continuous and
+    /// automatic, and this is a button somebody presses - so the name is allowed
+    /// now and the promise still is not: no copy here may say the app keeps
+    /// anything up to date on its own. The rest stay. A machine in this house is
+    /// "the other computers", never a device and never a mechanism.
+    /// </remarks>
     private static readonly string[] Banned =
-        ["NAS", "peer", "server", "protocol", "sync "];
+        ["NAS", "peer", "server", "protocol"];
 
     /// <summary>
     /// The floating notice, from the flag that shows it to the button that puts
@@ -233,7 +299,36 @@ public sealed class SharingSectionTests
         return s_window[start..end];
     }
 
-    /// <summary>Just the Sharing screen's markup, so the assertions are about it.</summary>
+    /// <summary>Just the waiting-answers block, so its weight can be read.</summary>
+    private static string Waiting()
+    {
+        string section = Section();
+
+        int start = section.IndexOf(
+            "Answers waiting for their photos", StringComparison.Ordinal);
+        Assert.True(start > 0, "the waiting answers are not on the screen");
+
+        int end = section.IndexOf(
+            "Small copies of your photos", start, StringComparison.Ordinal);
+        Assert.True(end > start, "the waiting answers do not end where they should");
+
+        return section[start..end];
+    }
+
+    private static int Occurrences(string text, string what)
+    {
+        int count = 0;
+        for (int at = text.IndexOf(what, StringComparison.Ordinal);
+             at >= 0;
+             at = text.IndexOf(what, at + what.Length, StringComparison.Ordinal))
+        {
+            count++;
+        }
+
+        return count;
+    }
+
+    /// <summary>Just the Sync screen's markup, so the assertions are about it.</summary>
     private static string Section()
     {
         int start = s_window.IndexOf(

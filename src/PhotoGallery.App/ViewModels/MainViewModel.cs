@@ -319,7 +319,7 @@ public sealed partial class MainViewModel : ObservableObject
             // Above Settings, because it is something somebody does rather
             // than something they configure - and it needs photos to be worth
             // opening at all, which is what the flag says.
-            new ActivitySection(ActivitySection.SharingKey, "Sharing", "\uE72D", true),
+            new ActivitySection(ActivitySection.SharingKey, "Sync", "\uE72D", true),
             new ActivitySection(ActivitySection.SettingsKey, "Settings", "\uE713", false),
             new ActivitySection(ActivitySection.AboutKey, "About", "\uE946", false),
         ];
@@ -1594,7 +1594,7 @@ public sealed partial class MainViewModel : ObservableObject
         IsSettling = true;
         OverlayTitle = "Taking in answers from your other computer";
         OverlayTarget = string.Empty;
-        OverlayStatus = "looking in the shared folder...";
+        OverlayStatus = "looking in the sync folder...";
         OverlayIsIndeterminate = true;
         OverlayPercent = 0;
         OverlayPicture = null;
@@ -1621,13 +1621,13 @@ public sealed partial class MainViewModel : ObservableObject
                     .ConfigureAwait(false);
             }).ConfigureAwait(true);
 
-            Append($"took shared answers: {result.Summary}");
+            Append($"took answers from the sync folder: {result.Summary}");
             Sharing.Settled();
             Say(result.Summary);
         }
         catch (Exception ex) when (LibraryFailure.IsExpected(ex))
         {
-            Append($"could not take the shared answers: {ex}");
+            Append($"could not take the answers to sync: {ex}");
             Say($"Those answers could not be taken: {ex.Message}");
         }
         finally
@@ -1638,16 +1638,15 @@ public sealed partial class MainViewModel : ObservableObject
         }
 
         // After the overlay is down, because it re-reads the folder and the
-        // counts, and the sentence it settles is the one about photographs this
-        // library has not indexed yet - which is the half of the answer that
-        // asks for a scan.
+        // counts that the Sync screen draws from.
+        //
+        // What is waiting is deliberately not appended to the notice. It used to
+        // be, on top of a summary that already carried the same sentence from a
+        // different number - so one notice said the same thing twice, with two
+        // figures that need not agree. The Sync screen is where it belongs, split
+        // into the three things it can mean, and it is one click away.
         await Sharing.RefreshAsync().ConfigureAwait(true);
         await RefreshCountsAsync().ConfigureAwait(true);
-
-        if (Sharing.HasWaiting)
-        {
-            Say($"{Notice} {Sharing.WaitingLabel}");
-        }
 
         LibraryChangedByShare();
     }

@@ -316,7 +316,21 @@
                    description is answered on Enter, because it runs a text
                    encoder over the whole library and per keystroke would make
                    the box unusable. -->
-              <StackPanel Grid.Column="0" Orientation="Horizontal">
+              <!-- Out of the way while photographs are being chosen. Two reasons,
+                   and either would be enough. The strip has one elastic column
+                   and this one is fixed, so the choosing controls were squeezed
+                   into whatever was left and then painted over by the opaque
+                   panels further right - on an ordinary window the buttons were
+                   simply not there, which is how somebody concludes the app
+                   cannot do a thing it does perfectly well.
+
+                   And searching mid-selection silently drops what is ticked: the
+                   wall reloads and keeps only what the new query still shows. A
+                   control that quietly discards an hour of ticking is not one to
+                   leave within reach. -->
+              <StackPanel Grid.Column="0" Orientation="Horizontal"
+                          Visibility="{Binding Gallery.IsChoosing,
+                                       Converter={StaticResource InverseBoolToVisibility}}">
               <Grid Width="270">
                 <!-- 32 high, and the padding goes horizontal-only to allow it.
                      On the instance rather than in InputTextBox, which dresses a
@@ -439,20 +453,35 @@
                            Foreground="{DynamicResource Editor.Foreground}"
                            Text="{Binding Gallery.ChosenSummary}" />
 
+                <!-- A named pair, and not one word each. "Clear" sat inches from
+                     the search box, so it read as clearing the search rather than
+                     the selection, and somebody who had just pressed Select all
+                     could not find the way back out. "Select none" can only mean
+                     one thing next to "Select all".
+
+                     Select all switches itself off once everything is ticked: it
+                     stayed lit and did nothing, and the obvious gesture after
+                     Select all is to press it again. -->
                 <Button Style="{DynamicResource LinkButton}" Margin="10,0,0,0" FontSize="12"
                         Content="Select all"
                         ToolTip="Tick every photograph on this wall"
+                        IsEnabled="{Binding Gallery.CanChooseEverything}"
                         Command="{Binding Gallery.ChooseEverythingCommand}" />
 
                 <Button Style="{DynamicResource LinkButton}" Margin="10,0,0,0" FontSize="12"
-                        Content="Clear"
-                        ToolTip="Untick everything"
+                        Content="Select none"
+                        ToolTip="Untick everything. Escape leaves choosing altogether."
                         IsEnabled="{Binding Gallery.HasChosen}"
                         Command="{Binding Gallery.ChooseNothingCommand}" />
 
+                <!-- "Put in album", because that is what it does and what people
+                     ask for. It said "Move to album", which understates the only
+                     way to file a selection - and sits two controls from a
+                     Folders toggle, so "move" and "folder" were doing the
+                     confusing between them. -->
                 <Button Style="{DynamicResource SecondaryButton}" Height="28" Padding="12,0"
                         Margin="16,0,0,0"
-                        Content="Move to album"
+                        Content="Put in album"
                         ToolTip="Put the ticked photographs in an album"
                         IsEnabled="{Binding Gallery.HasChosen}"
                         Command="{Binding Gallery.MoveChosenToAlbumCommand}" />
@@ -522,7 +551,9 @@
                       Background="{DynamicResource Input.Background}"
                       BorderBrush="{DynamicResource Separator}" BorderThickness="1"
                       CornerRadius="{DynamicResource Radius.Control}" Padding="2"
-                      SnapsToDevicePixels="True">
+                      SnapsToDevicePixels="True"
+                      Visibility="{Binding Gallery.IsChoosing,
+                                   Converter={StaticResource InverseBoolToVisibility}}">
                 <UniformGrid Rows="1">
                   <RadioButton Style="{DynamicResource SegmentedToggle}" MinWidth="80"
                                Content="Newest" GroupName="GallerySort"
@@ -540,11 +571,16 @@
                    single choice, so the segments carry the state themselves. A
                    UniformGrid rather than a StackPanel because segments of
                    unequal width read as two buttons again. -->
+              <!-- Hidden while choosing, with the sort, and for the same two
+                   reasons: the room is needed, and switching between Media and
+                   Folders rebuilds the wall, which drops whatever was ticked. -->
               <Border Grid.Column="3" VerticalAlignment="Center"
                       Background="{DynamicResource Input.Background}"
                       BorderBrush="{DynamicResource Separator}" BorderThickness="1"
                       CornerRadius="{DynamicResource Radius.Control}" Padding="2"
-                      SnapsToDevicePixels="True">
+                      SnapsToDevicePixels="True"
+                      Visibility="{Binding Gallery.IsChoosing,
+                                   Converter={StaticResource InverseBoolToVisibility}}">
                 <UniformGrid Rows="1">
                   <!-- "Media" rather than "Photos". This side of the switch was
                        photographs only for as long as videos had nothing to
@@ -2363,7 +2399,7 @@
             <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="36,28,36,24">
               <StackPanel HorizontalAlignment="Left" MaxWidth="620">
 
-                <TextBlock Text="Sharing" Style="{DynamicResource Heading}" />
+                <TextBlock Text="Sync" Style="{DynamicResource Heading}" />
 
                 <!-- The screen opens by saying what it is for, before anything
                      is nominated: everybody's work kept level between the
@@ -2373,10 +2409,10 @@
                            Text="You and the other computers in the house can keep each other up to date with the work everybody has done: the names on faces, the albums, which way up a photo goes. Choose a folder you can all reach, and each computer leaves a small file there for the others to pick up." />
 
                 <TextBlock Style="{DynamicResource FieldLabel}" Margin="0,22,0,0"
-                           Text="Shared folder" />
+                           Text="Sync folder" />
                 <TextBlock Style="{DynamicResource HintText}" Margin="0,0,0,8"
                            TextWrapping="Wrap"
-                           Text="Somewhere every computer can already reach — a drive on the network, or a folder that syncs. It must not sit inside a folder of your photos, or hold one, because what is kept here would then be indexed as pictures." />
+                           Text="Somewhere every computer can already reach — a drive on the network, or a folder a cloud service keeps in step. It must not sit inside a folder of your photos, or hold one, because what is kept here would then be indexed as pictures." />
 
                 <Border Background="{DynamicResource Panel.Background}"
                         BorderBrush="{DynamicResource Panel.Border}" BorderThickness="1"
@@ -2385,7 +2421,7 @@
                     <Button DockPanel.Dock="Right" Style="{DynamicResource PrimaryButton}"
                             MinWidth="100" Margin="12,0,0,0" VerticalAlignment="Center"
                             Content="Change..."
-                            ToolTip="Choose the folder this library shares answers through"
+                            ToolTip="Choose the folder this library syncs through"
                             IsEnabled="{Binding Sharing.IsIdle}"
                             Click="OnChooseSharedFolderClicked" />
                     <TextBlock VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
@@ -2413,7 +2449,7 @@
                      order is not an error anything could report. -->
                 <Button Style="{DynamicResource PrimaryButton}" MinWidth="150"
                         HorizontalAlignment="Left" Margin="0,18,0,0"
-                        Content="Share now"
+                        Content="Sync now"
                         ToolTip="Take what the other computers have worked out, and give them yours"
                         Command="{Binding Sharing.ShareCommand}" />
 
@@ -2461,17 +2497,48 @@
                   </ItemsControl>
                 </StackPanel>
 
-                <!-- The one number this screen must never hide: the difference
-                     between nothing to do, and an evening's work waiting for a
-                     folder nobody has added. -->
-                <Border Margin="0,12,0,0" Padding="12,9" CornerRadius="4"
-                        Background="{DynamicResource Status.CautionBack}"
-                        Visibility="{Binding Sharing.HasWaiting,
-                                     Converter={StaticResource BoolToVisibility}}">
-                  <TextBlock Style="{DynamicResource BodyText}" TextWrapping="Wrap"
-                             Foreground="{DynamicResource Status.Caution}"
-                             Text="{Binding Sharing.WaitingLabel}" />
-                </Border>
+                <!-- Three groups, not one number. The old line said "scanning
+                     will bring them in" about every held answer, and on a real
+                     library that sentence was false for all thirty-eight of
+                     them: the photographs had been renamed where they live, or
+                     the face had simply never been found. Only the third group
+                     is something anybody can act on, so only the third group is
+                     allowed to look like it - a callout that fires on work
+                     nobody can do is how a notice teaches people to stop reading
+                     notices. -->
+                <StackPanel Margin="0,24,0,0"
+                            Visibility="{Binding Sharing.HasWaiting,
+                                         Converter={StaticResource BoolToVisibility}}">
+                  <TextBlock Style="{DynamicResource FieldLabel}"
+                             Text="Answers waiting for their photos" />
+
+                  <!-- The one with something to do about it: the pictures are on
+                       one computer and nowhere else, and the fix is a folder
+                       everybody can reach rather than anything this app can do
+                       on its own. -->
+                  <Border Margin="0,8,0,0" Padding="12,9" CornerRadius="4"
+                          Background="{DynamicResource Status.CautionBack}"
+                          Visibility="{Binding Sharing.HasWaitingElsewhere,
+                                       Converter={StaticResource BoolToVisibility}}">
+                    <TextBlock Style="{DynamicResource BodyText}" TextWrapping="Wrap"
+                               Foreground="{DynamicResource Status.Caution}"
+                               Text="{Binding Sharing.WaitingElsewhereLabel}" />
+                  </Border>
+
+                  <!-- Quiet, because nothing here is anybody's to fix - only
+                       worth knowing, so that the number is not a mystery. -->
+                  <TextBlock Style="{DynamicResource HintText}" Margin="0,8,0,0"
+                             TextWrapping="Wrap"
+                             Text="{Binding Sharing.WaitingOnPhotosLabel}"
+                             Visibility="{Binding Sharing.HasWaitingOnPhotos,
+                                          Converter={StaticResource BoolToVisibility}}" />
+
+                  <TextBlock Style="{DynamicResource HintText}" Margin="0,8,0,0"
+                             TextWrapping="Wrap"
+                             Text="{Binding Sharing.WaitingOnFacesLabel}"
+                             Visibility="{Binding Sharing.HasWaitingOnFaces,
+                                          Converter={StaticResource BoolToVisibility}}" />
+                </StackPanel>
 
                 <!-- Its own action, and deliberately not part of Share now. The
                      answers are a small file and seconds; the pictures are
@@ -2527,7 +2594,7 @@
 
                 <TextBlock Style="{DynamicResource HintText}" Margin="0,14,0,0"
                            TextWrapping="Wrap"
-                           Text="Nobody has to be switched on at the same time as you. Each computer leaves its answers in the folder and picks up everybody else's the next time it shares."
+                           Text="Nobody has to be switched on at the same time as you. Each computer leaves its answers in the folder and picks up everybody else's the next time it syncs."
                            Visibility="{Binding Sharing.HasFolder,
                                         Converter={StaticResource BoolToVisibility}}" />
               </StackPanel>

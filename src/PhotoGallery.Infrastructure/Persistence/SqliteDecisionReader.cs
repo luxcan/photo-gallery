@@ -777,8 +777,114 @@ public sealed class SqliteDecisionReader : IDecisionReader
     }
 
     /// <inheritdoc/>
-    public async Task<int> WaitingCountAsync(CancellationToken cancellationToken = default) =>
-        await _db.HeldDecisions.CountAsync(cancellationToken).ConfigureAwait(false);
+    /// <remarks>
+    /// <strong>Matched in memory, and that is a correctness requirement rather
+    /// than a preference.</strong> A held row's path has been through
+    /// <see cref="AssetKey"/> and an asset row's has not; the two are equal when
+    /// their separators and their case differ, which SQLite's default collation
+    /// would call two different photographs - the exact mistake
+    /// <see cref="AssetKey"/> exists to prevent. Doing it in SQL would also be a
+    /// second copy of the matching rule, and
+    /// <see cref="AssetKey.Normalise(string)"/> says in as many words why there
+    /// may only be one.
+    ///
+    /// <para>The cost is one pass over the index, which is why the row count is
+    /// checked first: a library nobody syncs with answers this without reading
+    /// the index at all.</para>
+    /// </remarks>
+    public async Task<HeldStanding> HeldStandingAsync(
+        CancellationToken cancellationToken = default)
+    {
+        // Two columns, never the payload. The whole point of this being a
+        // separate question from WaitingAsync is that it does not parse nine
+        // thousand documents to draw a line of text.
+        var held = await _db.HeldDecisions
+            .AsNoTracking()
+            .Select(row => new { row.SharedSourceId, row.RelativePath })
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        if (held.Count == 0)
+        {
+            return HeldStanding.Nothing;
+        }
+
+        Dictionary<int, AssetKey> photographs =
+            await PhotographsAsync(cancellationToken).ConfigureAwait(false);
+
+        HashSet<AssetKey> indexed = [.. photographs.Values];
+        HashSet<Guid> mine =
+            [.. (await SourceIdsAsync(cancellationToken).ConfigureAwait(false)).Values];
+
+        int faces = 0;
+        int missing = 0;
+        int elsewhere = 0;
+
+        HashSet<AssetKey> facePhotos = [];
+        HashSet<AssetKey> missingPhotos = [];
+        HashSet<AssetKey> elsewherePhotos = [];
+
+        string? folder = null;
+
+        foreach (var row in held)
+        {
+            // A row with no path names no photograph, and AssetKey refuses to be
+            // built from one. Skipped rather than thrown: a row this version
+            // cannot read is worth more parked than allowed to take the screen
+            // down on open, which is the same bargain WaitingAsync strikes.
+            if (string.IsNullOrWhiteSpace(row.RelativePath))
+            {
+                continue;
+            }
+
+            var key = new AssetKey(row.SharedSourceId, row.RelativePath);
+
+            if (indexed.Contains(key))
+            {
+                faces++;
+                facePhotos.Add(key);
+            }
+            else if (mine.Contains(key.SharedSourceId))
+            {
+                missing++;
+                missingPhotos.Add(key);
+            }
+            else
+            {
+                elsewhere++;
+                elsewherePhotos.Add(key);
+                Note(ref folder, key.RelativePath);
+            }
+        }
+
+        return new HeldStanding(
+            new HeldTally(faces, facePhotos.Count),
+            new HeldTally(missing, missingPhotos.Count),
+            new HeldTally(elsewhere, elsewherePhotos.Count),
+            folder ?? string.Empty);
+
+        // The folder somebody would have to move, named only where every one of
+        // these answers names the same one. A phone dump is one folder and is the
+        // case worth answering; two at once would need a sentence that listed
+        // them, so it names none and the copy falls back. Two unrelated folders
+        // that happen to share a top-level name read as one here, which costs a
+        // word in a sentence and nothing else.
+        static void Note(ref string? folder, string relativePath)
+        {
+            if (folder?.Length == 0)
+            {
+                return;
+            }
+
+            int cut = relativePath.IndexOf('\\', StringComparison.Ordinal);
+            string top = cut > 0 ? relativePath[..cut] : string.Empty;
+
+            folder = folder is null
+                  || string.Equals(folder, top, StringComparison.OrdinalIgnoreCase)
+                ? top
+                : string.Empty;
+        }
+    }
 
     /// <inheritdoc/>
     public async Task<IReadOnlyList<KnownMachine>> KnownMachinesAsync(

@@ -154,7 +154,7 @@ public sealed class ShareRenditionsHandler
                 break;
             }
 
-            progress?.Report(new MergeProgress("Sharing pictures", done++, offerable.Count));
+            progress?.Report(new MergeProgress("Syncing pictures", done++, offerable.Count));
 
             if (await _pool
                     .PushAsync(

@@ -44,7 +44,7 @@ public sealed record MergeResult(
 
             if (Machines == 0)
             {
-                return "No other computer has shared anything yet.";
+                return "No other computer has synced anything yet.";
             }
 
             // Said before the counts, because an exchange that matched nothing
@@ -56,7 +56,7 @@ public sealed record MergeResult(
                 return $"Nothing matched. This library keeps its photos under "
                      + $"{filed.Mine.Root}, and {filed.MachineName} keeps the same pictures "
                      + $"under {filed.Theirs.Root} - so the two file them differently and no "
-                     + "photo lines up. Point both at the same folder and share again.";
+                     + "photo lines up. Point both at the same folder and sync again.";
             }
 
             // Said before the counts, and for the same reason as the line
@@ -89,11 +89,15 @@ public sealed record MergeResult(
                 ? "Nothing new"
                 : string.Join(", ", parts);
 
-            string said = Outcome.Held == 0
-                ? changed + "."
-                : $"{changed}. {Outcome.Held:N0} answers are waiting for photos this "
-                  + "library has not indexed yet - scanning will bring them in.";
+            string said = changed + ".";
 
+            // What is waiting is not said here. The Sync screen states it a few
+            // elements below this line, split into the three things it can
+            // actually mean - and this said it a second time from a different
+            // question (this merge's own held count, against the whole table),
+            // so the screen carried two numbers that disagreed about one fact
+            // and neither of them was described truthfully.
+            //
             // Part of the house heard from and part of it refused is the one
             // shape of this report that can mislead while every number in it is
             // right: the counts are true and incomplete at the same time.
@@ -128,7 +132,7 @@ public sealed record MergeResult(
             && Outcome.Refused.Any(refused => refused.Reason == RefusalReason.NoSourceInCommon);
 
         return answerable
-            ? said + " Say whether those two folders are the same one below, then share again."
+            ? said + " Say whether those two folders are the same one below, then sync again."
             : said;
     }
 

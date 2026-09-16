@@ -5,15 +5,18 @@ using PhotoGallery.Domain.Sharing;
 namespace PhotoGallery.Application.UseCases.Sharing;
 
 /// <summary>
-/// What the Sharing screen opens showing.
+/// What the Sync screen opens showing.
 /// </summary>
 /// <remarks>
 /// Answered before anything is nominated, because the screen has to say what
-/// sharing is for before the user chooses a folder rather than after.
+/// syncing is for before the user chooses a folder rather than after.
 ///
-/// <para>Nothing here reads a decision. A directory listing, a count and the
-/// machines already heard from - so opening the screen on a library of sixteen
-/// thousand photographs costs the same as opening it on an empty one.</para>
+/// <para>Nothing here reads a decision: a directory listing, some counts and the
+/// machines already heard from. The counts used to be free as well, and are not
+/// any more - <see cref="IDecisionReader.HeldStandingAsync"/> walks the index
+/// once whenever anything is held, because a count that could not say <em>why</em>
+/// was a count the screen then described wrongly. A library with nothing held
+/// still costs nothing.</para>
 /// </remarks>
 public sealed class GetSharingHandler
 {
@@ -55,7 +58,8 @@ public sealed class GetSharingHandler
             ? await _exchange.StandingAsync(cancellationToken).ConfigureAwait(false)
             : [];
 
-        int waiting = await _decisions.WaitingCountAsync(cancellationToken).ConfigureAwait(false);
+        HeldStanding held =
+            await _decisions.HeldStandingAsync(cancellationToken).ConfigureAwait(false);
 
         IReadOnlyList<Unprepared> outstanding =
             await _decisions.UnpreparedAsync(cancellationToken).ConfigureAwait(false);
@@ -64,7 +68,7 @@ public sealed class GetSharingHandler
             folder,
             problem,
             Standing(known, published, settings),
-            waiting,
+            held,
             outstanding.Count);
     }
 

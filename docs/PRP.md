@@ -139,7 +139,7 @@ before them. A number is a PRP's identity, not its turn.
 | 11 | Albums — proposed groupings | ⬜ **Next** | [11-albums.md](prp/11-albums.md) |
 | 09 | Models — installing, removing and licence | ◐ Half built | [09-models.md](prp/09-models.md) |
 | 08 | Video | ◐ Posters ship | [08-video.md](prp/08-video.md) |
-| 12 | Sharing between machines | ✅ Done | [12-sharing.md](prp/12-sharing.md) |
+| 12 | Sharing between machines — **called Sync on screen** | ✅ Done | [12-sharing.md](prp/12-sharing.md) |
 | 13 | Collections — shelves of albums | ✅ Done | [13-collections.md](prp/13-collections.md) |
 
 **Location before models** deliberately. It needs no weights, it rides a read the

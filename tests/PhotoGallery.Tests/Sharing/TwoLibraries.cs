@@ -285,13 +285,45 @@ internal sealed class Library : IDisposable
     }
 
     /// <summary>
+    /// The folder every test means when it says "this library's" - the one it
+    /// was built with, before anybody added a second.
+    /// </summary>
+    /// <remarks>
+    /// These helpers all read <c>Single()</c> once, which was fine while a
+    /// library could only have one folder and threw the moment one could have
+    /// two. Naming the first explicitly is what lets a test arrange the state
+    /// the Sync screen most needs to describe: a folder this machine has,
+    /// beside one only another machine does.
+    /// </remarks>
+    private PhotoSource Original() => Db.PhotoSources.Single(source => source.Id == 1);
+
+    /// <summary>
+    /// A second folder this library has that nobody has paired - which is what
+    /// somebody's phone dump looks like from every other computer in the house.
+    /// </summary>
+    public PhotoSource Folder(string path, Guid? sharedId = null)
+    {
+        var source = new PhotoSource
+        {
+            Path = path,
+            SharedId = sharedId ?? Guid.NewGuid(),
+            AddedUtc = DateTime.UtcNow,
+        };
+
+        Db.PhotoSources.Add(source);
+        Db.SaveChanges();
+        Db.ChangeTracker.Clear();
+        return source;
+    }
+
+    /// <summary>
     /// Repoints the source at a different shared id, which is what two machines
     /// that were never paired look like.
     /// </summary>
     public void Unpair()
     {
         SharedSourceId = Guid.NewGuid();
-        Db.PhotoSources.Single().SharedId = SharedSourceId;
+        Original().SharedId = SharedSourceId;
         Db.SaveChanges();
         Db.ChangeTracker.Clear();
     }
@@ -305,14 +337,15 @@ internal sealed class Library : IDisposable
     {
         Unpair();
 
-        PhotoSource source = Db.PhotoSources.Single();
+        PhotoSource source = Original();
         source.Path = root;
         Db.SaveChanges();
         Db.ChangeTracker.Clear();
     }
 
     /// <summary>What this library's source is called after a rename.</summary>
-    public Guid CurrentSharedId => Db.PhotoSources.AsNoTracking().Single().SharedId;
+    public Guid CurrentSharedId =>
+        Db.PhotoSources.AsNoTracking().Single(source => source.Id == 1).SharedId;
 
     /// <summary>
     /// Runs a real scan over a folder with nothing in it, so every indexed
@@ -329,7 +362,7 @@ internal sealed class Library : IDisposable
         string empty = Path.Combine(Root, "source");
         Directory.CreateDirectory(empty);
 
-        PhotoSource source = Db.PhotoSources.Single();
+        PhotoSource source = Original();
         source.Path = empty;
         Db.SaveChanges();
         Db.ChangeTracker.Clear();
@@ -350,11 +383,14 @@ internal sealed class Library : IDisposable
     }
 
     /// <summary>Indexes a photograph, as a crawl would.</summary>
-    public Asset Photo(string relativePath, DateTime? takenUtc = null)
+    /// <param name="into">
+    /// The folder it goes in, or null for the one the library was built with.
+    /// </param>
+    public Asset Photo(string relativePath, DateTime? takenUtc = null, PhotoSource? into = null)
     {
         var asset = new Asset
         {
-            PhotoSourceId = 1,
+            PhotoSourceId = into?.Id ?? 1,
             RelativePath = relativePath,
             Length = 1024 + _nextPhoto++,
             ModifiedUtc = new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc),
@@ -566,6 +602,13 @@ internal sealed class Library : IDisposable
     {
         ArgumentNullException.ThrowIfNull(asset);
         return new AssetKey(SharedSourceId, asset.RelativePath);
+    }
+
+    /// <summary>What this machine calls a photograph in a folder that is not its first.</summary>
+    public AssetKey KeyOf(PhotoSource source, string relativePath)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        return new AssetKey(source.SharedId, relativePath);
     }
 
     public void Dispose() => Db.Dispose();

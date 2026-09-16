@@ -403,7 +403,7 @@ public sealed class SharedFolderPool : IRenditionPool
 
         return string.IsNullOrWhiteSpace(settings.SharedFolder)
             ? throw new InvalidOperationException(
-                "No shared folder has been chosen for this library.")
+                "No sync folder has been chosen for this library.")
             : settings.SharedFolder;
     }
 }

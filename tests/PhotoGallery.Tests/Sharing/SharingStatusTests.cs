@@ -111,7 +111,13 @@ public sealed class SharingStatusTests : IDisposable
 
         SharingStatus status = await Dad.Overview.HandleAsync();
 
-        Assert.Equal(1, status.Waiting);
+        Assert.Equal(1, status.Held.Answers);
+
+        // Missing rather than Elsewhere: the photograph is in the folder the two
+        // libraries share, so Dad has the folder and simply not the picture. The
+        // three-way split itself is argued out in WaitingAnswersTests; what this
+        // one is for is that the screen is told at all.
+        Assert.Equal(1, status.Held.Missing.Answers);
     }
 
     [Theory]
@@ -134,7 +140,7 @@ public sealed class SharingStatusTests : IDisposable
     {
         var machine = new MachineStanding("Ana's laptop", null, true);
 
-        Assert.Equal("never shared", machine.Recency(Monday));
+        Assert.Equal("never synced", machine.Recency(Monday));
     }
 
     [Fact]
@@ -152,7 +158,7 @@ public sealed class SharingStatusTests : IDisposable
 
         Assert.True(shared.Shared);
         Assert.Contains("1 name", shared.Summary);
-        Assert.Contains("Your answers are shared", shared.Summary);
+        Assert.Contains("Your answers are synced", shared.Summary);
 
         // Taken, and given back: Dad's own file now exists.
         Assert.Single(Dad.Db.FaceAssignments);

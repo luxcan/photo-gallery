@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using Microsoft.Extensions.DependencyInjection;
 using PhotoGallery.App.Albums;
 using PhotoGallery.App.Gallery;
@@ -194,6 +195,128 @@ public sealed class ChoosingManyPhotosTests : IDisposable
         Assert.Contains("Gallery.MoveChosenToAlbumCommand", window, StringComparison.Ordinal);
         Assert.Contains("Gallery.DeleteChosenCaption", window, StringComparison.Ordinal);
         Assert.Contains("OnDeleteChosenPhotosClicked", window, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// The way out of a selection is named as the twin of the way in.
+    /// </summary>
+    /// <remarks>
+    /// It said "Clear", a 12px link an inch from the search box - so it read as
+    /// clearing the search, and somebody who had just pressed Select all
+    /// reported that there was no way to unselect. Both things were there and
+    /// both worked; neither looked like what it was. "Select none" can only mean
+    /// one thing beside "Select all".
+    ///
+    /// <para>And Select all switches itself off once everything is ticked. It
+    /// stayed lit and did nothing, which is how pressing it again - the obvious
+    /// gesture - taught somebody that they were stuck.</para>
+    /// </remarks>
+    [Fact]
+    public void TheWayOutOfASelectionIsNamedAsThePairOfTheWayIn()
+    {
+        string window = File.ReadAllText(AppMarkup.PathTo("Shell", "MainWindow.xaml"));
+
+        Assert.Contains("Content=\"Select all\"", window, StringComparison.Ordinal);
+        Assert.Contains("Content=\"Select none\"", window, StringComparison.Ordinal);
+        Assert.DoesNotContain("Content=\"Clear\"", window, StringComparison.Ordinal);
+
+        Assert.Contains(
+            "IsEnabled=\"{Binding Gallery.CanChooseEverything}\"",
+            window,
+            StringComparison.Ordinal);
+
+        // And the one gesture nothing on screen used to mention.
+        Assert.Contains("Escape leaves choosing altogether", window, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Filing a selection says what it does.
+    /// </summary>
+    /// <remarks>
+    /// "Move to album" understates the only way to file a selection, and sits
+    /// two controls from a Folders toggle - so "move" and "folder" did the
+    /// confusing between them, and somebody looking for how to put photographs
+    /// in a folder did not find the button that does it.
+    /// </remarks>
+    [Fact]
+    public void FilingASelectionIsCalledPuttingItInAnAlbum()
+    {
+        string window = File.ReadAllText(AppMarkup.PathTo("Shell", "MainWindow.xaml"));
+
+        Assert.Contains("Content=\"Put in album\"", window, StringComparison.Ordinal);
+        Assert.DoesNotContain("Content=\"Move to album\"", window, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// The choosing controls get the whole strip, because they were being
+    /// painted over.
+    /// </summary>
+    /// <remarks>
+    /// The strip has one elastic column and four fixed ones. The choosing
+    /// controls live in the elastic one and need about 490px; on an ordinary
+    /// window there were about 130 left, and because the sort and view panels
+    /// are declared later in the markup and have opaque backgrounds, the
+    /// overflow was not clipped - it was drawn underneath them. So every button
+    /// after the count was invisible and unclickable unless the window was
+    /// maximised, which is why this was reported as the app having no way to
+    /// unselect and no way to file a selection. Both worked perfectly; neither
+    /// could be seen.
+    ///
+    /// <para>They earn their absence twice over: searching, re-sorting or
+    /// switching between Media and Folders all rebuild the wall, and the rebuild
+    /// keeps only what the new query still shows - so each of them silently
+    /// discards part of a selection. Out of reach while choosing is where they
+    /// belong.</para>
+    ///
+    /// <para>Asserted on the markup because layout is invisible to a view-model
+    /// suite, and this is a bug a view-model suite watched happen.</para>
+    /// </remarks>
+    [Fact]
+    public void WhileChoosing_TheRestOfTheStripGetsOutOfTheWay()
+    {
+        string window = File.ReadAllText(AppMarkup.PathTo("Shell", "MainWindow.xaml"));
+        string strip = Strip(window);
+
+        // Four: the search box, the count-and-filters line that the choosing
+        // controls replace, the sort pair and the view pair. Counted rather than
+        // merely found, because three of the four is the state that looks fixed
+        // and is not - one panel left showing is one panel still painting over
+        // the buttons.
+        int hidden = Regex.Matches(
+            strip,
+            @"Visibility=""\{Binding Gallery\.IsChoosing,\s*"
+            + @"Converter=\{StaticResource InverseBoolToVisibility\}\}""").Count;
+
+        Assert.Equal(4, hidden);
+
+        // And the way out of the mode stays, or hiding the rest would trap
+        // somebody in it.
+        Assert.Contains("Content=\"Select\"", strip, StringComparison.Ordinal);
+    }
+
+    /// <summary>The strip above the wall, from its grid to the tiles below.</summary>
+    private static string Strip(string window)
+    {
+        int start = window.IndexOf("<Grid Grid.Row=\"0\" Margin=\"0,0,0,10\">", StringComparison.Ordinal);
+        Assert.True(start > 0, "the strip is not in the window");
+
+        int end = window.IndexOf("x:Name=\"GalleryGrid\"", start, StringComparison.Ordinal);
+        Assert.True(end > start, "the strip does not end where it should");
+
+        return window[start..end];
+    }
+
+    /// <summary>
+    /// Select all is off when there is nothing to select, not merely when
+    /// everything already is.
+    /// </summary>
+    [Fact]
+    public void SelectAllIsOffWhenTheWallIsEmpty()
+    {
+        _gallery.IsChoosing = true;
+
+        Assert.False(_gallery.CanChooseEverything);
+        Assert.False(_gallery.EverythingChosen);
     }
 
     /// <summary>A ticked photograph is marked on the picture itself.</summary>

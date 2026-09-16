@@ -53,7 +53,7 @@ public sealed class AddPhotoSourceHandler
             && FolderOverlap.Any(trimmed, settings.SharedFolder))
         {
             throw new InvalidOperationException(
-                $"That folder overlaps the one this library shares answers through: "
+                $"That folder overlaps the one this library syncs through: "
               + $"{settings.SharedFolder}. Scanning it would index Photo Gallery's own files "
               + "as photographs.");
         }

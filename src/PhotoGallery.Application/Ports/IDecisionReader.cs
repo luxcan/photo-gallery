@@ -104,14 +104,23 @@ public interface IDecisionReader
     /// </remarks>
     Task<IReadOnlyList<SharedFace>> FacesAsync(CancellationToken cancellationToken = default);
 
-    /// <summary>How many answers are waiting, without reading any of them.</summary>
+    /// <summary>
+    /// How many answers are waiting and why, without reading any of them.
+    /// </summary>
     /// <remarks>
-    /// Separate from <see cref="WaitingAsync"/> because the Sharing screen asks
-    /// this every time it opens and only wants the number. Nine thousand held
+    /// Separate from <see cref="WaitingAsync"/> because the Sync screen asks
+    /// this every time it opens and only wants the counts. Nine thousand held
     /// answers is nine thousand payloads to parse for a line of text nobody
     /// reads twice.
+    ///
+    /// <para>Three numbers rather than one, because the three mean opposite
+    /// things to the reader: one is waiting on this machine's own face pass, one
+    /// on a photograph that is not where it was, and one on a folder that is on
+    /// somebody else's laptop - and only the last is anything anybody can do
+    /// something about. A single count could only ever be described by a
+    /// sentence that was wrong for two of the three.</para>
     /// </remarks>
-    Task<int> WaitingCountAsync(CancellationToken cancellationToken = default);
+    Task<HeldStanding> HeldStandingAsync(CancellationToken cancellationToken = default);
 
     /// <summary>The other machines this library has taken answers from.</summary>
     /// <remarks>

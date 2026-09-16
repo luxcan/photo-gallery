@@ -98,16 +98,51 @@ public sealed partial class SharingViewModel : ObservableObject
     private string _status = string.Empty;
 
     /// <summary>
-    /// Answers waiting for photographs this library has not indexed.
+    /// Answers waiting on a face this computer has not found, though the
+    /// photograph itself is here.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(
+        nameof(HasWaiting), nameof(HasWaitingOnFaces), nameof(WaitingOnFacesLabel))]
+    private int _waitingOnFaces;
+
+    /// <summary>
+    /// Answers waiting for photographs that are not in this library's folders
+    /// under the names they were given.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(
+        nameof(HasWaiting), nameof(HasWaitingOnPhotos), nameof(WaitingOnPhotosLabel))]
+    private int _waitingOnPhotos;
+
+    /// <summary>
+    /// Answers about photographs in a folder this computer does not have.
     /// </summary>
     /// <remarks>
-    /// The one number this screen must never hide. It is the difference between
-    /// "nothing to do" and "an evening's work is waiting for a folder nobody has
-    /// added", and nothing else on the screen would ever hint at it.
+    /// The one group this screen must never hide, because it is the only one
+    /// anybody can act on: an evening's work waiting for a folder nobody has
+    /// added, and nothing else on the screen would ever hint at it.
     /// </remarks>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasWaiting), nameof(WaitingLabel))]
-    private int _waiting;
+    [NotifyPropertyChangedFor(
+        nameof(HasWaiting), nameof(HasWaitingElsewhere), nameof(WaitingElsewhereLabel))]
+    private int _waitingElsewhere;
+
+    /// <summary>How many photographs those answers are about, rather than how many answers.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(WaitingElsewhereLabel))]
+    private int _waitingElsewherePhotos;
+
+    /// <summary>
+    /// The folder those photographs are in, where they are all in one.
+    /// </summary>
+    /// <remarks>
+    /// Not <c>Folder</c>: that already means the folder this library syncs
+    /// through, on this very screen.
+    /// </remarks>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(WaitingElsewhereLabel))]
+    private string _elsewhereFolder = string.Empty;
 
     /// <summary>
     /// Photographs this library has indexed and not prepared.
@@ -149,7 +184,13 @@ public sealed partial class SharingViewModel : ObservableObject
 
     public bool HasStatus => Status.Length > 0;
 
-    public bool HasWaiting => Waiting > 0;
+    public bool HasWaiting => WaitingOnFaces + WaitingOnPhotos + WaitingElsewhere > 0;
+
+    public bool HasWaitingOnFaces => WaitingOnFaces > 0;
+
+    public bool HasWaitingOnPhotos => WaitingOnPhotos > 0;
+
+    public bool HasWaitingElsewhere => WaitingElsewhere > 0;
 
     public bool HasUnprepared => Unprepared > 0;
 
@@ -194,12 +235,82 @@ public sealed partial class SharingViewModel : ObservableObject
         }
     }
 
-    public string WaitingLabel =>
-        Waiting == 1
-            ? "1 answer is waiting for a photo this library has not indexed yet. "
-              + "Scanning will bring it in."
-            : $"{Waiting:N0} answers are waiting for photos this library has not indexed yet. "
-              + "Scanning will bring them in.";
+    /// <summary>
+    /// The one group somebody can do something about: the photographs are on one
+    /// computer and nowhere else.
+    /// </summary>
+    /// <remarks>
+    /// Counted in photographs rather than answers, because a folder of
+    /// photographs is the thing being asked for. Names the folder where every one
+    /// of them is in the same folder, since an instruction to move a folder that
+    /// does not say which folder is a riddle.
+    /// </remarks>
+    public string WaitingElsewhereLabel
+    {
+        get
+        {
+            string where = ElsewhereFolder.Length > 0
+                ? (WaitingElsewherePhotos == 1
+                    ? $", in a folder called \"{ElsewhereFolder}\""
+                    : $", all in a folder called \"{ElsewhereFolder}\"")
+                : " - they are in a folder only another computer has";
+
+            return WaitingElsewherePhotos == 1
+                ? $"1 photo this computer cannot see has an answer waiting{where}. Put that "
+                  + "folder somewhere every computer in the house can reach and it arrives "
+                  + "properly - your original, at full size - with the answer already on it."
+                : $"{WaitingElsewherePhotos:N0} photos this computer cannot see have answers "
+                  + $"waiting{where}. Put that folder somewhere every computer in the house "
+                  + "can reach and they arrive properly - your originals, at full size - "
+                  + "with the answers already on them.";
+        }
+    }
+
+    /// <summary>
+    /// Answers about photographs that are not where they were, said without
+    /// asking for anything.
+    /// </summary>
+    /// <remarks>
+    /// Conditional on purpose. The photograph may turn up and it may have been
+    /// renamed for good, and which of the two it is cannot be known from here -
+    /// so the sentence says what would happen either way rather than telling
+    /// somebody to go and scan.
+    /// </remarks>
+    public string WaitingOnPhotosLabel =>
+        WaitingOnPhotos == 1
+            ? "1 answer is waiting for a photo that is not in your folders under the name it "
+              + "was given - renamed, moved, or not arrived yet. If it turns up under that "
+              + "name, a scan brings the answer with it. Nothing is thrown away in the "
+              + "meantime."
+            : $"{WaitingOnPhotos:N0} answers are waiting for photos that are not in your "
+              + "folders under the names they were given - renamed, moved, or not arrived "
+              + "yet. If they turn up under those names, a scan brings the answers with "
+              + "them. Nothing is thrown away in the meantime.";
+
+    /// <summary>
+    /// Answers waiting on this computer's own face pass, the photograph being
+    /// here already.
+    /// </summary>
+    /// <remarks>
+    /// Two different things wear this number: a photograph whose faces have not
+    /// been looked for yet, and one where they have and this machine's detector
+    /// drew no box where another machine drew one. The first comes good on a
+    /// scan and the second never does, so the sentence promises the first and
+    /// admits the second rather than quietly meaning only one of them.
+    ///
+    /// <para>It says "scan" and not "sync" deliberately. What lands a held answer
+    /// is the scan's own last phase; writing "the next sync will bring them in"
+    /// would swap one sentence that cannot come true for another.</para>
+    /// </remarks>
+    public string WaitingOnFacesLabel =>
+        WaitingOnFaces == 1
+            ? "1 answer is waiting on a face this computer has not found yet. The photo is "
+              + "already here - faces are found at the end of a scan, so the next one may "
+              + "pick it up. A face this computer never finds keeps its answer waiting."
+            : $"{WaitingOnFaces:N0} answers are waiting on faces this computer has not found "
+              + "yet. The photos are already here - faces are found at the end of a scan, so "
+              + "the next one may pick them up. A face this computer never finds keeps its "
+              + "answer waiting.";
 
     /// <summary>
     /// Looks for answers waiting in the folder, and says nothing when there are
@@ -269,7 +380,7 @@ public sealed partial class SharingViewModel : ObservableObject
         {
             // Looking is not a thing anybody asked for, so it is not a thing
             // anybody should be told has failed.
-            _log.Append($"could not look for shared answers: {ex.Message}");
+            _log.Append($"could not look for answers to sync: {ex.Message}");
 
             return null;
         }
@@ -401,7 +512,7 @@ public sealed partial class SharingViewModel : ObservableObject
             // records is two machines each sharing faultlessly through a folder
             // the other cannot see. Two logs side by side name it in a second;
             // without them both laptops only ever said everything was fine.
-            _log.Append($"sharing through {Folder}");
+            _log.Append($"syncing through {Folder}");
             _log.Append($"  {result.Summary}");
 
             Offers =
@@ -429,7 +540,7 @@ public sealed partial class SharingViewModel : ObservableObject
         }
         catch (Exception ex) when (LibraryFailure.IsExpected(ex))
         {
-            Status = $"Sharing could not finish: {ex.Message}";
+            Status = $"The sync could not finish: {ex.Message}";
         }
         finally
         {
@@ -473,7 +584,7 @@ public sealed partial class SharingViewModel : ObservableObject
             // Taken off the screen whether or not the next share happens, so an
             // answered question does not sit there being asked again.
             Offers = [.. Offers.Where(other => other != offer)];
-            Status = "Those two folders are one from now on. Share again to bring "
+            Status = "Those two folders are one from now on. Sync again to bring "
                    + "everybody's answers across.";
 
             await ReadAsync().ConfigureAwait(true);
@@ -557,7 +668,11 @@ public sealed partial class SharingViewModel : ObservableObject
 
         Folder = status.Folder;
         Problem = status.Problem;
-        Waiting = status.Waiting;
+        WaitingOnFaces = status.Held.Faces.Answers;
+        WaitingOnPhotos = status.Held.Missing.Answers;
+        WaitingElsewhere = status.Held.Elsewhere.Answers;
+        WaitingElsewherePhotos = status.Held.Elsewhere.Photos;
+        ElsewhereFolder = status.Held.Folder;
         Unprepared = status.Unprepared;
         Machines =
         [

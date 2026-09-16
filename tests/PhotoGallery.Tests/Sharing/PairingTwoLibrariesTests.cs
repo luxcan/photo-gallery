@@ -75,7 +75,7 @@ public sealed class PairingTwoLibrariesTests : IDisposable
 
         // And it points at the one question on the screen that settles it,
         // rather than leaving somebody to find the card below by themselves.
-        Assert.Contains("share again", merged.Summary, StringComparison.Ordinal);
+        Assert.Contains("sync again", merged.Summary, StringComparison.Ordinal);
     }
 
     /// <summary>

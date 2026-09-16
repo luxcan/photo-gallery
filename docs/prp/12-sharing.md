@@ -3,6 +3,19 @@
 **Status: ✅ Done — the shared folder half. The direct connection was built,
 then removed.**
 
+> **The feature is called Sync on screen, from 15 September 2026.** Every word a
+> person reads — the section in the side bar, the heading, the button, the
+> sentences after a press, the lines in the activity log — says sync. Nothing
+> else moved: the namespaces, the types, the database columns, the migration
+> names and the JSON written into the folder all still say sharing, because the
+> other laptops in the house run a published build and read the same files. This
+> document keeps its own name for the same reason a migration does — it is the
+> record of a decision at the time it was taken.
+>
+> What did *not* come back with the word is the thing "sync" used to be banned
+> for: no copy in this feature may suggest the app keeps anything up to date on
+> its own. It is a button somebody presses, and the screen still says so.
+
 > **The direct connection is no longer in the app.** Everything below about
 > finding each other on the Wi-Fi — the UDP beacon, the TLS link, the six-digit
 > pairing code, the Public-network diagnosis — was built, tested and then taken
@@ -515,10 +528,22 @@ order does not matter and cannot be got wrong.
 Held decisions are small: a key, a kind and a payload. Nine thousand of them is
 about a megabyte, so there is no reason to expire them.
 
-The screen says so plainly rather than merging in silence:
+The screen says so plainly rather than merging in silence. **The sentence below
+is what was built, and it was wrong** — it is kept here only so the correction
+has something to point at:
 
-> *3,412 answers are waiting for photographs this library has not indexed yet.
-> Scanning will bring them in — about 20 minutes.*
+> *~~3,412 answers are waiting for photographs this library has not indexed yet.
+> Scanning will bring them in — about 20 minutes.~~*
+
+It said one thing about three situations, and the promise was false in two of
+them. On the first real library it was false in all three: thirty-seven of
+thirty-eight named files that had been renamed where they live, so no scan will
+ever find them under those names, and the thirty-eighth was a photograph already
+indexed and waiting on a face this machine had not found. The count could not
+fall, so a caution banner asked for a scan that could not help, on every visit,
+for ever. What ships now is three sentences, split by what would actually have to
+happen, and only the third — the one below, about photographs on another machine
+— is allowed to look urgent.
 
 — with one button that scans and then applies them. One action, not a procedure;
 but it says what it costs before the click, because a share that quietly starts

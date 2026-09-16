@@ -31,7 +31,7 @@ public sealed record MachineStanding(string Name, DateTime? SharedUtc, bool Merg
     {
         if (SharedUtc is not DateTime shared)
         {
-            return "never shared";
+            return "never synced";
         }
 
         TimeSpan ago = nowUtc - shared;

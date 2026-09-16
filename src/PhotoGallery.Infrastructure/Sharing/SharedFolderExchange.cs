@@ -192,7 +192,7 @@ public sealed class SharedFolderExchange : IDecisionExchange
         if (string.IsNullOrWhiteSpace(settings.SharedFolder))
         {
             throw new InvalidOperationException(
-                "No shared folder has been chosen for this library.");
+                "No sync folder has been chosen for this library.");
         }
 
         return Path.Combine(settings.SharedFolder, AnswersFolder);
