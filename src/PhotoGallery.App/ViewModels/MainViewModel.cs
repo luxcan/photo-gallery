@@ -422,6 +422,29 @@ public sealed partial class MainViewModel : ObservableObject
             {
                 await Albums.ReloadAsync();
             }
+
+            // The same hole once more, and this time the mirror image of the two
+            // above. Library is the one screen loaded once and kept, so a change
+            // made anywhere else - an album removed and its photographs let loose,
+            // a face named on People, a copy deleted on Duplicates - left the wall
+            // drawn from rows read before it. Coming back to Library showed the old
+            // count and the old pictures, and only a filter chip, which re-runs the
+            // query, put it right.
+            //
+            // Forgetting that it is loaded is what makes the next visit read it
+            // again; if Library is the screen being looked at, the next visit is now.
+            //
+            // Not for the wall's own changes: those reload the wall themselves, and
+            // a second read started underneath the first would build it twice.
+            if (sender is not GalleryViewModel)
+            {
+                _galleryLoaded = false;
+
+                if (ShowLibrary)
+                {
+                    await ShowGalleryAsync();
+                }
+            }
         }
         catch (Exception ex) when (LibraryFailure.IsExpected(ex))
         {
@@ -2655,6 +2678,12 @@ public sealed partial class MainViewModel : ObservableObject
     /// Loads the Library view the first time it is opened. Later visits reuse
     /// what is already laid out, so switching sections is instant.
     /// </summary>
+    /// <remarks>
+    /// Instant only while the wall is still true. Any other screen changing the
+    /// library clears the flag below on its way through
+    /// <see cref="OnLibraryChanged"/>, so the visit after a change pays for the
+    /// read rather than showing what the library held before it.
+    /// </remarks>
     private async Task ShowGalleryAsync()
     {
         if (_galleryLoaded)
