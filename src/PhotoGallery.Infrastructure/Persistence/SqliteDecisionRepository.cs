@@ -284,6 +284,23 @@ public sealed class SqliteDecisionRepository : IDecisionRepository
                     cancellationToken)
                 .ConfigureAwait(false);
 
+            // Two folders can hold the same path - a phone dump beside the folder
+            // its photographs were copied into is the ordinary way it happens -
+            // so once they are one folder the two answers about IMG_0001.jpg are
+            // one answer, which the unique index will not let them become on
+            // their own. The duplicate goes first: both rows say the same thing
+            // about the same photograph, and the alternative is the rename
+            // throwing and taking the whole pairing down with it.
+            await _db.HeldDecisions
+                .Where(held => held.SharedSourceId == from
+                    && _db.HeldDecisions.Any(kept =>
+                        kept.SharedSourceId == to
+                        && kept.RelativePath == held.RelativePath
+                        && kept.Kind == held.Kind
+                        && kept.Part == held.Part))
+                .ExecuteDeleteAsync(cancellationToken)
+                .ConfigureAwait(false);
+
             // Answers parked under the old identity are about the same
             // photographs; left behind, they would wait for a folder that no
             // longer exists under that name.

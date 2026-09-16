@@ -251,30 +251,32 @@ public sealed class WaitingAnswersTests : IDisposable
     }
 
     /// <summary>
-    /// A folder that turns out to be one this library has stops being elsewhere.
+    /// A folder that turns out to be one this library has stops being elsewhere -
+    /// whichever way the two identities happen to sort.
     /// </summary>
     /// <remarks>
-    /// <strong>Only in one direction, and that is a bug this test does not
-    /// fix.</strong> A pairing adopts the lower of the two identities
-    /// (<c>SourcePairing.Adopt</c>), and rekeys held rows only where the id being
-    /// renamed is one of <em>this</em> library's. So when the other machine's id
-    /// is the lower one - as it is pinned to be here - this library adopts it and
-    /// its held answers line up. When this library's own id is lower it keeps it,
-    /// and answers parked under the other id are about a folder that is now the
-    /// same folder and are still keyed as though it were not: they stay elsewhere
-    /// for ever, and no scan and no pairing will release them.
+    /// <strong>This used to work half the time, and which half was decided by a
+    /// coin toss.</strong> A pairing settles both folders on the lower of the two
+    /// identities, and the rename it emitted covered only ids this library
+    /// already owned. So when the other machine's id was the lower one, this
+    /// library adopted it and its parked answers came with it; when its own id
+    /// was lower it kept it, no rename was emitted for the other id at all, and
+    /// every answer parked under that id was stranded - naming a folder that was
+    /// now the same folder, counted under "elsewhere" for ever, released by no
+    /// scan and no later pairing.
     ///
-    /// <para>The split reports that faithfully - the row really does name a
-    /// folder this library does not have - so the screen is honest either way.
-    /// The fix belongs in the pairing, not here.</para>
+    /// <para>Run as a theory over both orderings, because a `Guid.NewGuid()` on
+    /// each side made this a test that passed about half the time and was read as
+    /// flaky rather than as the report it was.</para>
     /// </remarks>
-    [Fact]
-    public async Task AnAnswerWhoseFolderIsLaterPairedStopsBeingElsewhere()
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task AnAnswerWhoseFolderIsLaterPairedStopsBeingElsewhere(bool theirsSortsLower)
     {
-        // The lower of the two identities is the one a pairing adopts, so this
-        // one is pinned rather than left to a fresh Guid to decide.
         PhotoSource phone = Mum.Folder(
-            @"C:\Users\Mum\Pictures", new Guid("00000000-0000-0000-0000-000000000001"));
+            @"C:\Users\Mum\Pictures",
+            theirsSortsLower ? Below(Dad.SharedSourceId) : Above(Dad.SharedSourceId));
 
         Mum.Answer(
             Mum.Face(Mum.Photo(@"2026 Phone Dump\b.jpg", into: phone), Head),
@@ -293,6 +295,85 @@ public sealed class WaitingAnswersTests : IDisposable
 
         Assert.Equal(0, after.Elsewhere.Answers);
         Assert.Equal(1, after.Missing.Answers);
+    }
+
+    /// <summary>
+    /// Two folders holding the same path can both have an answer parked, and
+    /// pairing them must not fall over.
+    /// </summary>
+    /// <remarks>
+    /// Two rows about <c>IMG_0001.jpg</c>, one under each folder's identity, are
+    /// the ordinary result of a phone dump sitting beside the folder its
+    /// photographs were copied into. Pairing settles both on one identity, and
+    /// the two rows become one - which the unique index over
+    /// (source, path, kind, part) will not let them do by themselves. The
+    /// duplicate is dropped rather than allowed to abort the pairing: both rows
+    /// say the same thing about the same photograph.
+    /// </remarks>
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task PairingTwoFoldersThatHoldTheSamePathKeepsOneAnswer(bool theirsSortsLower)
+    {
+        PhotoSource phone = Mum.Folder(
+            @"C:\Users\Mum\Pictures",
+            theirsSortsLower ? Below(Dad.SharedSourceId) : Above(Dad.SharedSourceId));
+
+        Person ana = Mum.Person("Ana");
+
+        // The same photograph, by name, in both of Mum's folders - and Dad has
+        // neither, so both answers park.
+        Mum.Answer(
+            Mum.Face(Mum.Photo(@"2026 Phone Dump\IMG_0001.jpg"), Head),
+            ana,
+            AssignmentSource.Confirmed,
+            Monday);
+
+        Mum.Answer(
+            Mum.Face(Mum.Photo(@"2026 Phone Dump\IMG_0001.jpg", into: phone), Head),
+            ana,
+            AssignmentSource.Confirmed,
+            Monday);
+
+        HeldStanding before = await MergedAsync();
+        Assert.Equal(2, before.Answers);
+
+        await Dad.Pairing.HandleAsync(Dad.SharedSourceId, phone.SharedId);
+
+        HeldStanding after = await Dad.Decisions.HeldStandingAsync();
+
+        Assert.Equal(0, after.Elsewhere.Answers);
+        Assert.Equal(1, after.Missing.Answers);
+        Assert.Equal(1, Dad.Db.HeldDecisions.Count());
+    }
+
+    /// <summary>
+    /// A fresh identity that sorts below the one given, so a pairing adopts it.
+    /// </summary>
+    /// <remarks>
+    /// Generated rather than pinned to a constant: <see cref="Guid"/> compares
+    /// its first field as a signed integer, so the obvious bookends
+    /// (<c>000...1</c> and <c>fff...f</c>) do not sort the way they read, and a
+    /// test pinned to one of them is a test that quietly checks the wrong thing.
+    /// </remarks>
+    private static Guid Below(Guid other) => Beside(other, -1);
+
+    /// <summary>A fresh identity that sorts above the one given.</summary>
+    private static Guid Above(Guid other) => Beside(other, 1);
+
+    private static Guid Beside(Guid other, int sign)
+    {
+        for (int tries = 0; tries < 1000; tries++)
+        {
+            Guid candidate = Guid.NewGuid();
+
+            if (Math.Sign(candidate.CompareTo(other)) == sign)
+            {
+                return candidate;
+            }
+        }
+
+        throw new InvalidOperationException("no Guid on that side of the one given");
     }
 
     private async Task<HeldStanding> MergedAsync()

@@ -57,11 +57,32 @@ public sealed class ConfirmPairingHandler
 
         List<SourceLink> every = [.. here.Links, link];
 
+        // Every identity the links touch, not only the ones this library owns.
+        //
+        // Asking about its own sources alone worked exactly half the time, and a
+        // Guid decided which half: a pairing settles both folders on the lower of
+        // the two ids, so when the other machine's id was the lower one this
+        // library adopted it and its parked answers were carried across with the
+        // source. When its own id was lower it kept it, no rename was emitted for
+        // the other id at all, and every answer already parked under that id was
+        // stranded - naming a folder that is now this folder, and released by no
+        // scan and no later pairing.
+        //
+        // The other machine's id matches no row in PhotoSources here, so the
+        // extra rename costs an update that changes nothing there and does the
+        // whole job in HeldDecisions.
+        HashSet<Guid> touched = [.. here.Sources.Select(source => source.SharedId)];
+
+        foreach (SourceLink other in every)
+        {
+            touched.Add(other.Left);
+            touched.Add(other.Right);
+        }
+
         MergePlan plan = MergePlan.Nothing with
         {
             Links = [link],
-            Renames = SourcePairing.Adopt(
-                [.. here.Sources.Select(source => source.SharedId)], every),
+            Renames = SourcePairing.Adopt(touched, every),
         };
 
         await _repository.ApplyAsync(plan, null, cancellationToken).ConfigureAwait(false);
