@@ -756,6 +756,15 @@
                       Value="{DynamicResource Focus.Border}" />
               <Setter TargetName="Root" Property="BorderThickness" Value="1" />
             </Trigger>
+            <!-- The app's one disabled look, taken from PrimaryButton: 45 per
+                 cent. It had none, so a segment switched off stayed looking
+                 exactly as live as a working one and simply ignored the
+                 pointer - which reads as the app being broken rather than as
+                 the control being out of use. -->
+            <Trigger Property="IsEnabled" Value="False">
+              <Setter TargetName="Root" Property="Opacity" Value="0.45" />
+              <Setter Property="Cursor" Value="Arrow" />
+            </Trigger>
           </ControlTemplate.Triggers>
         </ControlTemplate>
       </Setter.Value>
@@ -1127,6 +1136,12 @@
               </MultiTrigger.Conditions>
               <Setter TargetName="Placeholder" Property="Visibility" Value="Visible" />
             </MultiTrigger>
+            <!-- The one disabled look, the same 45 per cent the buttons spend.
+                 A box that takes no typing and looks exactly like one that does
+                 is the worst of both. -->
+            <Trigger Property="IsEnabled" Value="False">
+              <Setter TargetName="Root" Property="Opacity" Value="0.45" />
+            </Trigger>
             <Trigger Property="IsKeyboardFocusWithin" Value="True">
               <Setter TargetName="Root" Property="BorderBrush"
                       Value="{DynamicResource Focus.Border}" />
@@ -1841,6 +1856,13 @@
               <Setter TargetName="Face" Property="BorderBrush"
                       Value="{DynamicResource Button.Background}" />
               <Setter Property="Foreground" Value="{DynamicResource Button.Foreground}" />
+            </Trigger>
+            <!-- Last of all, so a chip that is both on and out of use reads as
+                 out of use. The same 45 per cent the buttons and the segments
+                 spend. -->
+            <Trigger Property="IsEnabled" Value="False">
+              <Setter TargetName="Face" Property="Opacity" Value="0.45" />
+              <Setter Property="Cursor" Value="Arrow" />
             </Trigger>
           </ControlTemplate.Triggers>
         </ControlTemplate>

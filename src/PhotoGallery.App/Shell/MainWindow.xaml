@@ -321,21 +321,20 @@
                    description is answered on Enter, because it runs a text
                    encoder over the whole library and per keystroke would make
                    the box unusable. -->
-              <!-- Out of the way while photographs are being chosen. Two reasons,
-                   and either would be enough. The strip has one elastic column
-                   and this one is fixed, so the choosing controls were squeezed
-                   into whatever was left and then painted over by the opaque
-                   panels further right - on an ordinary window the buttons were
-                   simply not there, which is how somebody concludes the app
-                   cannot do a thing it does perfectly well.
+              <!-- Switched off while photographs are being chosen, not hidden.
+                   Searching mid-selection silently drops what is ticked: the
+                   wall reloads and keeps only what the new query still shows, so
+                   a search is a control that quietly discards an hour of
+                   ticking. Out of use is where it belongs - but visible, because
+                   what the wall is narrowed to is part of deciding what to tick.
 
-                   And searching mid-selection silently drops what is ticked: the
-                   wall reloads and keeps only what the new query still shows. A
-                   control that quietly discards an hour of ticking is not one to
-                   leave within reach. -->
+                   It used to be hidden, to make room: the choosing controls
+                   shared this strip's one elastic column and were painted over
+                   by the opaque panels further right. They live along the bottom
+                   now, so the room is no longer needed. -->
               <StackPanel Grid.Column="0" Orientation="Horizontal"
-                          Visibility="{Binding Gallery.IsChoosing,
-                                       Converter={StaticResource InverseBoolToVisibility}}">
+                          IsEnabled="{Binding Gallery.IsChoosing,
+                                      Converter={StaticResource InverseBool}}">
               <Grid Width="270">
                 <!-- 32 high, and the padding goes horizontal-only to allow it.
                      On the instance rather than in InputTextBox, which dresses a
@@ -445,74 +444,15 @@
                         Command="{Binding Gallery.AcceptSearchCommand}" />
               </StackPanel>
 
-              <!-- What is ticked, and what can be done with it. On this strip
-                   rather than in a bar of its own: the strip is already where
-                   this screen says what it is showing, and a row that appears
-                   and disappears above the pictures would push the whole wall
-                   down every time somebody pressed Select. -->
+              <!-- What the wall is showing, and the ways out of each filter on
+                   it. Left in place while photographs are being chosen and
+                   switched off instead of hidden: which person, which place and
+                   which search this wall is narrowed to is exactly what
+                   somebody needs to read while deciding what to tick. -->
               <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="16,0,0,0"
                           VerticalAlignment="Center"
-                          Visibility="{Binding Gallery.IsChoosing,
-                                       Converter={StaticResource BoolToVisibility}}">
-                <TextBlock FontSize="12" VerticalAlignment="Center"
-                           Foreground="{DynamicResource Editor.Foreground}"
-                           Text="{Binding Gallery.ChosenSummary}" />
-
-                <!-- A named pair, and not one word each. "Clear" sat inches from
-                     the search box, so it read as clearing the search rather than
-                     the selection, and somebody who had just pressed Select all
-                     could not find the way back out. "Select none" can only mean
-                     one thing next to "Select all".
-
-                     Select all switches itself off once everything is ticked: it
-                     stayed lit and did nothing, and the obvious gesture after
-                     Select all is to press it again. -->
-                <Button Style="{DynamicResource LinkButton}" Margin="10,0,0,0" FontSize="12"
-                        Content="Select all"
-                        ToolTip="Tick every photograph on this wall"
-                        IsEnabled="{Binding Gallery.CanChooseEverything}"
-                        Command="{Binding Gallery.ChooseEverythingCommand}" />
-
-                <Button Style="{DynamicResource LinkButton}" Margin="10,0,0,0" FontSize="12"
-                        Content="Select none"
-                        ToolTip="Untick everything. Escape leaves choosing altogether."
-                        IsEnabled="{Binding Gallery.HasChosen}"
-                        Command="{Binding Gallery.ChooseNothingCommand}" />
-
-                <!-- "Put in album", because that is what it does and what people
-                     ask for. It said "Move to album", which understates the only
-                     way to file a selection - and sits two controls from a
-                     Folders toggle, so "move" and "folder" were doing the
-                     confusing between them.
-
-                     It is the accented one of the two. Filing a selection is the
-                     ordinary reason to have made one; deleting is the rare and
-                     irreversible reason, and the brightest thing on the strip
-                     should not be the one nobody can undo. -->
-                <Button Style="{DynamicResource PrimaryButton}" Height="28" Padding="12,0"
-                        Margin="16,0,0,0"
-                        Content="Put in album"
-                        ToolTip="Put the ticked photographs in an album"
-                        IsEnabled="{Binding Gallery.HasChosen}"
-                        Command="{Binding Gallery.MoveChosenToAlbumCommand}" />
-
-                <!-- Quiet, and still carrying its count: the number on the
-                     button is the last place it can be noticed before the
-                     question is asked, and the question itself names the files,
-                     says whether the Recycle Bin will catch them, and counts the
-                     faces and names about to be forgotten. -->
-                <Button Style="{DynamicResource SecondaryButton}" Height="28" Padding="12,0"
-                        Margin="8,0,0,0"
-                        Content="{Binding Gallery.DeleteChosenCaption}"
-                        ToolTip="Delete the ticked photographs"
-                        IsEnabled="{Binding Gallery.HasChosen}"
-                        Click="OnDeleteChosenPhotosClicked" />
-              </StackPanel>
-
-              <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="16,0,0,0"
-                          VerticalAlignment="Center"
-                          Visibility="{Binding Gallery.IsChoosing,
-                                       Converter={StaticResource InverseBoolToVisibility}}">
+                          IsEnabled="{Binding Gallery.IsChoosing,
+                                      Converter={StaticResource InverseBool}}">
                 <TextBlock FontSize="12" VerticalAlignment="Center"
                            Foreground="{DynamicResource Editor.Placeholder}"
                            Text="{Binding Gallery.CountSummary}" />
@@ -565,8 +505,8 @@
                       BorderBrush="{DynamicResource Separator}" BorderThickness="1"
                       CornerRadius="{DynamicResource Radius.Control}" Padding="2"
                       SnapsToDevicePixels="True"
-                      Visibility="{Binding Gallery.IsChoosing,
-                                   Converter={StaticResource InverseBoolToVisibility}}">
+                      IsEnabled="{Binding Gallery.IsChoosing,
+                                  Converter={StaticResource InverseBool}}">
                 <UniformGrid Rows="1">
                   <RadioButton Style="{DynamicResource SegmentedToggle}" MinWidth="80"
                                Content="Newest" GroupName="GallerySort"
@@ -584,16 +524,16 @@
                    single choice, so the segments carry the state themselves. A
                    UniformGrid rather than a StackPanel because segments of
                    unequal width read as two buttons again. -->
-              <!-- Hidden while choosing, with the sort, and for the same two
-                   reasons: the room is needed, and switching between Media and
-                   Folders rebuilds the wall, which drops whatever was ticked. -->
+              <!-- Switched off while choosing, with the sort and for the same
+                   reason: switching between Media and Folders rebuilds the wall,
+                   which drops whatever was ticked. -->
               <Border Grid.Column="3" VerticalAlignment="Center"
                       Background="{DynamicResource Input.Background}"
                       BorderBrush="{DynamicResource Separator}" BorderThickness="1"
                       CornerRadius="{DynamicResource Radius.Control}" Padding="2"
                       SnapsToDevicePixels="True"
-                      Visibility="{Binding Gallery.IsChoosing,
-                                   Converter={StaticResource InverseBoolToVisibility}}">
+                      IsEnabled="{Binding Gallery.IsChoosing,
+                                  Converter={StaticResource InverseBool}}">
                 <UniformGrid Rows="1">
                   <!-- "Media" rather than "Photos". This side of the switch was
                        photographs only for as long as videos had nothing to
@@ -613,14 +553,24 @@
               <!-- A mode, so a standalone pill rather than a segment: it is not
                    one of two ways to look at the library, it is something the
                    wall is doing. Off, a click on a photograph opens it, which is
-                   what this screen has always promised. -->
+                   what this screen has always promised.
+
+                   The only control here that leaves rather than greying out, and
+                   the only one whose job is taken over: the bar along the bottom
+                   carries the way out once there is one. Two buttons doing one
+                   thing, one of them alone and lit in a row of greyed controls,
+                   is the noise - and the way out belongs where the eye already
+                   is. It keeps saying the word the bar says, from the one
+                   property that decides it. -->
               <ToggleButton Grid.Column="4" Style="{DynamicResource PillToggle}"
                             VerticalAlignment="Center" Margin="10,0,0,0" MinWidth="78"
                             Content="{Binding Gallery.ChoosingLabel}"
                             ToolTip="{Binding Gallery.ChoosingTip}"
                             AutomationProperties.Name="{Binding Gallery.ChoosingTip}"
                             IsEnabled="{Binding IsIdle}"
-                            IsChecked="{Binding Gallery.IsChoosing, Mode=TwoWay}" />
+                            IsChecked="{Binding Gallery.IsChoosing, Mode=TwoWay}"
+                            Visibility="{Binding Gallery.IsChoosing,
+                                         Converter={StaticResource InverseBoolToVisibility}}" />
             </Grid>
 
             <!-- Under the box and always there, rather than an error after the
@@ -653,7 +603,13 @@
                  No count on the chips. The strip above already says "N of M",
                  and a number on every chip would be a query per chip per
                  press. -->
+            <!-- Switched off while choosing, with the rest of the header. A chip
+                 re-runs the query, and the wall keeps only what the new one
+                 still shows - so narrowing mid-selection would silently drop
+                 part of what is ticked. -->
             <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,10"
+                        IsEnabled="{Binding Gallery.IsChoosing,
+                                    Converter={StaticResource InverseBool}}"
                         Visibility="{Binding ShowLibrary,
                                      Converter={StaticResource BoolToVisibility}}">
               <TextBlock Style="{DynamicResource HintText}" Text="Show"
@@ -776,7 +732,13 @@
               </Border>
 
               <Grid Grid.Column="1">
+                <!-- The margin is the room the bar along the bottom takes, and
+                     zero when there is no bar. On the list rather than inside
+                     it, so the scrollable height really does shrink: padding
+                     would leave the last row under the bar with no way to
+                     scroll it clear. -->
                 <ListBox x:Name="GalleryGrid" Style="{DynamicResource GalleryList}"
+                         Margin="{Binding WallMargin}"
                          ItemsSource="{Binding Gallery.Rows}"
                          SizeChanged="OnGallerySizeChanged"
                          PreviewMouseWheel="OnGalleryMouseWheel"
@@ -3105,6 +3067,124 @@
             </Border>
           </Grid>
 
+          <!-- What is ticked, and what can be done with it.
+
+               A bar along the bottom rather than a row on the strip above. The
+               strip has one elastic column and four fixed ones; these controls
+               shared the elastic one with the search box and were then painted
+               over by the opaque panels further right, so on an ordinary window
+               they were simply not there. That is how somebody concludes the app
+               cannot do a thing it does perfectly well, and it is what was
+               reported.
+
+               Floating over the wall rather than a row of its grid, which is the
+               objection the strip was chosen over in the first place: a third
+               row would push every picture up the moment one was ticked. The
+               wall is given the bar's height as a bottom margin instead, so the
+               last row can still be scrolled clear of it.
+
+               The last child of the content area rather than of the window, so
+               it covers the pictures and not the side nav - the nav is how
+               somebody leaves, and a selection survives leaving and comes back.
+               The viewer, the album picker and the pass overlay are children of
+               the window and so still draw over this. -->
+          <Border VerticalAlignment="Bottom" Height="52"
+                  Background="{DynamicResource StatusBar.Background}"
+                  BorderBrush="{DynamicResource Separator}"
+                  BorderThickness="0,1,0,0" SnapsToDevicePixels="True"
+                  Visibility="{Binding ShowChoosingBar,
+                               Converter={StaticResource BoolToVisibility}}">
+            <Grid Margin="20,0">
+              <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                <!-- The same tick that is on the photographs, so the bar reads
+                     as belonging to them rather than to the window. -->
+                <TextBlock Text="&#xE73E;" FontFamily="Segoe MDL2 Assets" FontSize="13"
+                           VerticalAlignment="Center" Margin="0,0,8,0"
+                           Foreground="{DynamicResource AccentBackground}" />
+
+                <!-- Given a width of its own, or "Select all" would shuffle
+                     sideways every time the count gained a digit. -->
+                <TextBlock FontSize="12.5" VerticalAlignment="Center" MinWidth="88"
+                           Foreground="{DynamicResource Editor.Foreground}"
+                           Text="{Binding Gallery.ChosenSummary}" />
+
+                <!-- A named pair, and not one word each. "Clear" sat inches from
+                     the search box, so it read as clearing the search rather than
+                     the selection, and somebody who had just pressed Select all
+                     could not find the way back out. "Select none" can only mean
+                     one thing next to "Select all".
+
+                     Select all switches itself off once everything is ticked: it
+                     stayed lit and did nothing, and the obvious gesture after
+                     Select all is to press it again. -->
+                <Button Style="{DynamicResource LinkButton}" Margin="12,0,0,0" FontSize="12"
+                        Content="Select all"
+                        ToolTip="Tick every photograph on this wall"
+                        IsEnabled="{Binding Gallery.CanChooseEverything}"
+                        Command="{Binding Gallery.ChooseEverythingCommand}" />
+
+                <Button Style="{DynamicResource LinkButton}" Margin="12,0,0,0" FontSize="12"
+                        Content="Select none"
+                        ToolTip="Untick everything. Escape leaves choosing altogether."
+                        IsEnabled="{Binding Gallery.HasChosen}"
+                        Command="{Binding Gallery.ChooseNothingCommand}" />
+
+                <!-- The two gestures nothing on screen used to mention. A
+                     modifier the app keeps to itself is a feature only the
+                     person who wrote it knows about, which is the whole reason
+                     Shift was not used for this before there was a bar to say
+                     so. -->
+                <TextBlock Style="{DynamicResource HintText}" Margin="18,0,0,0"
+                           VerticalAlignment="Center"
+                           Text="Shift-click for a run &#183; Esc to leave" />
+              </StackPanel>
+
+              <StackPanel Orientation="Horizontal" HorizontalAlignment="Right"
+                          VerticalAlignment="Center">
+                <!-- "Put in album", because that is what it does and what people
+                     ask for. It said "Move to album", which understates the only
+                     way to file a selection - and sat two controls from a
+                     Folders toggle, so "move" and "folder" were doing the
+                     confusing between them.
+
+                     It is the accented one. Filing a selection is the ordinary
+                     reason to have made one; deleting is the rare and
+                     irreversible reason, and the brightest thing here should not
+                     be the one nobody can undo. -->
+                <Button Style="{DynamicResource PrimaryButton}" Height="30" Padding="14,0"
+                        Content="Put in album"
+                        ToolTip="Put the ticked photographs in an album"
+                        IsEnabled="{Binding Gallery.HasChosen}"
+                        Command="{Binding Gallery.MoveChosenToAlbumCommand}" />
+
+                <!-- Quiet, and still carrying its count: the number on the
+                     button is the last place it can be noticed before the
+                     question is asked, and the question itself names the files,
+                     says whether the Recycle Bin will catch them, and counts the
+                     faces and names about to be forgotten. -->
+                <Button Style="{DynamicResource SecondaryButton}" Height="30" Padding="14,0"
+                        Margin="8,0,0,0"
+                        Content="{Binding Gallery.DeleteChosenCaption}"
+                        ToolTip="Delete the ticked photographs"
+                        IsEnabled="{Binding Gallery.HasChosen}"
+                        Click="OnDeleteChosenPhotosClicked" />
+
+                <!-- A rule before the way out, so the one control that undoes
+                     the mode is not the next thing along from the one that
+                     destroys photographs. -->
+                <Border Width="1" Height="22" Margin="14,0"
+                        Background="{DynamicResource Separator}"
+                        SnapsToDevicePixels="True" />
+
+                <Button Style="{DynamicResource LinkButton}" FontSize="12"
+                        Content="{Binding Gallery.ChoosingLabel}"
+                        ToolTip="{Binding Gallery.ChoosingTip}"
+                        AutomationProperties.Name="{Binding Gallery.ChoosingTip}"
+                        Command="{Binding Gallery.StopChoosingCommand}" />
+              </StackPanel>
+            </Grid>
+          </Border>
+
         </Grid>
       </Border>
     </Grid>
@@ -3632,7 +3712,7 @@
 
          Below the pass overlay in the markup, so a pass covers it: work already
          running outranks a question, and the question keeps until it is over. -->
-    <Border Grid.Row="0" Margin="0,0,22,22"
+    <Border Grid.Row="0" Margin="{Binding NoticeMargin}"
             HorizontalAlignment="Right" VerticalAlignment="Bottom"
             MaxWidth="420"
             Background="{DynamicResource Status.InfoBack}"

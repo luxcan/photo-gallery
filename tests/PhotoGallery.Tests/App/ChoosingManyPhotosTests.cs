@@ -176,25 +176,81 @@ public sealed class ChoosingManyPhotosTests : IDisposable
     }
 
     /// <summary>
-    /// The wall carries the controls, and the mode decides which are shown.
+    /// The bar along the bottom carries the controls.
     /// </summary>
     /// <remarks>
     /// Markup, so no view-model test can see it: every property above can be
-    /// right while the strip is bound to none of them, because a WPF binding
-    /// that names nothing fails in silence.
+    /// right while the bar is bound to none of them, because a WPF binding that
+    /// names nothing fails in silence.
+    ///
+    /// <para>Asserted on the bar rather than on the window, because "it is
+    /// somewhere in this file" is exactly what was true while these controls
+    /// were being painted over by their neighbours.</para>
     /// </remarks>
     [Fact]
-    public void TheStripCarriesTheChoosingControls()
+    public void TheBarCarriesTheChoosingControls()
+    {
+        string bar = Bar(File.ReadAllText(AppMarkup.PathTo("Shell", "MainWindow.xaml")));
+
+        Assert.Contains("Gallery.ChosenSummary", bar, StringComparison.Ordinal);
+        Assert.Contains("Gallery.ChooseEverythingCommand", bar, StringComparison.Ordinal);
+        Assert.Contains("Gallery.ChooseNothingCommand", bar, StringComparison.Ordinal);
+        Assert.Contains("Gallery.MoveChosenToAlbumCommand", bar, StringComparison.Ordinal);
+        Assert.Contains("Gallery.DeleteChosenCaption", bar, StringComparison.Ordinal);
+        Assert.Contains("OnDeleteChosenPhotosClicked", bar, StringComparison.Ordinal);
+        Assert.Contains("Gallery.StopChoosingCommand", bar, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// The bar is up only on the wall, and only while something is being chosen.
+    /// </summary>
+    /// <remarks>
+    /// It floats over whichever screen is open, so gated on the mode alone it
+    /// would follow somebody to People and sit there offering to delete
+    /// photographs they can no longer see.
+    /// </remarks>
+    [Fact]
+    public void TheBarBelongsToTheWallAndToTheMode()
     {
         string window = File.ReadAllText(AppMarkup.PathTo("Shell", "MainWindow.xaml"));
 
-        Assert.Contains("Gallery.IsChoosing", window, StringComparison.Ordinal);
-        Assert.Contains("Gallery.ChosenSummary", window, StringComparison.Ordinal);
-        Assert.Contains("Gallery.ChooseEverythingCommand", window, StringComparison.Ordinal);
-        Assert.Contains("Gallery.ChooseNothingCommand", window, StringComparison.Ordinal);
-        Assert.Contains("Gallery.MoveChosenToAlbumCommand", window, StringComparison.Ordinal);
-        Assert.Contains("Gallery.DeleteChosenCaption", window, StringComparison.Ordinal);
-        Assert.Contains("OnDeleteChosenPhotosClicked", window, StringComparison.Ordinal);
+        Assert.Contains(
+            "Visibility=\"{Binding ShowChoosingBar,", window, StringComparison.Ordinal);
+
+        // And the two things that have to keep out from under it.
+        Assert.Contains("Margin=\"{Binding WallMargin}\"", window, StringComparison.Ordinal);
+        Assert.Contains("Margin=\"{Binding NoticeMargin}\"", window, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// The bar does not cover the side nav, and everything modal covers the bar.
+    /// </summary>
+    /// <remarks>
+    /// Drawn as a child of the window it would lie across the nav, which is how
+    /// somebody leaves a wall - and a selection survives leaving and comes back,
+    /// so there is nothing to protect them from. The viewer, the album picker
+    /// and the pass overlay are children of the window and are declared after
+    /// the content, so they still cover this.
+    /// </remarks>
+    [Fact]
+    public void TheBarSitsOverThePicturesAndUnderEverythingModal()
+    {
+        string window = File.ReadAllText(AppMarkup.PathTo("Shell", "MainWindow.xaml"));
+
+        int bar = window.IndexOf(
+            "Visibility=\"{Binding ShowChoosingBar,", StringComparison.Ordinal);
+        int status = window.IndexOf("<!-- Status bar.", StringComparison.Ordinal);
+        int viewer = window.IndexOf("x:Name=\"PhotoViewer\"", StringComparison.Ordinal);
+        int picker = window.IndexOf(
+            "Content=\"{Binding Gallery.Albums}\"", StringComparison.Ordinal);
+
+        Assert.True(bar > 0 && status > 0 && viewer > 0 && picker > 0, "the window has changed shape");
+
+        // Inside the content area, which ends where the status bar begins.
+        Assert.True(bar < status, "the bar is a child of the window, so it lies across the nav");
+
+        // And under both of the things that are drawn over a wall.
+        Assert.True(viewer > bar && picker > bar, "something modal now opens underneath the bar");
     }
 
     /// <summary>
@@ -215,18 +271,21 @@ public sealed class ChoosingManyPhotosTests : IDisposable
     public void TheWayOutOfASelectionIsNamedAsThePairOfTheWayIn()
     {
         string window = File.ReadAllText(AppMarkup.PathTo("Shell", "MainWindow.xaml"));
+        string bar = Bar(window);
 
-        Assert.Contains("Content=\"Select all\"", window, StringComparison.Ordinal);
-        Assert.Contains("Content=\"Select none\"", window, StringComparison.Ordinal);
+        Assert.Contains("Content=\"Select all\"", bar, StringComparison.Ordinal);
+        Assert.Contains("Content=\"Select none\"", bar, StringComparison.Ordinal);
         Assert.DoesNotContain("Content=\"Clear\"", window, StringComparison.Ordinal);
 
         Assert.Contains(
             "IsEnabled=\"{Binding Gallery.CanChooseEverything}\"",
-            window,
+            bar,
             StringComparison.Ordinal);
 
-        // And the one gesture nothing on screen used to mention.
-        Assert.Contains("Escape leaves choosing altogether", window, StringComparison.Ordinal);
+        // And the two gestures nothing on screen used to mention. Shift is only
+        // allowed to exist because the bar says it does.
+        Assert.Contains("Escape leaves choosing altogether", bar, StringComparison.Ordinal);
+        Assert.Contains("Shift-click for a run", bar, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -287,16 +346,26 @@ public sealed class ChoosingManyPhotosTests : IDisposable
     [Fact]
     public void FilingIsAccentedAndDeletingIsNot()
     {
-        string strip = Strip(File.ReadAllText(AppMarkup.PathTo("Shell", "MainWindow.xaml")));
+        string bar = Bar(File.ReadAllText(AppMarkup.PathTo("Shell", "MainWindow.xaml")));
 
-        int album = strip.IndexOf("Content=\"Put in album\"", StringComparison.Ordinal);
-        int delete = strip.IndexOf(
+        int album = bar.IndexOf("Content=\"Put in album\"", StringComparison.Ordinal);
+        int delete = bar.IndexOf(
             "Content=\"{Binding Gallery.DeleteChosenCaption}\"", StringComparison.Ordinal);
 
         Assert.True(album > 0 && delete > album, "the two actions are not where they were");
 
-        Assert.Equal("PrimaryButton", StyleBefore(strip, album));
-        Assert.Equal("SecondaryButton", StyleBefore(strip, delete));
+        Assert.Equal("PrimaryButton", StyleBefore(bar, album));
+        Assert.Equal("SecondaryButton", StyleBefore(bar, delete));
+
+        // And the way out is not the next thing along from the delete: a rule
+        // stands between them, so the control that undoes the mode and the one
+        // that destroys photographs are not neighbours.
+        int way = bar.IndexOf(
+            "Command=\"{Binding Gallery.StopChoosingCommand}\"", StringComparison.Ordinal);
+        int rule = bar.IndexOf("Background=\"{DynamicResource Separator}\"", delete, StringComparison.Ordinal);
+
+        Assert.True(way > delete, "the way out is no longer last");
+        Assert.True(rule > delete && rule < way, "nothing separates the way out from the delete");
     }
 
     /// <summary>The style on the button whose content is at this offset.</summary>
@@ -313,61 +382,101 @@ public sealed class ChoosingManyPhotosTests : IDisposable
     }
 
     /// <summary>
-    /// The choosing controls get the whole strip, because they were being
-    /// painted over.
+    /// While choosing, the header is out of use and still readable.
     /// </summary>
     /// <remarks>
-    /// The strip has one elastic column and four fixed ones. The choosing
-    /// controls live in the elastic one and need about 490px; on an ordinary
-    /// window there were about 130 left, and because the sort and view panels
-    /// are declared later in the markup and have opaque backgrounds, the
-    /// overflow was not clipped - it was drawn underneath them. So every button
-    /// after the count was invisible and unclickable unless the window was
-    /// maximised, which is why this was reported as the app having no way to
-    /// unselect and no way to file a selection. Both worked perfectly; neither
-    /// could be seen.
+    /// Every one of these rebuilds the wall, and the rebuild keeps only what the
+    /// new query still shows - so searching, re-sorting, switching between Media
+    /// and Folders or pressing a filter chip each silently discards part of a
+    /// selection. Out of reach while choosing is where they belong.
     ///
-    /// <para>They earn their absence twice over: searching, re-sorting or
-    /// switching between Media and Folders all rebuild the wall, and the rebuild
-    /// keeps only what the new query still shows - so each of them silently
-    /// discards part of a selection. Out of reach while choosing is where they
-    /// belong.</para>
+    /// <para>They used to be hidden outright, which was the room the choosing
+    /// controls needed: those shared the strip's one elastic column and were
+    /// painted over by the opaque panels further right, so on an ordinary window
+    /// every button after the count was invisible and unclickable. That is what
+    /// was reported as the app having no way to unselect and no way to file a
+    /// selection - both worked perfectly, neither could be seen. The bar along
+    /// the bottom is the room now, so these can stay: which person, which place
+    /// and which search this wall is narrowed to is part of deciding what to
+    /// tick.</para>
     ///
-    /// <para>Asserted on the markup because layout is invisible to a view-model
-    /// suite, and this is a bug a view-model suite watched happen.</para>
+    /// <para>Counted rather than merely found, because four of the five is the
+    /// state that looks fixed and is not - one control left live is one more way
+    /// to throw a selection away by accident.</para>
     /// </remarks>
     [Fact]
-    public void WhileChoosing_TheRestOfTheStripGetsOutOfTheWay()
+    public void WhileChoosing_TheHeaderIsOutOfUseAndStillReadable()
     {
-        string window = File.ReadAllText(AppMarkup.PathTo("Shell", "MainWindow.xaml"));
-        string strip = Strip(window);
+        string header = Header(File.ReadAllText(AppMarkup.PathTo("Shell", "MainWindow.xaml")));
 
-        // Four: the search box, the count-and-filters line that the choosing
-        // controls replace, the sort pair and the view pair. Counted rather than
-        // merely found, because three of the four is the state that looks fixed
-        // and is not - one panel left showing is one panel still painting over
-        // the buttons.
+        // Five: the search box, the count-and-filters line, the sort pair, the
+        // view pair, and the row of chips under them.
+        int stopped = Regex.Matches(
+            header,
+            @"IsEnabled=""\{Binding Gallery\.IsChoosing,\s*"
+            + @"Converter=\{StaticResource InverseBool\}\}""").Count;
+
+        Assert.Equal(5, stopped);
+
+        // And exactly one thing still leaves rather than greying out: the pill,
+        // whose job the bar takes over. Two buttons doing one thing, one of them
+        // alone and lit in a row of greyed controls, is the noise.
         int hidden = Regex.Matches(
-            strip,
+            header,
             @"Visibility=""\{Binding Gallery\.IsChoosing,\s*"
             + @"Converter=\{StaticResource InverseBoolToVisibility\}\}""").Count;
 
-        Assert.Equal(4, hidden);
-
-        // And the way out of the mode stays, or hiding the rest would trap
-        // somebody in it.
-        Assert.Contains(
-            "Content=\"{Binding Gallery.ChoosingLabel}\"", strip, StringComparison.Ordinal);
+        Assert.Equal(1, hidden);
     }
 
-    /// <summary>The strip above the wall, from its grid to the tiles below.</summary>
-    private static string Strip(string window)
+    /// <summary>
+    /// A control that is out of use looks out of use.
+    /// </summary>
+    /// <remarks>
+    /// Switching the header off rather than hiding it is only honest if it shows.
+    /// None of these three had a disabled state at all, so a switched-off
+    /// segment, chip or search box looked exactly as live as a working one and
+    /// simply ignored the pointer - which reads as the app being broken.
+    /// </remarks>
+    [Fact]
+    public void AControlThatIsOutOfUseLooksOutOfUse()
+    {
+        string controls = File.ReadAllText(AppMarkup.PathTo("Theme", "Controls.xaml"));
+
+        foreach (string style in new[] { "SegmentedToggle", "PillToggle", "InputTextBox" })
+        {
+            int at = controls.IndexOf($"x:Key=\"{style}\"", StringComparison.Ordinal);
+            Assert.True(at > 0, $"{style} has gone missing");
+
+            int next = controls.IndexOf("\r\n  <Style x:Key=", at, StringComparison.Ordinal);
+            string body = next > at ? controls[at..next] : controls[at..];
+
+            Assert.Contains(
+                "<Trigger Property=\"IsEnabled\" Value=\"False\">", body, StringComparison.Ordinal);
+        }
+    }
+
+    /// <summary>The header above the wall: the strip, the chips, and the notices.</summary>
+    private static string Header(string window)
     {
         int start = window.IndexOf("<Grid Grid.Row=\"0\" Margin=\"0,0,0,10\">", StringComparison.Ordinal);
         Assert.True(start > 0, "the strip is not in the window");
 
         int end = window.IndexOf("x:Name=\"GalleryGrid\"", start, StringComparison.Ordinal);
-        Assert.True(end > start, "the strip does not end where it should");
+        Assert.True(end > start, "the header does not end where it should");
+
+        return window[start..end];
+    }
+
+    /// <summary>The bar along the bottom, from its gate to the status bar below.</summary>
+    private static string Bar(string window)
+    {
+        int start = window.IndexOf(
+            "Visibility=\"{Binding ShowChoosingBar,", StringComparison.Ordinal);
+        Assert.True(start > 0, "there is no bar along the bottom");
+
+        int end = window.IndexOf("<!-- Status bar.", start, StringComparison.Ordinal);
+        Assert.True(end > start, "the bar does not end where it should");
 
         return window[start..end];
     }

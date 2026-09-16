@@ -1,5 +1,6 @@
 ﻿using System.Collections.ObjectModel;
 using System.IO;
+using System.Windows;
 using System.Windows.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -342,6 +343,15 @@ public sealed partial class MainViewModel : ObservableObject
                 _ = RememberSortOrderAsync();
             }
 
+            // The bar is the shell's, because it floats over every screen and
+            // has to know which one is open; the mode it follows is the wall's.
+            // So the two are joined here rather than by a binding that could
+            // only see one of them.
+            if (e.PropertyName == nameof(GalleryViewModel.IsChoosing))
+            {
+                NotifyChoosingBar();
+            }
+
             // Proposals answered one at a time are already saved; what is not
             // done is the album's own screen, which is deliberately left until
             // the viewer is out of the way rather than rebuilt behind it after
@@ -632,6 +642,44 @@ public sealed partial class MainViewModel : ObservableObject
     public bool ShowAbout => SelectedSection.Key == ActivitySection.AboutKey;
 
     public bool ShowSharing => SelectedSection.Key == ActivitySection.SharingKey;
+
+    /// <summary>
+    /// Whether the bar along the bottom of the wall is up.
+    /// </summary>
+    /// <remarks>
+    /// The bar floats over whichever screen is open rather than being a row in
+    /// the Library grid, so it has to be told which screen that is: gated on the
+    /// wall alone it would follow somebody to People and sit there offering to
+    /// delete photographs they can no longer see.
+    ///
+    /// <para>A selection survives the trip, though - going to People and back
+    /// keeps what is still on the wall - so this hides the bar rather than
+    /// ending the mode.</para>
+    /// </remarks>
+    public bool ShowChoosingBar => ShowLibrary && Gallery.IsChoosing;
+
+    /// <summary>How tall the bar is, and so what has to be kept clear of it.</summary>
+    private const double ChoosingBarHeight = 52;
+
+    /// <summary>
+    /// Where the floating notice sits, which is above the bar when there is one.
+    /// </summary>
+    /// <remarks>
+    /// Both are pinned to the bottom right of the same area and the bar is
+    /// drawn later, so without this the bar simply covers the notice - and the
+    /// notice is what carries the answer to a question somebody was asked.
+    /// </remarks>
+    public Thickness NoticeMargin => new(0, 0, 22, ShowChoosingBar ? ChoosingBarHeight + 22 : 22);
+
+    /// <summary>
+    /// The room the wall leaves for the bar.
+    /// </summary>
+    /// <remarks>
+    /// A margin on the list rather than padding inside it, so the scrollable
+    /// height really does shrink: padding would leave the last row underneath
+    /// the bar and no way to scroll it out.
+    /// </remarks>
+    public Thickness WallMargin => new(0, 0, 0, ShowChoosingBar ? ChoosingBarHeight : 0);
 
     public string SourceSummary => Sources.Count switch
     {
@@ -2568,6 +2616,14 @@ public sealed partial class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(CanScanToApply));
     }
 
+    /// <summary>The bar, and the two things that have to keep out of its way.</summary>
+    private void NotifyChoosingBar()
+    {
+        OnPropertyChanged(nameof(ShowChoosingBar));
+        OnPropertyChanged(nameof(NoticeMargin));
+        OnPropertyChanged(nameof(WallMargin));
+    }
+
     partial void OnSelectedSectionChanged(ActivitySection value)
     {
         // The viewer is drawn over the content area rather than inside Library,
@@ -2582,6 +2638,7 @@ public sealed partial class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(ShowDuplicates));
         OnPropertyChanged(nameof(ShowAbout));
         OnPropertyChanged(nameof(ShowSharing));
+        NotifyChoosingBar();
 
         if (ShowLibrary)
         {
