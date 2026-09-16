@@ -868,7 +868,14 @@
                   BorderBrush="Transparent" BorderThickness="1"
                   CornerRadius="{StaticResource Radius.Inner}"
                   Padding="{TemplateBinding Padding}">
-            <ContentPresenter HorizontalAlignment="Left" />
+            <!-- Centred, because a link beside anything taller than itself was
+                 sitting on its ceiling. The presenter stretched to whatever the
+                 row was - 28px where a link sits next to ordinary buttons - and
+                 with nothing said about the vertical it put the text at the top,
+                 a few pixels above the words either side of it. Every link in
+                 the app centres rather than each screen having to remember to
+                 ask. -->
+            <ContentPresenter HorizontalAlignment="Left" VerticalAlignment="Center" />
           </Border>
           <ControlTemplate.Triggers>
             <Trigger Property="IsMouseOver" Value="True">

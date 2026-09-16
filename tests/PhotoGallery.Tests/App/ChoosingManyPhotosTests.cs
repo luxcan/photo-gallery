@@ -248,6 +248,47 @@ public sealed class ChoosingManyPhotosTests : IDisposable
     }
 
     /// <summary>
+    /// The accent is on filing a selection, not on destroying it.
+    /// </summary>
+    /// <remarks>
+    /// Putting photographs in an album is the ordinary reason to have chosen
+    /// several; deleting them is the rare one, and the only one nobody can undo.
+    /// The brightest control on the strip should not be the irreversible one -
+    /// it was, and next to a subdued "Move to album" the eye went to Delete
+    /// every time.
+    ///
+    /// <para>Asserted because "make the two actions match" is a plausible tidy-up
+    /// that would put it straight back.</para>
+    /// </remarks>
+    [Fact]
+    public void FilingIsAccentedAndDeletingIsNot()
+    {
+        string strip = Strip(File.ReadAllText(AppMarkup.PathTo("Shell", "MainWindow.xaml")));
+
+        int album = strip.IndexOf("Content=\"Put in album\"", StringComparison.Ordinal);
+        int delete = strip.IndexOf(
+            "Content=\"{Binding Gallery.DeleteChosenCaption}\"", StringComparison.Ordinal);
+
+        Assert.True(album > 0 && delete > album, "the two actions are not where they were");
+
+        Assert.Equal("PrimaryButton", StyleBefore(strip, album));
+        Assert.Equal("SecondaryButton", StyleBefore(strip, delete));
+    }
+
+    /// <summary>The style on the button whose content is at this offset.</summary>
+    private static string StyleBefore(string markup, int at)
+    {
+        int style = markup.LastIndexOf(
+            "Style=\"{DynamicResource ", at, StringComparison.Ordinal);
+        Assert.True(style >= 0, "that button carries no style");
+
+        int from = style + "Style=\"{DynamicResource ".Length;
+        int to = markup.IndexOf('}', from);
+
+        return markup[from..to];
+    }
+
+    /// <summary>
     /// The choosing controls get the whole strip, because they were being
     /// painted over.
     /// </summary>

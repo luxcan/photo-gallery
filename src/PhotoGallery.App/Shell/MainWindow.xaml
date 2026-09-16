@@ -478,17 +478,25 @@
                      ask for. It said "Move to album", which understates the only
                      way to file a selection - and sits two controls from a
                      Folders toggle, so "move" and "folder" were doing the
-                     confusing between them. -->
-                <Button Style="{DynamicResource SecondaryButton}" Height="28" Padding="12,0"
+                     confusing between them.
+
+                     It is the accented one of the two. Filing a selection is the
+                     ordinary reason to have made one; deleting is the rare and
+                     irreversible reason, and the brightest thing on the strip
+                     should not be the one nobody can undo. -->
+                <Button Style="{DynamicResource PrimaryButton}" Height="28" Padding="12,0"
                         Margin="16,0,0,0"
                         Content="Put in album"
                         ToolTip="Put the ticked photographs in an album"
                         IsEnabled="{Binding Gallery.HasChosen}"
                         Command="{Binding Gallery.MoveChosenToAlbumCommand}" />
 
-                <!-- The count is on the button, which is the last place it can
-                     be noticed before the question is asked. -->
-                <Button Style="{DynamicResource PrimaryButton}" Height="28" Padding="12,0"
+                <!-- Quiet, and still carrying its count: the number on the
+                     button is the last place it can be noticed before the
+                     question is asked, and the question itself names the files,
+                     says whether the Recycle Bin will catch them, and counts the
+                     faces and names about to be forgotten. -->
+                <Button Style="{DynamicResource SecondaryButton}" Height="28" Padding="12,0"
                         Margin="8,0,0,0"
                         Content="{Binding Gallery.DeleteChosenCaption}"
                         ToolTip="Delete the ticked photographs"
