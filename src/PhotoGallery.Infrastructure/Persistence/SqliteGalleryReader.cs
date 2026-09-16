@@ -347,6 +347,38 @@ public sealed class SqliteGalleryReader : IGalleryReader
             rows = rows.Where(a => a.Kind == AssetKind.Photo);
         }
 
+        // Asked for on the wall, and narrower than the line above rather than a
+        // replacement for it: that one says whether videos belong on this screen
+        // at all, this one says which of the two somebody wants to look at now.
+        if (query.Kind is AssetKind kind)
+        {
+            rows = rows.Where(a => a.Kind == kind);
+        }
+
+        // Not in any album, a suggestion counting as an album. AlbumMembers is
+        // keyed on AssetId alone - it is the rule that a photograph belongs to
+        // one album - so this is a rowid seek per row and needs no index of its
+        // own. The same shape as the content anti-join above.
+        if (query.OnlyOutsideAlbums)
+        {
+            rows = rows.Where(a => !_db.AlbumMembers.Any(member => member.AssetId == a.Id));
+        }
+
+        // Nobody named in it. Confirmed answers only, for the same reason the
+        // person filter below counts only confirmed ones: a proposal is a
+        // question, and treating it as an answer would hide the very
+        // photographs somebody is looking for.
+        if (query.OnlyWithoutNamedFaces)
+        {
+            IQueryable<int> named =
+                from face in _db.Faces
+                join assignment in _db.FaceAssignments on face.Id equals assignment.FaceId
+                where assignment.Source == AssignmentSource.Confirmed
+                select face.AssetId;
+
+            rows = rows.Where(a => !named.Contains(a.Id));
+        }
+
         if (query.PhotoSourceId is int sourceId)
         {
             rows = rows.Where(a => a.PhotoSourceId == sourceId);

@@ -1,3 +1,4 @@
+using PhotoGallery.Domain.Assets;
 using PhotoGallery.Domain.Library;
 
 namespace PhotoGallery.Application.Ports;
@@ -47,6 +48,31 @@ namespace PhotoGallery.Application.Ports;
 /// Everything else still applies - a folder, a source, a person - so a
 /// description narrows what is already on screen rather than replacing it.
 /// </param>
+/// <param name="Kind">
+/// Restricts to photographs or to videos. Null is both, which is what every
+/// caller but the wall's own chips wants.
+///
+/// <para>Deliberately beside <paramref name="IncludeVideos"/> rather than
+/// replacing it. That one answers "is this a screen videos belong on at all",
+/// and is false for the pickers and the review queues; this one is a question
+/// somebody asked on the wall. Folding them together would let a chip put videos
+/// on a screen that has always been photographs only.</para>
+/// </param>
+/// <param name="OnlyOutsideAlbums">
+/// Only photographs in no album at all.
+///
+/// <para>A suggested album counts as an album here. The alternative - counting
+/// only albums somebody kept - matched 17,876 of 20,269 photographs on the first
+/// real library, because almost every album in it is a suggestion nobody has
+/// answered yet. A filter that matches seven-eighths of the wall is not a
+/// filter.</para>
+/// </param>
+/// <param name="OnlyWithoutNamedFaces">
+/// Only photographs with nobody named in them. Confirmed answers only, for the
+/// same reason <paramref name="PersonId"/> counts only confirmed ones: a
+/// proposal is a question, and treating it as an answer would hide the
+/// photographs the question is about.
+/// </param>
 public sealed record GalleryQuery(
     int? PhotoSourceId = null,
     string? FolderPath = null,
@@ -56,4 +82,7 @@ public sealed record GalleryQuery(
     GallerySortOrder SortOrder = GallerySortOrder.NewestFirst,
     int? PersonId = null,
     IReadOnlyList<int>? RankedAssetIds = null,
-    PlaceFilter? Place = null);
+    PlaceFilter? Place = null,
+    AssetKind? Kind = null,
+    bool OnlyOutsideAlbums = false,
+    bool OnlyWithoutNamedFaces = false);

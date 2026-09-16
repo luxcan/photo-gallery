@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using PhotoGallery.Application.Ports;
 using PhotoGallery.Application.UseCases.Gallery;
+using PhotoGallery.Domain.Albums;
 using PhotoGallery.Domain.Assets;
 using PhotoGallery.Domain.Faces;
 using PhotoGallery.Domain.Library;
@@ -406,6 +407,149 @@ public sealed class QueryGalleryHandlerTests : IDisposable
         _db.FaceAssignments.Add(new FaceAssignment
         {
             FaceId = face.Id, PersonId = personId, Source = source,
+        });
+        _db.SaveChanges();
+        _db.ChangeTracker.Clear();
+    }
+
+    /// <summary>
+    /// The wall narrowed to what is in no album at all.
+    /// </summary>
+    /// <remarks>
+    /// A suggested album counts as an album. Counting only albums somebody kept
+    /// matched 17,876 of the first real library's 20,269 photographs, because
+    /// almost every album in it is a suggestion nobody has answered - and a
+    /// filter that matches seven-eighths of the wall is not a filter.
+    /// </remarks>
+    [Fact]
+    public async Task Query_OutsideAlbums_LeavesOutAnythingInOne()
+    {
+        Add("filed.jpg");
+        Add("loose.jpg");
+        Add("suggested.jpg");
+
+        InAlbum(asset: 1, album: Album("Bali", AlbumOrigin.Made));
+        InAlbum(asset: 3, album: Album("A week in March", AlbumOrigin.Proposed));
+
+        GalleryPage page = await NewHandler()
+            .HandleAsync(new GalleryQuery(OnlyOutsideAlbums: true));
+
+        Assert.Equal(["loose.jpg"], page.Items.Select(item => item.FileName));
+    }
+
+    [Theory]
+    [InlineData(AssetKind.Photo, "a.jpg")]
+    [InlineData(AssetKind.Video, "b.mp4")]
+    public async Task Query_ByKind_ShowsOnlyThatKind(AssetKind kind, string expected)
+    {
+        Add("a.jpg");
+        Add("b.mp4", kind: AssetKind.Video, thumbnailName: "b.png");
+
+        GalleryPage page = await NewHandler().HandleAsync(new GalleryQuery(Kind: kind));
+
+        Assert.Equal([expected], page.Items.Select(item => item.FileName));
+    }
+
+    /// <summary>
+    /// The two narrow together, which is the pair that makes the row worth
+    /// having: 5,774 of the first real library's 6,295 videos are in no album.
+    /// </summary>
+    [Fact]
+    public async Task Query_VideosOutsideAlbums_NarrowsOnBothAtOnce()
+    {
+        Add("filed.mp4", kind: AssetKind.Video, thumbnailName: "1.png");
+        Add("loose.mp4", kind: AssetKind.Video, thumbnailName: "2.png");
+        Add("loose.jpg");
+
+        InAlbum(asset: 1, album: Album("Bali", AlbumOrigin.Made));
+
+        GalleryPage page = await NewHandler().HandleAsync(
+            new GalleryQuery(Kind: AssetKind.Video, OnlyOutsideAlbums: true));
+
+        Assert.Equal(["loose.mp4"], page.Items.Select(item => item.FileName));
+    }
+
+    /// <summary>
+    /// Nobody named. A proposed answer is a question, so it does not count as a
+    /// name - the same rule the person filter keeps.
+    /// </summary>
+    [Fact]
+    public async Task Query_WithoutNamedFaces_CountsOnlyConfirmedAnswers()
+    {
+        Add("named.jpg");
+        Add("proposed.jpg");
+        Add("nobody.jpg");
+
+        Person ana = NewPerson("Ana");
+        Named(asset: 1, ana, AssignmentSource.Confirmed);
+        Named(asset: 2, ana, AssignmentSource.Proposed);
+
+        GalleryPage page = await NewHandler()
+            .HandleAsync(new GalleryQuery(OnlyWithoutNamedFaces: true));
+
+        Assert.Equal(
+            ["nobody.jpg", "proposed.jpg"],
+            page.Items.Select(item => item.FileName).Order());
+    }
+
+    private int Album(string name, AlbumOrigin origin)
+    {
+        var album = new Album
+        {
+            Name = name,
+            Origin = origin,
+            Kind = AlbumKind.Period,
+            StartUtc = new DateTime(2020, 1, 1),
+            EndUtc = new DateTime(2020, 1, 2),
+            BuiltUtc = new DateTime(2020, 1, 1),
+        };
+
+        _db.Albums.Add(album);
+        _db.SaveChanges();
+        _db.ChangeTracker.Clear();
+        return album.Id;
+    }
+
+    private void InAlbum(int asset, int album)
+    {
+        _db.AlbumMembers.Add(new AlbumMember
+        {
+            AssetId = asset,
+            AlbumId = album,
+            AddedUtc = new DateTime(2020, 1, 1),
+        });
+        _db.SaveChanges();
+        _db.ChangeTracker.Clear();
+    }
+
+    private Person NewPerson(string name)
+    {
+        var person = new Person { PublicId = Guid.NewGuid(), DisplayName = name };
+        _db.People.Add(person);
+        _db.SaveChanges();
+        _db.ChangeTracker.Clear();
+        return person;
+    }
+
+    private void Named(int asset, Person person, AssignmentSource source)
+    {
+        var face = new Face
+        {
+            AssetId = asset,
+            Bounds = new FaceBounds(1, 1, 10, 10),
+            DetectScore = 0.9f,
+            Embedding = TestEmbeddings.At(0),
+        };
+
+        _db.Faces.Add(face);
+        _db.SaveChanges();
+
+        _db.FaceAssignments.Add(new FaceAssignment
+        {
+            FaceId = face.Id,
+            PersonId = person.Id,
+            Source = source,
+            DecidedUtc = new DateTime(2020, 1, 1),
         });
         _db.SaveChanges();
         _db.ChangeTracker.Clear();

@@ -289,6 +289,11 @@
                 Visibility="{Binding ShowLibrary, Converter={StaticResource BoolToVisibility}}">
             <Grid.RowDefinitions>
               <RowDefinition Height="Auto" />
+              <!-- The chips. Their own row rather than a tail on the strip
+                   above: the strip is already one elastic column between four
+                   fixed ones, and hanging a growing row of filters off it is how
+                   that column ran out of room the first time. -->
+              <RowDefinition Height="Auto" />
               <RowDefinition Height="Auto" />
               <RowDefinition Height="*" />
             </Grid.RowDefinitions>
@@ -631,13 +636,65 @@
                  its own: LinkButton pads 0,2 for the run of text it usually
                  sits in, and beside a HintText line that lifted the words a
                  couple of pixels clear of the sentence they belong to. -->
+            <!-- What is left to do, as a row of switches.
+
+                 They combine across dimensions and pick each other off within
+                 one: photographs and videos are two answers to the same
+                 question, so the pair behaves like the sort segments, while
+                 "not in an album" and "nobody named" are different questions
+                 and stack on top. "Videos, not in an album" is the useful one,
+                 and on the first real library it is 5,774 of 6,295 videos.
+
+                 Each chip is IsChecked one way and a command the other, so the
+                 view model stays the only place that decides what is on - a
+                 two-way IsChecked would let the pointer and the command both
+                 write, and the pair within a dimension could then both be lit.
+
+                 No count on the chips. The strip above already says "N of M",
+                 and a number on every chip would be a query per chip per
+                 press. -->
+            <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,10"
+                        Visibility="{Binding ShowLibrary,
+                                     Converter={StaticResource BoolToVisibility}}">
+              <TextBlock Style="{DynamicResource HintText}" Text="Show"
+                         VerticalAlignment="Center" Margin="0,0,10,0" />
+
+              <ToggleButton Style="{DynamicResource FilterChip}" Content="Everything"
+                            ToolTip="Stop narrowing the wall"
+                            IsChecked="{Binding Gallery.IsFiltered, Mode=OneWay,
+                                        Converter={StaticResource InverseBool}}"
+                            Command="{Binding Gallery.ShowEverythingOnTheWallCommand}" />
+
+              <ToggleButton Style="{DynamicResource FilterChip}" Content="Not in an album"
+                            ToolTip="Only photographs and videos that are in no album yet"
+                            IsChecked="{Binding Gallery.OutsideAlbums, Mode=OneWay}"
+                            Command="{Binding Gallery.ShowOutsideAlbumsCommand}" />
+
+              <ToggleButton Style="{DynamicResource FilterChip}" Content="Photos"
+                            ToolTip="Only photographs"
+                            IsChecked="{Binding Gallery.ShowingPhotosOnly, Mode=OneWay}"
+                            Command="{Binding Gallery.ShowOnlyCommand}"
+                            CommandParameter="photos" />
+
+              <ToggleButton Style="{DynamicResource FilterChip}" Content="Videos"
+                            ToolTip="Only videos"
+                            IsChecked="{Binding Gallery.ShowingVideosOnly, Mode=OneWay}"
+                            Command="{Binding Gallery.ShowOnlyCommand}"
+                            CommandParameter="videos" />
+
+              <ToggleButton Style="{DynamicResource FilterChip}" Content="No faces named"
+                            ToolTip="Only pictures with nobody named in them yet"
+                            IsChecked="{Binding Gallery.WithoutNamedFaces, Mode=OneWay}"
+                            Command="{Binding Gallery.ShowWithoutNamedFacesCommand}" />
+            </StackPanel>
+
             <!-- Two things this box can be, in one box: a model that is not here
                  yet, and a model that is here and has not been applied. The
                  second is the state a first install actually lands in - the
                  downloads happen after the library has been scanned, and both
                  passes run as part of a scan - and until now the app said
                  nothing about it at all. -->
-            <Border Grid.Row="1" Margin="0,0,0,10" HorizontalAlignment="Left"
+            <Border Grid.Row="2" Margin="0,0,0,10" HorizontalAlignment="Left"
                     Background="{DynamicResource Status.InfoBack}"
                     BorderBrush="{DynamicResource Status.Info}" BorderThickness="1"
                     CornerRadius="4" Padding="12,8"
@@ -676,7 +733,7 @@
 
             <!-- Tree beside grid. The tree belongs to this view alone; it is not
                  the global side bar removed in feature 00. -->
-            <Grid Grid.Row="2">
+            <Grid Grid.Row="3">
               <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />

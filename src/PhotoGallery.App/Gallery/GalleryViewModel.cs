@@ -13,6 +13,7 @@ using PhotoGallery.Application.UseCases.Gallery;
 using PhotoGallery.Application.UseCases.People;
 using PhotoGallery.Application.UseCases.Places;
 using PhotoGallery.Application.UseCases.Search;
+using PhotoGallery.Domain.Assets;
 using PhotoGallery.Domain.Library;
 using PhotoGallery.Domain.People;
 
@@ -72,6 +73,35 @@ public sealed partial class GalleryViewModel : ObservableObject
 
     [ObservableProperty]
     private string _placeName = string.Empty;
+
+    /// <summary>
+    /// Which of the two kinds of thing the wall is showing, or null for both.
+    /// </summary>
+    /// <remarks>
+    /// One of the chips, and the reason they pick each other off within their own
+    /// dimension: photographs and videos together is what "Everything" already
+    /// means, so offering it twice would be a filter that does nothing.
+    /// </remarks>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(
+        nameof(IsKindFiltered), nameof(ShowingPhotosOnly), nameof(ShowingVideosOnly),
+        nameof(IsFiltered), nameof(EmptyMessage))]
+    private AssetKind? _kind;
+
+    /// <summary>Whether the wall is narrowed to photographs in no album.</summary>
+    /// <remarks>
+    /// The chip that pays for the row. 9,390 of the first real library's 20,269
+    /// photographs are in no album, and 5,774 of its 6,295 videos - so this and
+    /// the Videos chip together are the question that library most needs asked.
+    /// </remarks>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsFiltered), nameof(EmptyMessage))]
+    private bool _outsideAlbums;
+
+    /// <summary>Whether the wall is narrowed to photographs with nobody named.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsFiltered), nameof(EmptyMessage))]
+    private bool _withoutNamedFaces;
 
     /// <summary>What has been typed into the search box.</summary>
     [ObservableProperty]
@@ -393,9 +423,18 @@ public sealed partial class GalleryViewModel : ObservableObject
                 (not null, null) => $"{_window.Count:N0} of {PersonName}",
                 (null, not null) => $"{_window.Count:N0} in {PlaceName}",
                 _ => SelectedFolder is null
-                    ? $"{_window.Count:N0} pictures"
+                    ? $"{_window.Count:N0} {Noun()}"
                     : $"{_window.Count:N0} in {SelectedFolder.Name}",
             };
+
+            // A chip changes what the count is counting, and a number that says
+            // "pictures" while the wall is showing only what is unfiled is the
+            // kind of small lie that has somebody reporting photographs missing.
+            if (IsFiltered && PersonId is null && Place is null && SelectedFolder is null)
+            {
+                counted += OutsideAlbums ? " outside an album" : string.Empty;
+                counted += WithoutNamedFaces ? " with nobody named" : string.Empty;
+            }
 
             return waiting == 0
                 ? counted
@@ -403,19 +442,84 @@ public sealed partial class GalleryViewModel : ObservableObject
         }
     }
 
-    public string EmptyMessage => (PersonId, Place) switch
+    /// <summary>
+    /// Why the wall is empty, said in terms of whatever emptied it.
+    /// </summary>
+    /// <remarks>
+    /// The chips come first, and the album one is a congratulation rather than an
+    /// apology: filing the last loose photograph is the whole point of that chip,
+    /// and "No pictures yet. Add a folder under Photo sources" would be a strange
+    /// thing to say to somebody who has just finished.
+    /// </remarks>
+    public string EmptyMessage
     {
-        (not null, not null) => $"No pictures of {PersonName} in {PlaceName}.",
-        (not null, null) => $"No pictures of {PersonName} yet. Confirm some faces under People.",
-        (null, not null) => $"No pictures in {PlaceName}.",
-        _ => SelectedFolder is null
-            ? "No pictures yet. Add a folder under Photo sources, then scan it."
-            : "Nothing in this folder.",
-    };
+        get
+        {
+            if (OutsideAlbums)
+            {
+                return Kind switch
+                {
+                    AssetKind.Photo => "Every photo here is in an album.",
+                    AssetKind.Video => "Every video here is in an album.",
+                    _ => "Nothing left outside an album. Everything here is filed.",
+                };
+            }
+
+            if (WithoutNamedFaces)
+            {
+                return "Everything here has somebody named in it.";
+            }
+
+            if (Kind is AssetKind kind)
+            {
+                return kind == AssetKind.Video
+                    ? "No videos here."
+                    : "No photos here.";
+            }
+
+            return (PersonId, Place) switch
+            {
+                (not null, not null) => $"No pictures of {PersonName} in {PlaceName}.",
+                (not null, null) =>
+                    $"No pictures of {PersonName} yet. Confirm some faces under People.",
+                (null, not null) => $"No pictures in {PlaceName}.",
+                _ => SelectedFolder is null
+                    ? "No pictures yet. Add a folder under Photo sources, then scan it."
+                    : "Nothing in this folder.",
+            };
+        }
+    }
 
     public bool IsPersonFiltered => PersonId is not null;
 
     public bool IsPlaceFiltered => Place is not null;
+
+    public bool IsKindFiltered => Kind is not null;
+
+    /// <summary>What the count is counting, once a kind chip narrows it.</summary>
+    private string Noun() => Kind switch
+    {
+        AssetKind.Photo => _window.Count == 1 ? "photo" : "photos",
+        AssetKind.Video => _window.Count == 1 ? "video" : "videos",
+        _ => "pictures",
+    };
+
+    /// <summary>Which of the kind chips is lit, if either.</summary>
+    public bool ShowingPhotosOnly => Kind == AssetKind.Photo;
+
+    public bool ShowingVideosOnly => Kind == AssetKind.Video;
+
+    /// <summary>
+    /// Whether any chip is narrowing the wall, which is what "Everything" turns
+    /// off.
+    /// </summary>
+    /// <remarks>
+    /// Only the chips. A person, a place or a typed description narrow the wall
+    /// too, and each already has its own way out beside the count - rolling them
+    /// in here would make Everything a button that silently undid a search
+    /// somebody is still reading.
+    /// </remarks>
+    public bool IsFiltered => IsKindFiltered || OutsideAlbums || WithoutNamedFaces;
 
     public bool HasSearchText => SearchText.Length > 0;
 
@@ -1832,7 +1936,10 @@ public sealed partial class GalleryViewModel : ObservableObject
             SortOrder: SortOrder,
             PersonId: PersonId,
             RankedAssetIds: _ranked,
-            Place: Place);
+            Place: Place,
+            Kind: Kind,
+            OnlyOutsideAlbums: OutsideAlbums,
+            OnlyWithoutNamedFaces: WithoutNamedFaces);
 
     /// <summary>
     /// Shows only the pictures one person is in.
@@ -1879,6 +1986,76 @@ public sealed partial class GalleryViewModel : ObservableObject
 
         ClearRanking();
         Fill(name);
+    }
+
+    /// <summary>
+    /// Turns every chip off, which is what "Everything" means.
+    /// </summary>
+    /// <remarks>
+    /// Chips only. A person, a place and a typed description each keep their own
+    /// way out beside the count, because undoing a search somebody is still
+    /// reading is not what pressing "Everything" looks like it would do.
+    /// </remarks>
+    [RelayCommand]
+    private async Task ShowEverythingOnTheWallAsync()
+    {
+        if (!IsFiltered)
+        {
+            return;
+        }
+
+        Kind = null;
+        OutsideAlbums = false;
+        WithoutNamedFaces = false;
+
+        await LoadAsync().ConfigureAwait(true);
+    }
+
+    /// <summary>
+    /// Shows one kind of thing, or stops when the chip already lit is pressed
+    /// again.
+    /// </summary>
+    /// <remarks>
+    /// Pressing the lit one turns it off rather than doing nothing: a chip that
+    /// cannot be un-pressed makes "Everything" the only way back, which is a
+    /// second control to find for something the first one should do.
+    /// </remarks>
+    [RelayCommand]
+    private async Task ShowOnlyAsync(string? kind)
+    {
+        AssetKind? wanted = kind switch
+        {
+            "photos" => AssetKind.Photo,
+            "videos" => AssetKind.Video,
+            _ => null,
+        };
+
+        if (wanted is null)
+        {
+            return;
+        }
+
+        Kind = Kind == wanted ? null : wanted;
+
+        await LoadAsync().ConfigureAwait(true);
+    }
+
+    /// <summary>Narrows to photographs in no album, or stops narrowing.</summary>
+    [RelayCommand]
+    private async Task ShowOutsideAlbumsAsync()
+    {
+        OutsideAlbums = !OutsideAlbums;
+
+        await LoadAsync().ConfigureAwait(true);
+    }
+
+    /// <summary>Narrows to photographs with nobody named in them, or stops.</summary>
+    [RelayCommand]
+    private async Task ShowWithoutNamedFacesAsync()
+    {
+        WithoutNamedFaces = !WithoutNamedFaces;
+
+        await LoadAsync().ConfigureAwait(true);
     }
 
     [RelayCommand]

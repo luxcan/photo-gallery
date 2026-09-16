@@ -1787,6 +1787,19 @@
     </Setter>
   </Style>
 
+  <!--
+    A filter on the wall: off it is an outlined pill, on it is the accent. The
+    same face as the Select pill because it is the same kind of thing - a switch
+    that is either on or off and says which - only smaller, because a row of them
+    sits under the search box rather than alone at the end of a strip.
+  -->
+  <Style x:Key="FilterChip" TargetType="ToggleButton"
+         BasedOn="{StaticResource PillToggle}">
+    <Setter Property="Padding" Value="11,4" />
+    <Setter Property="FontSize" Value="12" />
+    <Setter Property="Margin" Value="0,0,8,0" />
+  </Style>
+
   <!-- A face outlined on the open photograph. Green once somebody has said who
        it is, so a picture shows at a glance what is left to do.
 
