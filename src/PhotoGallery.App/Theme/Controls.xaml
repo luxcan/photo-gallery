@@ -1535,14 +1535,75 @@
        the opposite by default: it starts everything on and dims what is off,
        which suits a screenful of proposals and not a wall of sixteen thousand
        pictures where almost nothing is chosen. -->
-  <Style x:Key="ChosenTick" TargetType="Border">
-    <Setter Property="Background" Value="{DynamicResource AccentBackground}" />
-    <Setter Property="HorizontalAlignment" Value="Left" />
-    <Setter Property="VerticalAlignment" Value="Top" />
-    <Setter Property="Margin" Value="6" />
+  <!-- And it is the way in as well as the mark. Choosing several used to begin
+       with a pill at the far end of the strip, which is a step nobody guesses
+       at - the report that came back was that the app could not do this at all.
+       The circle appears on hover, so the gesture is on the photograph itself
+       and pressing it means both things at once: start choosing, and choose
+       this one.
+
+       A ButtonBase rather than a Border with a click on it, because the tile is
+       itself a Button: ButtonBase handles the mouse down and captures, so the
+       picture does not also open underneath. The same trick the magnifier on a
+       face crop uses, for the same reason.
+
+       Not a ToggleButton. Its IsChecked would be a second copy of what is
+       already known, and a run taken with Shift can leave a picture ticked that
+       was ticked before - no change to mirror, and a circle that then says the
+       opposite of the veil under it. Everything here reads IsChosen directly.
+
+       The scrim colours are the crop overlay's, because this is chrome drawn on
+       a photograph: a circle following the page would disappear into a pale
+       picture in one theme and a dark one in the other. -->
+  <Style x:Key="ChosenTick" TargetType="Button">
     <Setter Property="Width" Value="22" />
     <Setter Property="Height" Value="22" />
-    <Setter Property="CornerRadius" Value="11" />
+    <Setter Property="Margin" Value="6" />
+    <Setter Property="HorizontalAlignment" Value="Left" />
+    <Setter Property="VerticalAlignment" Value="Top" />
+    <Setter Property="Cursor" Value="Hand" />
+    <Setter Property="Opacity" Value="0.8" />
+    <Setter Property="Background" Value="#CC1E1E1E" />
+    <Setter Property="Foreground" Value="White" />
+    <!-- Off the wall entirely until it is wanted. A grey circle burnt into the
+         corner of twenty thousand pictures is a permanent mark on every one of
+         them, and Collapsed rather than transparent so it cannot swallow a
+         click meant for the photograph. -->
+    <Setter Property="Visibility" Value="Collapsed" />
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="Button">
+          <Border Background="{TemplateBinding Background}" CornerRadius="11"
+                  SnapsToDevicePixels="True">
+            <TextBlock Text="&#xE73E;" FontFamily="Segoe MDL2 Assets" FontSize="12"
+                       HorizontalAlignment="Center" VerticalAlignment="Center"
+                       Foreground="{TemplateBinding Foreground}" />
+          </Border>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+    <Style.Triggers>
+      <!-- On the tile, not on the circle: hovering the picture is what offers
+           the gesture, and a circle that only appeared once the pointer was
+           already on it could never be found. The cell is a Button, and
+           FindAncestor starts at the parent, so this reads the tile. -->
+      <DataTrigger Binding="{Binding IsMouseOver,
+                            RelativeSource={RelativeSource AncestorType=Button}}"
+                   Value="True">
+        <Setter Property="Visibility" Value="Visible" />
+      </DataTrigger>
+      <!-- Last, so a ticked photograph keeps its accent whether or not the
+           pointer is anywhere near it. -->
+      <DataTrigger Binding="{Binding IsChosen}" Value="True">
+        <Setter Property="Visibility" Value="Visible" />
+        <Setter Property="Opacity" Value="1" />
+        <Setter Property="Background" Value="{DynamicResource AccentBackground}" />
+        <Setter Property="Foreground" Value="{DynamicResource AccentForeground}" />
+      </DataTrigger>
+      <Trigger Property="IsMouseOver" Value="True">
+        <Setter Property="Opacity" Value="1" />
+      </Trigger>
+    </Style.Triggers>
   </Style>
 
   <!-- And the picture underneath dimmed, so a screenful reads at a glance

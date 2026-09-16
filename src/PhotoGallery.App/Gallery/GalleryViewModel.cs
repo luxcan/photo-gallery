@@ -305,6 +305,17 @@ public sealed partial class GalleryViewModel : ObservableObject
     private readonly HashSet<int> _chosen = [];
 
     /// <summary>
+    /// The photograph a run taken with Shift is measured from.
+    /// </summary>
+    /// <remarks>
+    /// The tile itself, never its position. <see cref="TileWindow.Fill"/> hands
+    /// out fresh indices on every rebuild - a resize alone changes how many sit
+    /// in a row - so a number kept between two clicks would pick out a different
+    /// run than the one under the pointer.
+    /// </remarks>
+    private GalleryTile? _anchor;
+
+    /// <summary>
     /// The photographs the album picker is open about.
     /// </summary>
     /// <remarks>
@@ -2333,6 +2344,86 @@ public sealed partial class GalleryViewModel : ObservableObject
         }
 
         tile.IsChosen = _chosen.Contains(tile.Item.Id);
+        _anchor = tile;
+        NotifyChosen();
+    }
+
+    /// <summary>
+    /// Ticks a photograph from the circle drawn on it, starting the mode if it
+    /// is not already on.
+    /// </summary>
+    /// <remarks>
+    /// The way in as well as the way to add one more. Choosing used to begin at
+    /// a pill at the far end of the strip, and a mode you must find a button for
+    /// before any picture will answer is a step nobody guesses at - it was
+    /// reported as the app having no way to choose several at all. The circle on
+    /// the tile means both things at once.
+    ///
+    /// <para>Deliberately not <see cref="OpenPhoto"/>'s job. That one is the
+    /// rule about what a click on a <em>picture</em> means, and it must go on
+    /// meaning "show me this one" while the mode is off.</para>
+    /// </remarks>
+    [RelayCommand]
+    private void ChoosePhoto(GalleryTile? tile) => ChoosePhoto(tile, extend: false);
+
+    /// <summary>
+    /// The same, and with Shift held, everything from the last one ticked to
+    /// this one.
+    /// </summary>
+    public void ChoosePhoto(GalleryTile? tile, bool extend)
+    {
+        if (tile is null)
+        {
+            return;
+        }
+
+        IsChoosing = true;
+
+        if (extend && _anchor is not null && !ReferenceEquals(_anchor, tile))
+        {
+            TickRun(_anchor, tile);
+            return;
+        }
+
+        Tick(tile);
+    }
+
+    /// <summary>Ticks every photograph between two of them, both ends included.</summary>
+    /// <remarks>
+    /// Adds rather than toggles. A run is what somebody means to have chosen, so
+    /// one already ticked inside it stays ticked rather than being switched off
+    /// by the gesture that was meant to include it.
+    ///
+    /// <para>The anchor stays where it was, so a second Shift-click stretches
+    /// the same run rather than starting a new one from wherever the last
+    /// ended - which is what every other list on this machine does.</para>
+    /// </remarks>
+    private void TickRun(GalleryTile from, GalleryTile to)
+    {
+        int first = _window.IndexOf(from);
+        int last = _window.IndexOf(to);
+
+        // A tile the wall no longer holds - a reload between the two clicks -
+        // has no run to measure from, so the second click is simply a tick.
+        if (first < 0 || last < 0)
+        {
+            Tick(to);
+            return;
+        }
+
+        if (first > last)
+        {
+            (first, last) = (last, first);
+        }
+
+        for (int at = first; at <= last; at++)
+        {
+            GalleryTile tile = _window[at];
+
+            _chosen.Add(tile.Item.Id);
+            tile.IsChosen = true;
+        }
+
         NotifyChosen();
     }
 
@@ -2378,6 +2469,7 @@ public sealed partial class GalleryViewModel : ObservableObject
     private void Forget()
     {
         _chosen.Clear();
+        _anchor = null;
 
         foreach (GalleryTile tile in _window.Tiles)
         {

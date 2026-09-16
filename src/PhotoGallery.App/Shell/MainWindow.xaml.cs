@@ -1280,6 +1280,25 @@ public partial class MainWindow : Window
     /// command for the reason all four of these are: the confirmation is a modal
     /// that pumps messages, and `CanExecute` cannot be trusted across it.
     /// </remarks>
+    /// <summary>
+    /// The circle on a photograph: ticks it, and with Shift held, the run from
+    /// the last one ticked to this.
+    /// </summary>
+    /// <remarks>
+    /// A handler rather than a command because the answer turns on a key that is
+    /// down at the moment of the click. <see cref="Keyboard.Modifiers"/> is live
+    /// input state: read inside the view model it would be a fact no test could
+    /// set, and the run could then only ever be checked by hand.
+    /// </remarks>
+    private void OnPhotographTicked(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { DataContext: GalleryTile tile })
+        {
+            _viewModel.Gallery.ChoosePhoto(
+                tile, extend: Keyboard.Modifiers.HasFlag(ModifierKeys.Shift));
+        }
+    }
+
     private async void OnDeleteChosenPhotosClicked(object sender, RoutedEventArgs e) =>
         await ConfirmAndDeleteAsync(
             _viewModel.Gallery.DescribeChosenDeletionAsync,

@@ -831,14 +831,17 @@
                                 <Border Style="{DynamicResource ChosenVeil}"
                                         Visibility="{Binding IsChosen,
                                                      Converter={StaticResource BoolToVisibility}}" />
-                                <Border Style="{DynamicResource ChosenTick}"
-                                        Visibility="{Binding IsChosen,
-                                                     Converter={StaticResource BoolToVisibility}}">
-                                  <TextBlock Text="&#xE73E;" FontFamily="Segoe MDL2 Assets"
-                                             FontSize="12" HorizontalAlignment="Center"
-                                             VerticalAlignment="Center"
-                                             Foreground="{DynamicResource AccentForeground}" />
-                                </Border>
+
+                                <!-- The circle, which shows itself on hover and
+                                     is how choosing starts. A Click rather than
+                                     a Command: what it does depends on whether
+                                     Shift is down at that moment, and live
+                                     keyboard state read inside the view model
+                                     would be a fact no test could set. -->
+                                <Button Style="{DynamicResource ChosenTick}"
+                                        ToolTip="Choose this photograph. Shift-click for a run of them."
+                                        AutomationProperties.Name="Choose this photograph"
+                                        Click="OnPhotographTicked" />
                               </Grid>
                             </Button>
                           </DataTemplate>
