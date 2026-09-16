@@ -16,10 +16,10 @@ namespace PhotoGallery.Application.Ports;
 /// </param>
 /// <param name="LastAddedUtc">
 /// When a photograph was last put in it, or null while it holds none.
-/// <para>What "recently used" means for a list of albums to file into.
-/// <c>StartUtc</c> cannot answer that: for a proposal it is the span of the
-/// photographs, so a 2019 holiday added to last night sinks to the bottom of
-/// the picker.</para>
+/// </param>
+/// <param name="NamedUtc">
+/// When the user made this album or last renamed it, or null while the name is
+/// still the app's own.
 /// </param>
 public sealed record AlbumSummary(
     int Id,
@@ -31,4 +31,29 @@ public sealed record AlbumSummary(
     int PhotoCount,
     string? CoverThumbnailName,
     int? CollectionId = null,
-    DateTime? LastAddedUtc = null);
+    DateTime? LastAddedUtc = null,
+    DateTime? NamedUtc = null)
+{
+    /// <summary>
+    /// When this album was last used: made, renamed, or filed into, whichever
+    /// happened last.
+    /// </summary>
+    /// <remarks>
+    /// What "recent" means for a list of albums to file into, and it takes both
+    /// halves. Filing alone leaves an album just created sitting at the bottom
+    /// with nothing in it - which is the one somebody is most likely to have
+    /// made in order to file into it. Creation alone forgets that a holiday from
+    /// 2019 added to last night is the one in hand.
+    ///
+    /// <para><c>StartUtc</c> can answer neither: for a proposal it is the span
+    /// of the photographs in it, so the dates it carries are the camera's rather
+    /// than the user's.</para>
+    /// </remarks>
+    public DateTime? LastUsedUtc => (LastAddedUtc, NamedUtc) switch
+    {
+        (null, DateTime named) => named,
+        (DateTime added, null) => added,
+        (DateTime added, DateTime named) => added > named ? added : named,
+        _ => null,
+    };
+}

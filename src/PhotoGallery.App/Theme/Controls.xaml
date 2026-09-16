@@ -2223,6 +2223,14 @@
           </ItemsControl>
         </ScrollViewer>
 
+        <!-- What the untouched list is not showing. Said rather than left to be
+             discovered: a list that quietly stops at eight is a list somebody
+             concludes their album has gone from. -->
+        <TextBlock Style="{DynamicResource HintText}" Margin="10,8,0,0"
+                   Text="{Binding MoreCaption}"
+                   Visibility="{Binding HasMore,
+                                Converter={StaticResource BoolToVisibility}}" />
+
         <!-- Where a search that found nothing leaves you.
 
              The offer to create used to be a button standing beside the box

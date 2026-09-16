@@ -65,17 +65,21 @@ public sealed partial class AlbumPicker : ObservableObject
     private int _opening;
 
     /// <summary>
-    /// How many of your own albums stand under the RECENT heading.
+    /// How many albums the list offers before anything is typed.
     /// </summary>
     /// <remarks>
-    /// Four rather than three: the list is about 300 DIP tall and shows seven,
-    /// so four leaves the heading under it on screen. A band that fills the fold
-    /// is a band nobody learns there is anything below.
+    /// The recent few, and nothing else: with the app's own suggestions gone
+    /// there is no long tail worth scrolling, and a second band under the first
+    /// only said "everything else" over three more rows. Anything older is
+    /// found by typing, which is what the box is for.
+    ///
+    /// <para>Eight because the list is about 300 DIP tall and shows six or
+    /// seven: enough that a library of this size shows all of its albums and
+    /// says nothing about more, and still a bound on one that grows.</para>
     /// </remarks>
-    private const int RecentCount = 4;
+    private const int RecentCount = 8;
 
     private IReadOnlyList<AlbumSummary> _all = [];
-    private int _yours;
     private int _current;
 
     [ObservableProperty]
@@ -238,16 +242,19 @@ public sealed partial class AlbumPicker : ObservableObject
         string? makeTip = null,
         bool anchored = false)
     {
-        _all = Ordered(all ?? []);
-        _yours = _all.Count(album => album.Origin != AlbumOrigin.Proposed);
         _current = current;
         Prompt = prompt;
         Hint = hint;
         CreateTip = makeTip ?? DefaultCreateTip;
         IsAnchored = anchored;
 
-        CurrentName = _all.FirstOrDefault(album => album.Id == current)?.Name
+        // Read off the whole list rather than the offered one, so that a
+        // photograph sitting in a suggestion still says which, and can still be
+        // taken out of it.
+        CurrentName = (all ?? []).FirstOrDefault(album => album.Id == current)?.Name
             ?? string.Empty;
+
+        _all = Offerable(all ?? [], current);
 
         Typed = string.Empty;
         _covers.Clear();
@@ -334,67 +341,65 @@ public sealed partial class AlbumPicker : ObservableObject
     partial void OnTypedChanged(string value) => Narrow();
 
     /// <summary>
-    /// Your own albums first, the one you filed into most recently at the top.
+    /// The albums worth offering, the one filed into most recently first.
     /// </summary>
     /// <remarks>
-    /// The list arrives in the order the albums wall wants - by the span of the
-    /// photographs in them - which for filing is no order at all: a 2019 holiday
-    /// you added to last night sits near the bottom of three hundred.
+    /// Albums you made or kept, and not the app's own suggestions. Three
+    /// reasons, and the first is not about tidiness at all.
     ///
-    /// <para>Recency is measured over albums you made or kept, and only those,
-    /// which is the whole point. A rebuild writes every proposal's memberships
-    /// in one go: on the first real library 284 of 291 albums share a last-added
-    /// moment to the millisecond, so ordering everything by it would put
-    /// whatever the last scan happened to touch at the top and call it recent.
-    /// The seven albums a person actually made are the seven they file into.</para>
+    /// <para>A rebuild may change or remove a proposal - that is what makes it a
+    /// proposal rather than an album - and putting a photograph in one does not
+    /// make it yours. So filing into a suggestion can be quietly undone by the
+    /// next scan, which is the one thing filing must never do.</para>
     ///
-    /// <para><see cref="Enumerable.OrderByDescending{T, TKey}(IEnumerable{T},
+    /// <para>They are also nearly all of them - 284 of 291 on the first real
+    /// library - and they are named after the places and dates they were grouped
+    /// from, so searching for an album turned up a list of locations. Typing
+    /// "tam" found forty-three, of which four were called "Tampines Estate".</para>
+    ///
+    /// <para>The one kept whatever it is, is the album this photograph is in
+    /// already: it carries the tick saying where the picture is now, and the way
+    /// out of it. A suggestion worth filing into is kept on the Albums screen,
+    /// and once kept it is here.</para>
+    ///
+    /// <para>The order the list arrives in is the albums wall's - by the span of
+    /// the photographs in them - which for filing is no order at all: a 2019
+    /// holiday added to last night sits near the bottom.
+    /// <see cref="Enumerable.OrderByDescending{T, TKey}(IEnumerable{T},
     /// Func{T, TKey})"/> is stable, so an album nobody has put anything in keeps
     /// the place it arrived in rather than being shuffled against its
     /// equals.</para>
     /// </remarks>
-    private static IReadOnlyList<AlbumSummary> Ordered(IReadOnlyList<AlbumSummary> all)
-    {
-        List<AlbumSummary> yours = [];
-        List<AlbumSummary> rest = [];
-
-        foreach (AlbumSummary album in all)
-        {
-            (album.Origin == AlbumOrigin.Proposed ? rest : yours).Add(album);
-        }
-
-        return [.. yours.OrderByDescending(album => album.LastAddedUtc ?? DateTime.MinValue), .. rest];
-    }
+    private static IReadOnlyList<AlbumSummary> Offerable(
+        IReadOnlyList<AlbumSummary> all, int current) =>
+    [
+        .. all
+            .Where(album => album.Origin != AlbumOrigin.Proposed || album.Id == current)
+            .OrderByDescending(album => album.LastUsedUtc ?? DateTime.MinValue),
+    ];
 
     private void Narrow()
     {
         string typed = Typed.Trim();
 
-        // Headings only over the whole list. On a narrowed one they would band
-        // three rows into two, and "recent" is not what somebody who has typed
-        // four letters is looking at the list for.
-        int split = Math.Min(RecentCount, _yours);
-        bool banded = typed.Length == 0 && _yours > 0 && _all.Count > split;
+        // Untouched, the list is the recent few. Typed into, it is every album
+        // that matches - or an older one could never be reached at all.
+        List<AlbumSummary> showing = typed.Length == 0
+            ? [.. _all.Take(RecentCount)]
+            : [.. _all.Where(album =>
+                album.Name.Contains(typed, StringComparison.CurrentCultureIgnoreCase))];
+
+        Hidden = typed.Length == 0 ? _all.Count - showing.Count : 0;
 
         Choices.Clear();
-        foreach (AlbumSummary album in _all)
+        foreach (AlbumSummary album in showing)
         {
-            if (typed.Length > 0
-                && !album.Name.Contains(typed, StringComparison.CurrentCultureIgnoreCase))
-            {
-                continue;
-            }
-
-            string heading = banded switch
-            {
-                true when Choices.Count == 0 => "RECENT",
-                true when Choices.Count == split => "EVERYTHING ELSE",
-                _ => string.Empty,
-            };
-
             Choices.Add(new AlbumChoice(album, album.Id == _current)
             {
-                Heading = heading,
+                // On the first row only, and only over the untouched list: it
+                // says what the order is, and on a narrowed list "recent" is not
+                // what somebody who has typed four letters is looking at.
+                Heading = typed.Length == 0 && Choices.Count == 0 ? "RECENT" : string.Empty,
                 Cover = _covers.GetValueOrDefault(album.Id),
             });
         }
@@ -403,6 +408,23 @@ public sealed partial class AlbumPicker : ObservableObject
         OnPropertyChanged(nameof(Narrowed));
         OnPropertyChanged(nameof(IsNarrowed));
     }
+
+    /// <summary>
+    /// How many albums the untouched list is not showing.
+    /// </summary>
+    /// <remarks>
+    /// Said rather than left to be discovered. A list that quietly stops at
+    /// eight is a list somebody concludes their album has gone from.
+    /// </remarks>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasMore), nameof(MoreCaption))]
+    private int _hidden;
+
+    public bool HasMore => Hidden > 0;
+
+    public string MoreCaption => Hidden == 1
+        ? "1 more album. Type to find it."
+        : $"{Hidden:N0} more albums. Type to find one.";
 
     [RelayCommand]
     private Task ChooseAsync(AlbumChoice? album) =>

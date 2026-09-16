@@ -190,11 +190,13 @@ public sealed class SqliteAlbumRepository : IAlbumRepository
                     .FirstOrDefault(),
                 album.CollectionId,
 
-                // When a photograph was last put in it, which is what the picker
-                // orders by. Nothing was recorded for it: AddedUtc has been
-                // written on every insert since the column existed, so this
-                // reads as far back as the library goes.
-                album.Members.Max(member => (DateTime?)member.AddedUtc)))
+                // The two halves of "recently used", which the summary puts
+                // together. Nothing had to be recorded for either: AddedUtc has
+                // been written on every insert since the column existed, and
+                // NamedUtc since a flag became a date - so this reads as far
+                // back as the library goes.
+                album.Members.Max(member => (DateTime?)member.AddedUtc),
+                album.NamedUtc))
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
     }

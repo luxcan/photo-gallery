@@ -77,18 +77,32 @@ public sealed class FilingASelectionTests : IDisposable
         _db.ChangeTracker.Clear();
     }
 
-    /// <summary>And one holding nothing says nothing, rather than a date of zero.</summary>
+    /// <summary>
+    /// An album holding nothing still counts as used, because making it was
+    /// using it.
+    /// </summary>
+    /// <remarks>
+    /// The case recency read off the memberships alone got wrong: an album made
+    /// a moment ago had no moment at all and sorted below every album that did -
+    /// which is exactly backwards, since one made in order to file into is the
+    /// one in hand.
+    /// </remarks>
     [Fact]
-    public async Task AnEmptyAlbumHasNoSuchMoment()
+    public async Task AnAlbumJustMadeCountsAsUsedEvenHoldingNothing()
     {
+        DateTime before = DateTime.UtcNow.AddSeconds(-1);
+
         await Repository().CreateAsync("Empty");
 
-        Assert.Null(Single(await Repository().GetAsync(), "Empty").LastAddedUtc);
+        AlbumSummary summary = Single(await Repository().GetAsync(), "Empty");
+
+        Assert.Null(summary.LastAddedUtc);
+        Assert.NotNull(summary.LastUsedUtc);
+        Assert.True(summary.LastUsedUtc >= before, "the making of it was not recorded");
     }
 
     /// <summary>
-    /// The picker puts your own albums first, most recently filed into at the
-    /// top.
+    /// The picker offers your own albums, the latest filed into at the top.
     /// </summary>
     /// <remarks>
     /// Recency is measured over albums you made or kept and only those, and that
@@ -98,12 +112,10 @@ public sealed class FilingASelectionTests : IDisposable
     /// would hoist whatever the last scan happened to touch and call it recent.
     /// </remarks>
     [Fact]
-    public void ThePickerPutsYourOwnAlbumsFirstAndTheLatestOfThemOnTop()
+    public void ThePickerOffersYourOwnAlbumsWithTheLatestOnTop()
     {
         var picker = new AlbumPicker(_ => Task.CompletedTask);
 
-        // The scan's moment is later than either of the two the user filed into,
-        // so ordering by the date alone would put both proposals above them.
         picker.Open(
             [
                 Proposed("Nine days with Shirley", Day.AddDays(9)),
@@ -117,23 +129,156 @@ public sealed class FilingASelectionTests : IDisposable
             "hint");
 
         Assert.Equal(
-            ["Our Books", "Sentosa", "Never used", "Nine days with Shirley", "Fourteen days with Jia Le"],
+            ["Our Books", "Sentosa", "Never used"],
             picker.Choices.Select(choice => choice.Name));
     }
 
     /// <summary>
-    /// The top few carry a heading, and so does what is under them.
+    /// The app's own suggestions are not offered to file into.
     /// </summary>
+    /// <remarks>
+    /// Not tidiness. A rebuild may change or remove a proposal - that is what
+    /// makes it a proposal - and putting a photograph in one does not make it
+    /// yours, so filing into a suggestion can be quietly undone by the next
+    /// scan. That is the one thing filing must never do.
+    ///
+    /// <para>They are also nearly all of them, and they are named after the
+    /// places and dates they were grouped from: typing "tam" into a picker that
+    /// offered them found forty-three albums, four of which were called
+    /// "Tampines Estate" - which is how this came back as the picker having gone
+    /// off and found locations.</para>
+    /// </remarks>
     [Fact]
-    public void TheTopFewAreBandedAsRecent()
+    public void TheAppsOwnSuggestionsAreNotOfferedToFileInto()
+    {
+        var picker = new AlbumPicker(_ => Task.CompletedTask);
+
+        picker.Open(
+            [
+                Proposed("Tampines Estate", Day),
+                Proposed("Tampines New Town", Day),
+                Made("Zoo 2026", Day),
+            ],
+            0,
+            "Put this photograph in an album",
+            "hint");
+
+        Assert.Equal(["Zoo 2026"], picker.Choices.Select(choice => choice.Name));
+
+        // And the count says what it is counting, rather than three hundred.
+        picker.Typed = "Tam";
+
+        Assert.Empty(picker.Choices);
+        Assert.Equal("0 of 1", picker.Narrowed);
+
+        // The name is free to be given, because nothing offered carries it.
+        Assert.True(picker.CanCreate);
+    }
+
+    /// <summary>
+    /// Except the suggestion this photograph is in already.
+    /// </summary>
+    /// <remarks>
+    /// It carries the tick saying where the picture is now, and the way out of
+    /// it. Dropped with the rest, a photograph filed into a suggestion would
+    /// show as belonging nowhere and could not be taken out from here at all.
+    /// </remarks>
+    [Fact]
+    public void TheSuggestionAPhotographIsAlreadyInIsStillShown()
+    {
+        var picker = new AlbumPicker(_ => Task.CompletedTask, () => Task.CompletedTask);
+
+        AlbumSummary inIt = Proposed("Tampines Estate", Day);
+
+        picker.Open(
+            [inIt, Proposed("Elsewhere", Day), Made("Zoo 2026", Day)],
+            inIt.Id,
+            "Put this photograph in an album",
+            "hint");
+
+        Assert.Equal(
+            ["Tampines Estate", "Zoo 2026"],
+            picker.Choices.Select(choice => choice.Name).Order());
+
+        Assert.True(picker.Choices.Single(choice => choice.Name == "Tampines Estate").IsCurrent);
+
+        // And the way out of it is offered, and named.
+        Assert.True(picker.IsInOne);
+        Assert.Equal("Take it out of Tampines Estate", picker.TakeOutLabel);
+    }
+
+    /// <summary>
+    /// The untouched list is the recent few, under one heading.
+    /// </summary>
+    /// <remarks>
+    /// It used to be every album you owned, banded into the top four and an
+    /// "everything else" over the rest. With the app's own suggestions gone
+    /// there is no long tail worth scrolling, and the second band said nothing
+    /// over three more rows.
+    /// </remarks>
+    [Fact]
+    public void TheListIsTheRecentFewUnderOneHeading()
     {
         AlbumPicker picker = WithMany();
 
         Assert.Equal("RECENT", picker.Choices[0].Heading);
-        Assert.Equal("EVERYTHING ELSE", picker.Choices[4].Heading);
-        Assert.All(
-            picker.Choices.Where((_, at) => at is not (0 or 4)),
-            choice => Assert.False(choice.HasHeading));
+        Assert.All(picker.Choices.Skip(1), choice => Assert.False(choice.HasHeading));
+    }
+
+    /// <summary>
+    /// A longer list stops, and says how many it stopped short of.
+    /// </summary>
+    /// <remarks>
+    /// Said rather than left to be discovered: a list that quietly stops is a
+    /// list somebody concludes their album has gone from.
+    /// </remarks>
+    [Fact]
+    public void ALongerListSaysHowManyItIsNotShowing()
+    {
+        var picker = new AlbumPicker(_ => Task.CompletedTask);
+
+        picker.Open(
+            [.. Enumerable.Range(0, 11).Select(at => Made($"Album {at}", Day.AddDays(at)))],
+            0,
+            "Put this photograph in an album",
+            "hint");
+
+        Assert.Equal(8, picker.Choices.Count);
+        Assert.True(picker.HasMore);
+        Assert.Equal("3 more albums. Type to find one.", picker.MoreCaption);
+
+        // The newest first, so the three left out are the three oldest.
+        Assert.Equal("Album 10", picker.Choices[0].Name);
+        Assert.DoesNotContain(picker.Choices, choice => choice.Name == "Album 0");
+    }
+
+    /// <summary>
+    /// And typing reaches the ones the list stopped short of.
+    /// </summary>
+    /// <remarks>
+    /// The list is shortened, not the library. Searching only what was on
+    /// screen would put an older album out of reach altogether, which is a
+    /// worse thing than a long list.
+    /// </remarks>
+    [Fact]
+    public void TypingReachesTheAlbumsTheListDidNotShow()
+    {
+        var picker = new AlbumPicker(_ => Task.CompletedTask);
+
+        picker.Open(
+            [.. Enumerable.Range(0, 11).Select(at => Made($"Album {at}", Day.AddDays(at)))],
+            0,
+            "Put this photograph in an album",
+            "hint");
+
+        Assert.DoesNotContain(picker.Choices, choice => choice.Name == "Album 0");
+
+        picker.Typed = "Album 0";
+
+        Assert.Equal(["Album 0"], picker.Choices.Select(choice => choice.Name));
+
+        // And nothing is being held back any more, so nothing is said about it.
+        Assert.False(picker.HasMore);
     }
 
     /// <summary>
@@ -155,15 +300,15 @@ public sealed class FilingASelectionTests : IDisposable
     }
 
     /// <summary>
-    /// A library with nothing but proposals in it gets no headings.
+    /// A library with nothing but proposals in it offers nothing to choose.
     /// </summary>
     /// <remarks>
-    /// Which is the state a library is in before anybody has made an album. A
-    /// RECENT band over four albums nobody has ever used is a label that is
-    /// simply untrue.
+    /// Which is the state a library is in before anybody has made an album. The
+    /// list is empty rather than three hundred suggestions long, and the way on
+    /// is to name one.
     /// </remarks>
     [Fact]
-    public void WithNoAlbumsOfYourOwn_ThereAreNoHeadings()
+    public void WithNoAlbumsOfYourOwn_ThereIsNothingToChooseFrom()
     {
         var picker = new AlbumPicker(_ => Task.CompletedTask);
 
@@ -173,22 +318,82 @@ public sealed class FilingASelectionTests : IDisposable
             "Put these 5 photographs in an album",
             "hint");
 
-        Assert.All(picker.Choices, choice => Assert.False(choice.HasHeading));
+        Assert.Empty(picker.Choices);
+
+        picker.Typed = "Holiday";
+        Assert.True(picker.CanCreate);
     }
 
-    /// <summary>And a short list of only your own gets none either.</summary>
-    /// <remarks>
-    /// There is nothing under the band for the heading to distinguish it from.
-    /// </remarks>
+    /// <summary>A list holding everything says nothing about more.</summary>
     [Fact]
-    public void WithNothingUnderTheBand_ThereAreNoHeadings()
+    public void AListShowingEverythingSaysNothingAboutMore()
     {
         var picker = new AlbumPicker(_ => Task.CompletedTask);
 
         picker.Open(
             [Made("One", Day), Made("Two", Day)], 0, "Put this photograph in an album", "hint");
 
-        Assert.All(picker.Choices, choice => Assert.False(choice.HasHeading));
+        Assert.Equal(2, picker.Choices.Count);
+        Assert.False(picker.HasMore);
+    }
+
+    /// <summary>
+    /// Recent means made, renamed or filed into - whichever happened last.
+    /// </summary>
+    /// <remarks>
+    /// Both halves, and it takes both. Filing alone leaves an album just created
+    /// sitting at the bottom with nothing in it, which is the one somebody is
+    /// most likely to have made in order to file into. Creation alone forgets
+    /// that a holiday from 2019 added to last night is the one in hand.
+    /// </remarks>
+    [Theory]
+    [InlineData(null, null, null)]
+    [InlineData(5, null, 5)]
+    [InlineData(null, 5, 5)]
+    [InlineData(2, 9, 9)]
+    [InlineData(9, 2, 9)]
+    public void RecentMeansMadeOrFiledIntoWhicheverIsLater(
+        int? added, int? named, int? expected)
+    {
+        var album = new AlbumSummary(
+            1, "Sunday", Day, Day, AlbumKind.Trip, AlbumOrigin.Made, 3,
+            CoverThumbnailName: null,
+            CollectionId: null,
+            LastAddedUtc: added is int a ? Day.AddDays(a) : null,
+            NamedUtc: named is int n ? Day.AddDays(n) : null);
+
+        Assert.Equal(expected is int e ? Day.AddDays(e) : null, album.LastUsedUtc);
+    }
+
+    /// <summary>
+    /// An album made a moment ago and holding nothing is the most recent of all.
+    /// </summary>
+    /// <remarks>
+    /// The case the first version of this got wrong: with recency read off the
+    /// memberships alone, an empty album had no moment at all and sorted below
+    /// every album that did.
+    /// </remarks>
+    [Fact]
+    public void AnAlbumJustMadeAndStillEmptyComesFirst()
+    {
+        var picker = new AlbumPicker(_ => Task.CompletedTask);
+
+        picker.Open(
+            [
+                new AlbumSummary(
+                    1, "Filed into last week", Day, Day, AlbumKind.Trip, AlbumOrigin.Made, 40,
+                    null, null, LastAddedUtc: Day.AddDays(3), NamedUtc: Day),
+                new AlbumSummary(
+                    2, "Made just now", Day, Day, AlbumKind.Trip, AlbumOrigin.Made, 0,
+                    null, null, LastAddedUtc: null, NamedUtc: Day.AddDays(9)),
+            ],
+            0,
+            "Put this photograph in an album",
+            "hint");
+
+        Assert.Equal(
+            ["Made just now", "Filed into last week"],
+            picker.Choices.Select(choice => choice.Name));
     }
 
     /// <summary>
