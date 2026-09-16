@@ -1,6 +1,8 @@
 using System.Collections.ObjectModel;
+using System.Windows.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using PhotoGallery.App.Imaging;
 using PhotoGallery.Application.Ports;
 using PhotoGallery.Domain.Albums;
 
@@ -24,6 +26,43 @@ public sealed partial class AlbumPicker : ObservableObject
     private readonly Func<string, Task> _chosen;
     private readonly Func<Task>? _removed;
     private readonly Action? _closed;
+    private readonly IThumbnailStore? _thumbnails;
+
+    /// <summary>How wide each cover is decoded, for rows that draw them at 36.</summary>
+    /// <remarks>
+    /// A little over twice the drawn size, so a high-density display has pixels
+    /// to spend and neither orientation is stretched to fill the square.
+    /// </remarks>
+    private const int CoverWidth = 80;
+
+    /// <summary>How many covers are read at once.</summary>
+    /// <remarks>
+    /// The albums wall reads its own the same way and at the same width of
+    /// parallelism. More threads than this spend longer contending for the disk
+    /// than they save.
+    /// </remarks>
+    private const int CoverReaders = 4;
+
+    /// <summary>
+    /// The cover for each album, by album id, once it has been read.
+    /// </summary>
+    /// <remarks>
+    /// Held here rather than on the rows, because the rows do not live long
+    /// enough to hold anything: <see cref="Narrow"/> rebuilds every one of them
+    /// on every keystroke, so a picture kept on a row would be thrown away and
+    /// read again once per letter typed.
+    /// </remarks>
+    private readonly Dictionary<int, ImageSource?> _covers = [];
+
+    /// <summary>
+    /// Which opening of the list the covers being read belong to.
+    /// </summary>
+    /// <remarks>
+    /// Reading three hundred of them outlives a panel somebody opens and shuts
+    /// again, and the answer arriving afterwards would rebuild a list that has
+    /// moved on - over whatever the next question had typed into it.
+    /// </remarks>
+    private int _opening;
 
     /// <summary>
     /// How many of your own albums stand under the RECENT heading.
@@ -79,6 +118,8 @@ public sealed partial class AlbumPicker : ObservableObject
     private string _currentName = string.Empty;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanCreate), nameof(CreateLabel))]
+    [NotifyCanExecuteChangedFor(nameof(CreateCommand))]
     private string _typed = string.Empty;
 
     [ObservableProperty]
@@ -87,12 +128,12 @@ public sealed partial class AlbumPicker : ObservableObject
     [ObservableProperty]
     private string _hint = string.Empty;
 
-    /// <summary>What the Make button promises to do with what is typed.</summary>
+    /// <summary>What Create promises to do with what has been typed.</summary>
     [ObservableProperty]
-    private string _makeTip = DefaultMakeTip;
+    private string _createTip = DefaultCreateTip;
 
-    private const string DefaultMakeTip =
-        "Make an album with this name and put the photograph in it";
+    private const string DefaultCreateTip =
+        "Create an album with this name and put the photograph in it";
 
     /// <param name="chosen">
     /// Told the name that was picked or typed. A name rather than an id, because
@@ -108,12 +149,20 @@ public sealed partial class AlbumPicker : ObservableObject
     /// Told whenever the list goes away, however it goes away, so one place
     /// forgets what was being asked rather than one per exit.
     /// </param>
+    /// <param name="thumbnails">
+    /// Where the covers are read from. Left out where there are none to show -
+    /// the rows are then names and counts, which is all they were.
+    /// </param>
     public AlbumPicker(
-        Func<string, Task> chosen, Func<Task>? removed = null, Action? closed = null)
+        Func<string, Task> chosen,
+        Func<Task>? removed = null,
+        Action? closed = null,
+        IThumbnailStore? thumbnails = null)
     {
         _chosen = chosen;
         _removed = removed;
         _closed = closed;
+        _thumbnails = thumbnails;
     }
 
     public ObservableCollection<AlbumChoice> Choices { get; } = [];
@@ -123,6 +172,29 @@ public sealed partial class AlbumPicker : ObservableObject
     /// do with it is make it.
     /// </summary>
     public bool HasNoMatch => Choices.Count == 0 && Typed.Trim().Length > 0;
+
+    /// <summary>
+    /// Whether what has been typed is a name no album already carries.
+    /// </summary>
+    /// <remarks>
+    /// The box is a search box, so creating is what is offered when the search
+    /// does not turn up the album somebody wanted. The offer used to be a button
+    /// standing beside the box at all times, which is what made the box read as
+    /// the way to name a new album rather than the way to find an old one.
+    ///
+    /// <para>Exact rather than "nothing matched", and the distinction matters.
+    /// The box narrows on any part of a name, so typing "Bali" beside an album
+    /// called "Bali 2019" does find something - and an offer that went away
+    /// whenever anything matched would make the name "Bali" impossible to give
+    /// at all. Only a name already taken outright has nothing left to
+    /// create.</para>
+    /// </remarks>
+    public bool CanCreate => Typed.Trim().Length > 0
+        && !_all.Any(album => string.Equals(
+            album.Name, Typed.Trim(), StringComparison.CurrentCultureIgnoreCase));
+
+    /// <summary>Named after what it would create, so it cannot be pressed blind.</summary>
+    public string CreateLabel => $"Create “{Typed.Trim()}”";
 
     /// <summary>
     /// How much of the list the typing is hiding.
@@ -171,16 +243,68 @@ public sealed partial class AlbumPicker : ObservableObject
         _current = current;
         Prompt = prompt;
         Hint = hint;
-        MakeTip = makeTip ?? DefaultMakeTip;
+        CreateTip = makeTip ?? DefaultCreateTip;
         IsAnchored = anchored;
 
         CurrentName = _all.FirstOrDefault(album => album.Id == current)?.Name
             ?? string.Empty;
 
         Typed = string.Empty;
+        _covers.Clear();
         Narrow();
 
         IsOpen = true;
+
+        // Started rather than awaited: the list is readable the moment it is on
+        // screen, and the pictures land on it as they arrive. Waiting for three
+        // hundred of them would mean a panel that opens a third of a second
+        // after it was asked for.
+        _ = ReadCoversAsync(_all, ++_opening);
+    }
+
+    /// <summary>
+    /// Reads every album's cover, small, off the UI thread.
+    /// </summary>
+    /// <remarks>
+    /// One rebuild when they are all in rather than three hundred as they
+    /// arrive. The list ends up the same either way a moment later, and a
+    /// collection that changes three hundred times is three hundred re-layouts
+    /// of a panel nobody has finished reading.
+    /// </remarks>
+    private async Task ReadCoversAsync(IReadOnlyList<AlbumSummary> albums, int opening)
+    {
+        if (_thumbnails is not IThumbnailStore store || albums.Count == 0)
+        {
+            return;
+        }
+
+        // Written into a slot each rather than into the dictionary, because the
+        // dictionary is the UI thread's and this is not.
+        var read = new (int Id, ImageSource? Cover)[albums.Count];
+
+        await Task.Run(() => Parallel.For(
+            0,
+            albums.Count,
+            new ParallelOptions { MaxDegreeOfParallelism = CoverReaders },
+            at => read[at] = (
+                albums[at].Id,
+                TileImageLoader.LoadThumb(store, albums[at].CoverThumbnailName, CoverWidth))))
+            .ConfigureAwait(true);
+
+        // The panel this was read for may have been shut and another opened
+        // while it ran, and putting these on that one would rebuild a list that
+        // has moved on - over whatever the next question had typed into it.
+        if (opening != _opening || !IsOpen)
+        {
+            return;
+        }
+
+        foreach ((int id, ImageSource? cover) in read)
+        {
+            _covers[id] = cover;
+        }
+
+        Narrow();
     }
 
     public void Close() => IsOpen = false;
@@ -268,7 +392,11 @@ public sealed partial class AlbumPicker : ObservableObject
                 _ => string.Empty,
             };
 
-            Choices.Add(new AlbumChoice(album, album.Id == _current) { Heading = heading });
+            Choices.Add(new AlbumChoice(album, album.Id == _current)
+            {
+                Heading = heading,
+                Cover = _covers.GetValueOrDefault(album.Id),
+            });
         }
 
         OnPropertyChanged(nameof(HasNoMatch));
@@ -280,8 +408,9 @@ public sealed partial class AlbumPicker : ObservableObject
     private Task ChooseAsync(AlbumChoice? album) =>
         album is null ? Task.CompletedTask : _chosen(album.Name);
 
-    [RelayCommand]
-    private Task AddAsync() =>
+    /// <summary>Makes the album nobody could find, and files into it.</summary>
+    [RelayCommand(CanExecute = nameof(CanCreate))]
+    private Task CreateAsync() =>
         string.IsNullOrWhiteSpace(Typed) ? Task.CompletedTask : _chosen(Typed.Trim());
 
     /// <summary>Answers "none of them" - the photograph belongs in no album.</summary>

@@ -192,7 +192,7 @@ public sealed class FilingASelectionTests : IDisposable
     }
 
     /// <summary>
-    /// Make promises what it will actually do with the selection.
+    /// Create promises what it will actually do with the selection.
     /// </summary>
     /// <remarks>
     /// It said it would put "the photograph" in it, whatever number had been
@@ -200,15 +200,83 @@ public sealed class FilingASelectionTests : IDisposable
     /// second way in.
     /// </remarks>
     [Fact]
-    public void MakeSaysHowManyItWouldPutInTheNewAlbum()
+    public void CreateSaysHowManyItWouldPutInTheNewAlbum()
     {
         var picker = new AlbumPicker(_ => Task.CompletedTask);
 
         picker.Open([], 0, "Put this photograph in an album", "hint");
-        Assert.Contains("the photograph", picker.MakeTip, StringComparison.Ordinal);
+        Assert.Contains("the photograph", picker.CreateTip, StringComparison.Ordinal);
 
-        picker.Open([], 0, "prompt", "hint", "Make an album with this name and put the 12 ticked photographs in it");
-        Assert.Contains("12 ticked photographs", picker.MakeTip, StringComparison.Ordinal);
+        picker.Open(
+            [], 0, "prompt", "hint",
+            "Create an album with this name and put the 12 ticked photographs in it");
+
+        Assert.Contains("12 ticked photographs", picker.CreateTip, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Creating is offered when the search does not find the album you wanted.
+    /// </summary>
+    /// <remarks>
+    /// The box is a search box now. The offer to create used to be a button
+    /// standing beside it whatever was typed, which is what made the box read as
+    /// the way to name a new album rather than the way to find an old one - and
+    /// a picker that has always filtered was reported as having no search.
+    /// </remarks>
+    [Fact]
+    public void CreatingIsOfferedWhenTheSearchFindsNothing()
+    {
+        var picker = new AlbumPicker(_ => Task.CompletedTask);
+
+        picker.Open([Made("Sentosa", Day)], 0, "prompt", "hint");
+
+        // Nothing typed: nothing to name, so nothing on offer.
+        Assert.False(picker.CanCreate);
+
+        picker.Typed = "Bali";
+
+        Assert.True(picker.CanCreate);
+        Assert.Empty(picker.Choices);
+        Assert.Equal("Create “Bali”", picker.CreateLabel);
+    }
+
+    /// <summary>
+    /// And a name that is already an album's has nothing left to create.
+    /// </summary>
+    [Fact]
+    public void AnAlbumThatAlreadyExistsIsNotOfferedAgain()
+    {
+        var picker = new AlbumPicker(_ => Task.CompletedTask);
+
+        picker.Open([Made("Sentosa", Day)], 0, "prompt", "hint");
+
+        picker.Typed = "sentosa";
+
+        Assert.False(picker.CanCreate);
+        Assert.False(picker.CreateCommand.CanExecute(null));
+    }
+
+    /// <summary>
+    /// A name inside another album's name can still be created.
+    /// </summary>
+    /// <remarks>
+    /// The distinction the offer turns on, and the reason it is not simply
+    /// "nothing matched". The box narrows on any part of a name, so typing
+    /// "Bali" beside an album called "Bali 2019" finds something - and an offer
+    /// that went away whenever anything matched would make the name "Bali"
+    /// impossible to give at all.
+    /// </remarks>
+    [Fact]
+    public void ANameInsideAnotherAlbumsNameCanStillBeCreated()
+    {
+        var picker = new AlbumPicker(_ => Task.CompletedTask);
+
+        picker.Open([Made("Bali 2019", Day)], 0, "prompt", "hint");
+
+        picker.Typed = "Bali";
+
+        Assert.Single(picker.Choices);
+        Assert.True(picker.CanCreate);
     }
 
     /// <summary>

@@ -157,7 +157,7 @@ public sealed partial class GalleryViewModel : ObservableObject
             "Nobody — stop asking",
             closed: () => FacingBeingNamed = null);
 
-        Albums = new AlbumPicker(PutInAlbumAsync, TakeOutOfAlbumAsync);
+        Albums = new AlbumPicker(PutInAlbumAsync, TakeOutOfAlbumAsync, thumbnails: thumbnails);
     }
 
     /// <summary>
@@ -1003,8 +1003,7 @@ public sealed partial class GalleryViewModel : ObservableObject
             await AllAlbumsAsync().ConfigureAwait(true),
             OpenPhotoAlbum?.Id ?? 0,
             "Put this photograph in an album",
-            "A photograph belongs to one album, so choosing another moves it. "
-                + "Type a name that is not there to make one.");
+            "A photograph belongs to one album, so choosing another moves it.");
     }
 
     /// <summary>
@@ -1037,11 +1036,10 @@ public sealed partial class GalleryViewModel : ObservableObject
             _chosen.Count == 1
                 ? "Put this photograph in an album"
                 : $"Put these {_chosen.Count:N0} photographs in an album",
-            "A photograph belongs to one album, so choosing another moves it. "
-                + "Type a name that is not there to make one.",
+            "A photograph belongs to one album, so choosing another moves it.",
             _chosen.Count == 1
-                ? "Make an album with this name and put the photograph in it"
-                : $"Make an album with this name and put the {_chosen.Count:N0} "
+                ? "Create an album with this name and put the photograph in it"
+                : $"Create an album with this name and put the {_chosen.Count:N0} "
                     + "ticked photographs in it",
 
             // Beside the bar it was asked from. The photographs being filed are

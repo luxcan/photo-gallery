@@ -1,3 +1,4 @@
+using System.Windows.Media;
 using PhotoGallery.Application.Ports;
 
 namespace PhotoGallery.App.Albums;
@@ -28,4 +29,15 @@ public sealed record AlbumChoice(AlbumSummary Summary, bool IsCurrent)
     public string Heading { get; init; } = string.Empty;
 
     public bool HasHeading => Heading.Length > 0;
+
+    /// <summary>
+    /// The picture this album shows for itself, once it has been read.
+    /// </summary>
+    /// <remarks>
+    /// Null until then, and null forever for an album holding nothing - which
+    /// draws the same empty square the albums wall draws, rather than a gap.
+    /// The row is a record rebuilt on every keystroke, so the picture itself is
+    /// kept by the picker and handed back in; this only carries it.
+    /// </remarks>
+    public ImageSource? Cover { get; init; }
 }

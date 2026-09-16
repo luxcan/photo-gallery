@@ -2125,37 +2125,28 @@
         <TextBlock Style="{DynamicResource HintText}" Margin="0,2,0,8"
                    TextWrapping="Wrap" Text="{Binding Hint}" />
 
-        <!-- Above the list rather than under it. Under a list capped at 300 DIP
-             this box is below the fold the moment there are more albums than fit,
-             and sitting beside "Make" it read as the way to create one rather
-             than the way to find one - which is how a picker that has always
-             filtered came to be reported as having no search. -->
-        <Grid>
-          <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="*" />
-            <ColumnDefinition Width="Auto" />
-          </Grid.ColumnDefinitions>
-          <TextBox Grid.Column="0" Style="{DynamicResource InputTextBox}"
-                   AutomationProperties.Name="Search albums, or type a new name"
-                   ToolTip="Type to find an album, or type a name that is not there yet"
-                   Text="{Binding Typed, UpdateSourceTrigger=PropertyChanged}">
-            <TextBox.InputBindings>
-              <KeyBinding Key="Return" Command="{Binding AddCommand}" />
-            </TextBox.InputBindings>
-          </TextBox>
-          <!-- Beside the box whether or not anything matches: an album can want a
-               name that is a prefix of one already there, and hiding this until
-               nothing matched would make that name impossible to give. -->
-          <!-- The tooltip comes from the picker, because it is the one thing
-               that differs between asking about one photograph and asking about
-               forty: the label stays "Make", which is all that fits beside the
-               box and all that is needed under a prompt that already says how
-               many are being filed. -->
-          <Button Grid.Column="1" Style="{DynamicResource SecondaryButton}"
-                  Margin="6,0,0,0" MinWidth="52" Content="Make"
-                  ToolTip="{Binding MakeTip}"
-                  Command="{Binding AddCommand}" />
-        </Grid>
+        <!-- A search box, and only that. It had a Make button standing beside it
+             at all times, which is what made the box read as the way to name a
+             new album rather than the way to find an old one - and a picker that
+             has always filtered was reported as having no search. The way to
+             create one is offered below, where a search that finds nothing
+             leaves you.
+
+             Above the list rather than under it: under a list capped at 300 DIP
+             the box is below the fold the moment there are more albums than
+             fit. -->
+        <TextBox Style="{DynamicResource InputTextBox}"
+                 Tag="Search albums"
+                 AutomationProperties.Name="Search albums"
+                 ToolTip="Type part of an album's name to find it"
+                 Text="{Binding Typed, UpdateSourceTrigger=PropertyChanged}">
+          <TextBox.InputBindings>
+            <!-- Return creates, and is refused when the name is already an
+                 album's - so pressing it after finding what you were looking for
+                 does nothing rather than something surprising. -->
+            <KeyBinding Key="Return" Command="{Binding CreateCommand}" />
+          </TextBox.InputBindings>
+        </TextBox>
 
         <!-- A filtered list and a short list look the same. -->
         <TextBlock Style="{DynamicResource HintText}" Margin="0,6,0,2"
@@ -2178,19 +2169,48 @@
                              Visibility="{Binding HasHeading,
                                           Converter={StaticResource BoolToVisibility}}" />
 
-                  <Button Style="{DynamicResource SearchResult}" Padding="10,6"
+                  <Button Style="{DynamicResource SearchResult}" Padding="8,5"
                           Command="{Binding DataContext.ChooseCommand,
                                     RelativeSource={RelativeSource AncestorType=ItemsControl}}"
                           CommandParameter="{Binding}">
                     <Grid>
-                      <StackPanel HorizontalAlignment="Left">
+                      <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                      </Grid.ColumnDefinitions>
+
+                      <!-- The picture the album shows for itself. A name in a
+                           list of three hundred is a poor way to recognise a
+                           holiday; the cover is how anybody knows which one it
+                           is, and it is what the albums wall is made of.
+
+                           The same pair the albums wall draws: an empty rounded
+                           square underneath, and the cover over it. An album
+                           holding nothing keeps the square, which is that wall's
+                           own way of saying so rather than a gap in the row.
+
+                           Clipped, because UniformToFill paints past the cell it
+                           is given whichever way round the picture is. -->
+                      <Grid Grid.Column="0" Width="36" Height="36"
+                            Margin="0,0,10,0" ClipToBounds="True">
+                        <Border Background="{DynamicResource Neutral.3}"
+                                CornerRadius="{StaticResource Radius.Inner}"
+                                SnapsToDevicePixels="True" />
+                        <Image Source="{Binding Cover}" Stretch="UniformToFill" />
+                      </Grid>
+
+                      <StackPanel Grid.Column="1" VerticalAlignment="Center"
+                                  HorizontalAlignment="Left">
                         <TextBlock Text="{Binding Name}"
                                    Style="{DynamicResource FaceChoiceName}" />
                         <TextBlock Text="{Binding Caption}" FontSize="11"
                                    Foreground="{DynamicResource Editor.Placeholder}" />
                       </StackPanel>
-                      <TextBlock Text="&#xE73E;" FontFamily="Segoe MDL2 Assets"
-                                 FontSize="11" HorizontalAlignment="Right"
+
+                      <TextBlock Grid.Column="2" Text="&#xE73E;"
+                                 FontFamily="Segoe MDL2 Assets"
+                                 FontSize="11" Margin="8,0,0,0"
                                  VerticalAlignment="Center"
                                  Foreground="{DynamicResource Status.Success}"
                                  Visibility="{Binding IsCurrent,
@@ -2202,6 +2222,27 @@
             </ItemsControl.ItemTemplate>
           </ItemsControl>
         </ScrollViewer>
+
+        <!-- Where a search that found nothing leaves you.
+
+             The offer to create used to be a button standing beside the box
+             whatever was typed, which is what made the box read as a name field
+             rather than a search field. Here it is the answer to not finding
+             something, which is when somebody actually wants it - and it names
+             what it would create, so it cannot be pressed blind.
+
+             Shown whenever the typed name is not already an album's, not only
+             when nothing matched at all: the box narrows on any part of a name,
+             so "Bali" beside an album called "Bali 2019" does find something,
+             and an offer that went away whenever anything matched would make the
+             name "Bali" impossible to give. -->
+        <Button Style="{DynamicResource SecondaryButton}" Margin="0,10,0,0"
+                HorizontalAlignment="Stretch" Height="34"
+                Content="{Binding CreateLabel}"
+                ToolTip="{Binding CreateTip}"
+                Command="{Binding CreateCommand}"
+                Visibility="{Binding CanCreate,
+                             Converter={StaticResource BoolToVisibility}}" />
 
         <!-- The other answer to which album this is in, which is none of them.
              Here rather than on the strip beside the picture: it is the same

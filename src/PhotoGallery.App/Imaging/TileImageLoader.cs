@@ -56,6 +56,32 @@ public static class TileImageLoader
     }
 
     /// <summary>
+    /// The same tile decoded small, for a row in a list rather than a wall.
+    /// </summary>
+    /// <remarks>
+    /// The one place a decode width is asked for, and the exception that proves
+    /// the rule above rather than breaking it: <see cref="LoadTile"/> takes none
+    /// because the tile is already the size a wall draws it at, whereas a row
+    /// thirty-six pixels high wants nothing like 400. Three hundred albums
+    /// decoded at full tile size is about 190 MB of bitmap held for a panel
+    /// somebody has open for four seconds - the same unbounded growth the face
+    /// crops were cut down to avoid, reached from a third direction.
+    ///
+    /// <para>A width rather than a height, and a little over twice the drawn
+    /// size: the rows crop to a square, so whichever way round the picture is
+    /// there are enough pixels to fill the square without stretching.</para>
+    /// </remarks>
+    public static ImageSource? LoadThumb(IThumbnailStore store, string? thumbnailName, int width)
+    {
+        ArgumentNullException.ThrowIfNull(store);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(width);
+
+        return string.IsNullOrWhiteSpace(thumbnailName)
+            ? null
+            : Load(() => store.ResolveTilePath(thumbnailName), width);
+    }
+
+    /// <summary>
     /// One face, cut out of the preview the detector looked at.
     /// </summary>
     /// <remarks>
@@ -153,7 +179,7 @@ public static class TileImageLoader
     /// Resolving the path happens inside the guard, so this really is the single
     /// place a bad rendition can fail.
     /// </summary>
-    private static ImageSource? Load(Func<string> resolvePath)
+    private static ImageSource? Load(Func<string> resolvePath, int width = 0)
     {
         try
         {
@@ -164,6 +190,12 @@ public static class TileImageLoader
             image.BeginInit();
             image.StreamSource = file;
             image.CacheOption = BitmapCacheOption.OnLoad;
+
+            if (width > 0)
+            {
+                image.DecodePixelWidth = width;
+            }
+
             image.EndInit();
             image.Freeze();
             return image;
