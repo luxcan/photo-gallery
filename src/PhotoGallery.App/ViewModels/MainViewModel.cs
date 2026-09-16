@@ -1335,7 +1335,8 @@ public sealed partial class MainViewModel : ObservableObject
     /// button at all: what it reports has already happened.
     /// </remarks>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(NoticeAsks))]
+    [NotifyPropertyChangedFor(
+        nameof(NoticeAsks), nameof(NoticeDismiss), nameof(NoticeDismissTip))]
     private string _noticeAction = string.Empty;
 
     /// <summary>What pressing that button does, set with the question.</summary>
@@ -1347,6 +1348,25 @@ public sealed partial class MainViewModel : ObservableObject
     public bool HasNotice => Notice.Length > 0;
 
     public bool NoticeAsks => NoticeAction.Length > 0;
+
+    /// <summary>
+    /// What the way out of the notice is called, which depends on whether there
+    /// was a question.
+    /// </summary>
+    /// <remarks>
+    /// It said "Not now" whatever the notice was. That is the right word for
+    /// declining a question - the offer stands, and will be made again when
+    /// there is something newer - and quite the wrong one for a report of
+    /// something that has already happened. A sync that finished said "5 photos
+    /// moved. Your answers are synced." and then offered "Not now", as though
+    /// the work might be taken back.
+    /// </remarks>
+    public string NoticeDismiss => NoticeAsks ? "Not now" : "Dismiss";
+
+    /// <summary>The same distinction, in the tooltip.</summary>
+    public string NoticeDismissTip => NoticeAsks
+        ? "Put this down. It will be offered again when there is something newer."
+        : "Put this down.";
 
     /// <summary>
     /// Puts a question in the corner, with the one thing that answers it.
@@ -2394,10 +2414,51 @@ public sealed partial class MainViewModel : ObservableObject
         if (section == SelectedSection)
         {
             OnPropertyChanged(nameof(SelectedSection));
+            ShowTopOf(section);
             return;
         }
 
         SelectedSection = section;
+    }
+
+    /// <summary>
+    /// Puts a screen back to what it shows when you first arrive on it.
+    /// </summary>
+    /// <remarks>
+    /// Pressing Albums while standing inside "Zoo 2026" did nothing at all, and
+    /// the only way back to the wall was a small arrow at the top of the
+    /// photographs. The section you are already on is the one place a nav row
+    /// has nowhere else to take you, so it takes you up instead - which is what
+    /// everybody already expects of a tab pressed twice.
+    ///
+    /// <para>Every screen that can stand somewhere deeper, rather than only the
+    /// one it was reported on: an open album, an open shelf, a face being looked
+    /// at, one copy of a duplicate. Each of these is the command its own back
+    /// arrow is bound to, so there is no second way of going back to keep in
+    /// step with the first.</para>
+    /// </remarks>
+    private void ShowTopOf(ActivitySection section)
+    {
+        switch (section.Key)
+        {
+            case ActivitySection.AlbumsKey:
+                Albums.CloseAlbumCommand.Execute(null);
+                Albums.Collections.CloseCommand.Execute(null);
+                break;
+
+            case ActivitySection.PeopleKey:
+                People.CloseInspectCommand.Execute(null);
+                break;
+
+            case ActivitySection.DuplicatesKey:
+                Duplicates.CloseInspectCommand.Execute(null);
+                break;
+
+            default:
+                // Library, Photo sources, Sync, Settings and About are one screen
+                // each: there is nothing above where the reader already is.
+                break;
+        }
     }
 
     /// <summary>

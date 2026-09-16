@@ -248,6 +248,30 @@ public sealed class ChoosingManyPhotosTests : IDisposable
     }
 
     /// <summary>
+    /// The pill does not still say "Select" once you are selecting.
+    /// </summary>
+    /// <remarks>
+    /// It said the same word in both states, so the way out of choosing was a
+    /// button offering to start the thing it would stop - and an unchanged label
+    /// is the weakest way a toggle can say it is on. "Cancel" rather than "Done",
+    /// because leaving forgets what was ticked and nothing is being finished.
+    /// </remarks>
+    [Fact]
+    public void ThePillSaysWhatPressingItWouldDo()
+    {
+        Assert.Equal("Select", _gallery.ChoosingLabel);
+        Assert.Contains("Choose several", _gallery.ChoosingTip, StringComparison.Ordinal);
+
+        _gallery.IsChoosing = true;
+
+        Assert.Equal("Cancel", _gallery.ChoosingLabel);
+        Assert.Contains("Stop choosing", _gallery.ChoosingTip, StringComparison.Ordinal);
+
+        // The one gesture that does the same thing and that nothing else says.
+        Assert.Contains("Escape", _gallery.ChoosingTip, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// The accent is on filing a selection, not on destroying it.
     /// </summary>
     /// <remarks>
@@ -332,7 +356,8 @@ public sealed class ChoosingManyPhotosTests : IDisposable
 
         // And the way out of the mode stays, or hiding the rest would trap
         // somebody in it.
-        Assert.Contains("Content=\"Select\"", strip, StringComparison.Ordinal);
+        Assert.Contains(
+            "Content=\"{Binding Gallery.ChoosingLabel}\"", strip, StringComparison.Ordinal);
     }
 
     /// <summary>The strip above the wall, from its grid to the tiles below.</summary>

@@ -611,9 +611,9 @@
                    what this screen has always promised. -->
               <ToggleButton Grid.Column="4" Style="{DynamicResource PillToggle}"
                             VerticalAlignment="Center" Margin="10,0,0,0" MinWidth="78"
-                            Content="Select"
-                            ToolTip="Choose several photographs to move or delete"
-                            AutomationProperties.Name="Select several photographs"
+                            Content="{Binding Gallery.ChoosingLabel}"
+                            ToolTip="{Binding Gallery.ChoosingTip}"
+                            AutomationProperties.Name="{Binding Gallery.ChoosingTip}"
                             IsEnabled="{Binding IsIdle}"
                             IsChecked="{Binding Gallery.IsChoosing, Mode=TwoWay}" />
             </Grid>
@@ -3601,10 +3601,13 @@
                   Visibility="{Binding NoticeAsks,
                                Converter={StaticResource BoolToVisibility}}"
                   Command="{Binding AnswerNoticeCommand}" />
+          <!-- "Not now" only while it is asking. On a report of work already
+               done it read as though the work might be taken back. -->
           <Button Style="{DynamicResource LinkButton}" Margin="14,0,2,0" FontSize="12"
                   Padding="0" VerticalAlignment="Center"
-                  VerticalContentAlignment="Center" Content="Not now"
-                  ToolTip="Put this down. It will be offered again when there is something newer."
+                  VerticalContentAlignment="Center"
+                  Content="{Binding NoticeDismiss}"
+                  ToolTip="{Binding NoticeDismissTip}"
                   Command="{Binding DismissNoticeCommand}" />
         </StackPanel>
       </StackPanel>
