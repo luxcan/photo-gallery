@@ -583,21 +583,101 @@ public sealed class ChoosingManyPhotosTests : IDisposable
     {
         string window = File.ReadAllText(AppMarkup.PathTo("Shell", "MainWindow.xaml"));
 
-        // One host, so there is one place for it to be wrong.
-        Assert.Equal(1, Occurrences(window, "Content=\"{Binding Gallery.Albums}\""));
-
-        int host = window.IndexOf("Content=\"{Binding Gallery.Albums}\"", StringComparison.Ordinal);
+        int middle = window.IndexOf(
+            "Visibility=\"{Binding Gallery.Albums.IsOpenInTheMiddle,", StringComparison.Ordinal);
         int viewer = window.IndexOf(
             "Visibility=\"{Binding Gallery.IsViewerOpen,", StringComparison.Ordinal);
 
-        Assert.True(host > 0 && viewer > 0, "the markup no longer has both");
+        Assert.True(middle > 0 && viewer > 0, "the markup no longer has both");
         Assert.True(
-            host > viewer,
+            middle > viewer,
             "the picker is inside the viewer again, so a wall cannot show it");
+    }
 
-        // And it is not gated on a photograph being open.
+    /// <summary>
+    /// One picker and one template, drawn in either of two places.
+    /// </summary>
+    /// <remarks>
+    /// "One picker, one host" was written to stop a second list being kept in
+    /// step - a second place to get the wording, the filter and the
+    /// make-a-new-one box wrong. That still holds: there is one
+    /// <c>DataTemplate</c> and one view model, and what differs between the two
+    /// places is the chrome around them and nothing else.
+    ///
+    /// <para>They cannot both be open, because the flags they are gated on are
+    /// the two halves of one question the view model answers.</para>
+    /// </remarks>
+    [Fact]
+    public void ThePickerIsOneTemplateDrawnInEitherOfTwoPlaces()
+    {
+        string window = File.ReadAllText(AppMarkup.PathTo("Shell", "MainWindow.xaml"));
+        string controls = File.ReadAllText(AppMarkup.PathTo("Theme", "Controls.xaml"));
+
+        // One template, wherever it is drawn.
+        Assert.Equal(
+            1, Occurrences(controls, "<DataTemplate DataType=\"{x:Type albums:AlbumPicker}\">"));
+
+        // Two hosts, both of them the same view model.
+        Assert.Equal(2, Occurrences(window, "Content=\"{Binding Gallery.Albums}\""));
+
+        // And each gated on its own half, so neither can draw over the other.
         Assert.Contains(
-            "Visibility=\"{Binding Gallery.Albums.IsOpen,", window, StringComparison.Ordinal);
+            "Gallery.Albums.IsOpenInTheMiddle", window, StringComparison.Ordinal);
+        Assert.Contains(
+            "Gallery.Albums.IsOpenBesideTheBar", window, StringComparison.Ordinal);
+
+        // The bar's one rises from the bar, and dismisses like a popover rather
+        // than holding the window until it is answered.
+        int popup = window.IndexOf(
+            "IsOpen=\"{Binding Gallery.Albums.IsOpenBesideTheBar", StringComparison.Ordinal);
+        int from = window.LastIndexOf("<Popup ", popup, StringComparison.Ordinal);
+
+        Assert.True(popup > 0 && from > 0, "the bar's picker is no longer a popover");
+
+        string popover = window[from..popup];
+
+        Assert.Contains("ElementName=ChoosingBar", popover, StringComparison.Ordinal);
+        Assert.Contains("StaysOpen=\"False\"", popover, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// The click that dismisses the popover does nothing else.
+    /// </summary>
+    /// <remarks>
+    /// StaysOpen closes the panel on an outside click but does not swallow that
+    /// click, and underneath it is a wall of tickable photographs and a button
+    /// that deletes them: closing the list by clicking the wall ticked another
+    /// picture, so changing your mind about the album quietly cost a fifth
+    /// photograph. Four became five while this was being driven.
+    ///
+    /// <para>A transparent sheet is what catches it - transparent so the
+    /// photographs being filed stay visible, which is the entire reason this is
+    /// a popover rather than the modal it replaced.</para>
+    /// </remarks>
+    [Fact]
+    public void TheClickThatDismissesThePopoverDoesNothingElse()
+    {
+        string window = File.ReadAllText(AppMarkup.PathTo("Shell", "MainWindow.xaml"));
+        string shell = File.ReadAllText(AppMarkup.PathTo("Shell", "MainWindow.xaml.cs"));
+
+        int sheet = window.IndexOf(
+            "MouseLeftButtonDown=\"OnAlbumPopoverDismissed\"", StringComparison.Ordinal);
+        Assert.True(sheet > 0, "nothing catches the click that closes the popover");
+
+        // Transparent rather than shaded, and hit-testable rather than null:
+        // a Background of nothing is not something a click can land on.
+        int opens = window.LastIndexOf("<Grid ", sheet, StringComparison.Ordinal);
+        Assert.Contains(
+            "Background=\"Transparent\"", window[opens..sheet], StringComparison.Ordinal);
+        Assert.DoesNotContain("ModalScrim", window[opens..sheet], StringComparison.Ordinal);
+
+        // And the click stops there.
+        int handler = shell.IndexOf(
+            "private void OnAlbumPopoverDismissed", StringComparison.Ordinal);
+        Assert.True(handler > 0, "the shell does not answer that click");
+
+        int ends = shell.IndexOf("\r\n    }", handler, StringComparison.Ordinal);
+        Assert.Contains("e.Handled = true", shell[handler..ends], StringComparison.Ordinal);
     }
 
     private static int Occurrences(string text, string value)

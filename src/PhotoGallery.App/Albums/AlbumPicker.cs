@@ -40,7 +40,32 @@ public sealed partial class AlbumPicker : ObservableObject
     private int _current;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsOpenBesideTheBar), nameof(IsOpenInTheMiddle))]
     private bool _isOpen;
+
+    /// <summary>
+    /// Whether this is drawn on the control that asked, rather than centred in
+    /// the middle of the window over a shade.
+    /// </summary>
+    /// <remarks>
+    /// A selection's question belongs beside the bar it was asked from. The
+    /// photographs being filed are ticked on the wall directly behind it, and a
+    /// centred panel over a shade hides the one thing worth looking at while
+    /// answering - which album these belong in is a question about them.
+    ///
+    /// <para>One photograph in the viewer is the other case and keeps the modal:
+    /// there the picture is already the whole screen, and a panel rising from a
+    /// button in the side strip would have less to anchor to than the middle.</para>
+    /// </remarks>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsOpenBesideTheBar), nameof(IsOpenInTheMiddle))]
+    private bool _isAnchored;
+
+    /// <summary>Open, and drawn on the bar that asked.</summary>
+    public bool IsOpenBesideTheBar => IsOpen && IsAnchored;
+
+    /// <summary>Open, and drawn in the middle, over a shade.</summary>
+    public bool IsOpenInTheMiddle => IsOpen && !IsAnchored;
 
     /// <summary>The album the photograph is in, or empty while it is in none.</summary>
     /// <remarks>
@@ -129,12 +154,17 @@ public sealed partial class AlbumPicker : ObservableObject
     /// What the Make button promises, for the one thing that differs between
     /// asking about one photograph and asking about forty.
     /// </param>
+    /// <param name="anchored">
+    /// Whether to draw beside whatever asked rather than in the middle. See
+    /// <see cref="IsAnchored"/>.
+    /// </param>
     public void Open(
         IReadOnlyList<AlbumSummary> all,
         int current,
         string prompt,
         string hint,
-        string? makeTip = null)
+        string? makeTip = null,
+        bool anchored = false)
     {
         _all = Ordered(all ?? []);
         _yours = _all.Count(album => album.Origin != AlbumOrigin.Proposed);
@@ -142,6 +172,7 @@ public sealed partial class AlbumPicker : ObservableObject
         Prompt = prompt;
         Hint = hint;
         MakeTip = makeTip ?? DefaultMakeTip;
+        IsAnchored = anchored;
 
         CurrentName = _all.FirstOrDefault(album => album.Id == current)?.Name
             ?? string.Empty;
@@ -152,9 +183,25 @@ public sealed partial class AlbumPicker : ObservableObject
         IsOpen = true;
     }
 
-    public void Close()
+    public void Close() => IsOpen = false;
+
+    /// <summary>
+    /// Everything that has to happen however the list goes away.
+    /// </summary>
+    /// <remarks>
+    /// On the property rather than in <see cref="Close"/>, because closing is no
+    /// longer only something this class does: a popover dismisses itself when
+    /// the pointer goes elsewhere, and it does that by writing IsOpen. Left in
+    /// Close, a panel clicked away would leave what was being asked about still
+    /// spoken for, and the typing from last time waiting in the box.
+    /// </remarks>
+    partial void OnIsOpenChanged(bool value)
     {
-        IsOpen = false;
+        if (value)
+        {
+            return;
+        }
+
         Typed = string.Empty;
         Choices.Clear();
         _closed?.Invoke();

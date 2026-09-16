@@ -93,6 +93,100 @@ public sealed class BindingPathTests
     }
 
     /// <summary>
+    /// A binding that writes back writes to something that can be written to.
+    /// </summary>
+    /// <remarks>
+    /// Unlike a path that names nothing, this one does not fail quietly: WPF
+    /// throws while the window is being built, so the app does not start at all.
+    /// It cost a start-up crash to learn, on a popup whose IsOpen was bound
+    /// two-way - as a popup's IsOpen usually must be - to a property that was
+    /// computed from two others and therefore had no setter.
+    ///
+    /// <para>Nothing catches it earlier. The markup compiles, every text-scanning
+    /// test in this suite reads the string and is satisfied, and the path itself
+    /// resolves perfectly well - it is only the direction that is impossible.</para>
+    ///
+    /// <para>Declared modes only. A TextBox's Text and a ToggleButton's IsChecked
+    /// are two-way by default and are not written here, so knowing which of those
+    /// bind back would mean knowing each target property's default mode - a
+    /// bigger reading of the markup than this file does.</para>
+    /// </remarks>
+    [Fact]
+    public void EveryBindingThatWritesBackReachesAPropertyThatCanBeSet()
+    {
+        string markup = File.ReadAllText(AppMarkup.PathTo("Shell", "MainWindow.xaml"));
+
+        List<string> broken = [];
+        int checked_ = 0;
+
+        foreach (Match match in s_binding.Matches(markup))
+        {
+            string rest = match.Groups["rest"].Value;
+
+            if (!rest.Contains("Mode=TwoWay", StringComparison.Ordinal)
+                && !rest.Contains("Mode=OneWayToSource", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            if (Resolve(match.Groups["path"].Value) is not PropertyInfo target)
+            {
+                // Rooted in a row rather than in the window, or naming nothing -
+                // which is the test above's business, not this one's.
+                continue;
+            }
+
+            checked_++;
+
+            if (target.SetMethod is null || !target.SetMethod.IsPublic)
+            {
+                broken.Add($"{match.Groups["path"].Value} ({target.Name} has no setter)");
+            }
+        }
+
+        Assert.Empty(broken);
+
+        // And the walk found some, or an unreadable file would pass in silence.
+        Assert.True(checked_ >= 5, $"only {checked_} writing bindings were followed");
+    }
+
+    /// <summary>
+    /// The whole of a binding expression, allowing one level of nesting so that
+    /// a Mode written after a converter is still seen.
+    /// </summary>
+    private static readonly Regex s_binding = new(
+        @"\{Binding\s+(?:Path=)?(?<path>[A-Za-z_][A-Za-z0-9_.]*)(?<rest>(?:[^{}]|\{[^}]*\})*)\}",
+        RegexOptions.Compiled);
+
+    /// <summary>
+    /// The property a path ends at, or null when it is not the window's to
+    /// resolve.
+    /// </summary>
+    private static PropertyInfo? Resolve(string path)
+    {
+        if (path.StartsWith("DataContext.", StringComparison.Ordinal))
+        {
+            path = path["DataContext.".Length..];
+        }
+
+        Type? walker = typeof(MainViewModel);
+        PropertyInfo? found = null;
+
+        foreach (string segment in path.Split('.'))
+        {
+            found = Find(walker, segment);
+            if (found is null)
+            {
+                return null;
+            }
+
+            walker = found.PropertyType;
+        }
+
+        return found;
+    }
+
+    /// <summary>
     /// Sanity: the paths this test follows are not an empty set.
     /// </summary>
     /// <remarks>

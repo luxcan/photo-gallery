@@ -1287,6 +1287,45 @@ public partial class MainWindow : Window
     /// that pumps messages, and `CanExecute` cannot be trusted across it.
     /// </remarks>
     /// <summary>
+    /// The album popover dismissed itself, so the picker is told.
+    /// </summary>
+    /// <remarks>
+    /// StaysOpen is false on it, so a click anywhere else closes it - and the
+    /// popup does that by writing its own IsOpen rather than by asking. Without
+    /// this the view model would go on believing the list was open, and the next
+    /// selection would raise nothing at all: the property the popup is gated on
+    /// never changed, so the binding would have nothing to push.
+    ///
+    /// <para>A handler rather than a two-way binding because that property is a
+    /// computed pair of facts - open, and drawn here rather than in the middle -
+    /// and there is no sensible way to write "false" back into a pair. WPF says
+    /// so outright: a two-way binding onto a read-only property throws while the
+    /// window is being built, which is a crash on start-up rather than a
+    /// misbehaving panel.</para>
+    /// </remarks>
+    private void OnAlbumPopoverClosed(object? sender, EventArgs e) =>
+        _viewModel.Gallery.Albums.Close();
+
+    /// <summary>
+    /// A click anywhere outside the popover, which closes it and stops there.
+    /// </summary>
+    /// <remarks>
+    /// The popup would close by itself - StaysOpen is false - but the click goes
+    /// on to reach whatever is underneath, and underneath is a wall of tickable
+    /// photographs and a button that deletes them. Closing the list by clicking
+    /// the wall ticked another picture, so changing your mind about the album
+    /// silently cost a fifth photograph.
+    ///
+    /// <para>Marked handled, which is the whole job: the sheet it is on is
+    /// transparent, so nothing is hidden and nothing else happens.</para>
+    /// </remarks>
+    private void OnAlbumPopoverDismissed(object sender, MouseButtonEventArgs e)
+    {
+        _viewModel.Gallery.Albums.Close();
+        e.Handled = true;
+    }
+
+    /// <summary>
     /// Asks before a batch of photographs moves, then moves them under the
     /// overlay.
     /// </summary>

@@ -1042,7 +1042,12 @@ public sealed partial class GalleryViewModel : ObservableObject
             _chosen.Count == 1
                 ? "Make an album with this name and put the photograph in it"
                 : $"Make an album with this name and put the {_chosen.Count:N0} "
-                    + "ticked photographs in it");
+                    + "ticked photographs in it",
+
+            // Beside the bar it was asked from. The photographs being filed are
+            // ticked on the wall right behind this, and a centred panel over a
+            // shade covers the one thing worth looking at while answering.
+            anchored: true);
     }
 
     private async Task<IReadOnlyList<AlbumSummary>> AllAlbumsAsync()

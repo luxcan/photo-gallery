@@ -247,6 +247,71 @@ public sealed class FilingASelectionTests : IDisposable
         Assert.DoesNotContain("PlacingChosen += OnPlacingChosen", model, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// A selection is answered beside the bar; one photograph is answered in the
+    /// middle.
+    /// </summary>
+    /// <remarks>
+    /// The photographs being filed are ticked on the wall directly behind the
+    /// bar, and a modal shade would dim the one thing worth looking at while
+    /// answering a question about it. In the viewer the picture is already the
+    /// whole screen and there is nothing behind a panel worth seeing.
+    /// </remarks>
+    [Fact]
+    public void ASelectionIsAnsweredBesideTheBarAndOnePhotographInTheMiddle()
+    {
+        var picker = new AlbumPicker(_ => Task.CompletedTask);
+
+        picker.Open([Made("Sentosa", Day)], 0, "Put this photograph in an album", "hint");
+
+        Assert.True(picker.IsOpenInTheMiddle);
+        Assert.False(picker.IsOpenBesideTheBar);
+
+        picker.Open(
+            [Made("Sentosa", Day)],
+            0,
+            "Put these 5 photographs in an album",
+            "hint",
+            makeTip: null,
+            anchored: true);
+
+        Assert.True(picker.IsOpenBesideTheBar);
+        Assert.False(picker.IsOpenInTheMiddle);
+    }
+
+    /// <summary>And neither is open once it is closed, however it closed.</summary>
+    /// <remarks>
+    /// A popover dismisses itself when the pointer goes elsewhere, and it does
+    /// that by writing IsOpen rather than by calling Close. Everything that has
+    /// to happen when the list goes away therefore hangs off the property: left
+    /// in Close, a panel clicked away would keep what was being asked about
+    /// spoken for and leave last time's typing in the box.
+    /// </remarks>
+    [Fact]
+    public void ClickingAPopoverAwayForgetsWhatItWasAsking()
+    {
+        var picker = new AlbumPicker(_ => Task.CompletedTask);
+
+        picker.Open(
+            [Made("Sentosa", Day)],
+            0,
+            "Put these 5 photographs in an album",
+            "hint",
+            makeTip: null,
+            anchored: true);
+
+        picker.Typed = "Sen";
+        Assert.NotEmpty(picker.Choices);
+
+        // What the popover itself does when the pointer goes elsewhere.
+        picker.IsOpen = false;
+
+        Assert.False(picker.IsOpenBesideTheBar);
+        Assert.False(picker.IsOpenInTheMiddle);
+        Assert.Equal(string.Empty, picker.Typed);
+        Assert.Empty(picker.Choices);
+    }
+
     private static AlbumPicker WithMany()
     {
         var picker = new AlbumPicker(_ => Task.CompletedTask);

@@ -3088,7 +3088,7 @@
                somebody leaves, and a selection survives leaving and comes back.
                The viewer, the album picker and the pass overlay are children of
                the window and so still draw over this. -->
-          <Border VerticalAlignment="Bottom" Height="52"
+          <Border x:Name="ChoosingBar" VerticalAlignment="Bottom" Height="52"
                   Background="{DynamicResource StatusBar.Background}"
                   BorderBrush="{DynamicResource Separator}"
                   BorderThickness="0,1,0,0" SnapsToDevicePixels="True"
@@ -3184,6 +3184,66 @@
               </StackPanel>
             </Grid>
           </Border>
+
+          <!-- Which album a selection belongs in, risen from the bar that asked.
+
+               The same picker and the same single template as the modal below -
+               one list, one wording, one filter, one make-a-new-one box, which
+               is what "one picker, one host" was written to protect. Only the
+               chrome differs, and the two are mutually exclusive by
+               construction: the view model decides which of them is open.
+
+               Beside the bar rather than centred, because the photographs being
+               filed are ticked on the wall directly behind this. A modal shade
+               would dim the one thing worth looking at while answering a
+               question about it.
+
+               The popup takes the bar's width and the panel sits at its right
+               end, so it rises from the button that opened it without a magic
+               offset to keep in step with the button's position. The same
+               idiom the search suggestions use under the box.
+
+               StaysOpen false, because a popover that survives a click
+               elsewhere is a modal wearing the wrong clothes. Closing that way
+               writes the popup's own IsOpen, which is why the picker does its
+               forgetting when the property changes rather than in Close, and
+               why a handler tells it: what this is gated on is a computed pair
+               of facts - open, and drawn here - and there is no sensible way to
+               write "false" back into a pair. -->
+          <!-- What a click outside the popover lands on.
+
+               Without it the click that dismisses the list also reaches whatever
+               is under it: closing the panel by clicking the wall ticked another
+               photograph, so changing your mind about which album cost you a
+               fifth picture you never chose. That is the kind of wrong answer
+               this whole screen has been spent removing.
+
+               Transparent rather than shaded, which is the one thing that makes
+               it different from the modal it replaces: the photographs being
+               filed are right behind it and must stay visible. Transparent and
+               hit-testable, not null - a Background of nothing is not something
+               a click can land on.
+
+               Over the bar as well as the wall, because the dangerous
+               pass-through is not the wall at all: it is Delete. Not over the
+               side nav, which is outside this grid - a click there closes the
+               popover on its own, by leaving the wall. -->
+          <Grid Background="Transparent"
+                MouseLeftButtonDown="OnAlbumPopoverDismissed"
+                Visibility="{Binding Gallery.Albums.IsOpenBesideTheBar,
+                             Converter={StaticResource BoolToVisibility}}" />
+
+          <Popup PlacementTarget="{Binding ElementName=ChoosingBar}"
+                 Placement="Top" VerticalOffset="-6" StaysOpen="False"
+                 AllowsTransparency="True" PopupAnimation="Fade"
+                 Width="{Binding ActualWidth, ElementName=ChoosingBar}"
+                 IsOpen="{Binding Gallery.Albums.IsOpenBesideTheBar, Mode=OneWay}"
+                 Closed="OnAlbumPopoverClosed">
+            <Grid>
+              <ContentControl HorizontalAlignment="Right" Margin="0,0,20,0"
+                              Content="{Binding Gallery.Albums}" />
+            </Grid>
+          </Popup>
 
         </Grid>
       </Border>
@@ -3687,12 +3747,21 @@
          a picture was open, so choosing an album for a batch put a panel on
          screen that nobody could see.
 
-         One picker, one host. The question is the same question - which album do
-         these belong in - and a second list to keep in step would be a second
-         place to get the wording, the filter and the make-a-new-one box wrong.
+         One picker, one template. The question is the same question - which
+         album do these belong in - and a second list to keep in step would be a
+         second place to get the wording, the filter and the make-a-new-one box
+         wrong. There are two places it can be drawn, and that is all they are:
+         both host the same view model through the same DataTemplate, and the
+         view model says which of them is open.
+
+         This is the middle one, over a shade, and it answers for one open
+         photograph - where the picture is already the whole screen and there is
+         nothing behind a panel worth seeing. A selection is answered beside the
+         bar it was asked from instead.
+
          Above the viewer in the markup so it draws over an open picture. -->
     <Grid Background="{DynamicResource ModalScrim}"
-          Visibility="{Binding Gallery.Albums.IsOpen,
+          Visibility="{Binding Gallery.Albums.IsOpenInTheMiddle,
                        Converter={StaticResource BoolToVisibility}}">
       <ContentControl Content="{Binding Gallery.Albums}" />
     </Grid>
