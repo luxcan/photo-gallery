@@ -313,7 +313,6 @@
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="Auto" />
               </Grid.ColumnDefinitions>
 
               <!-- A name, a description, or both in one line. Names are offered
@@ -550,27 +549,11 @@
                 </UniformGrid>
               </Border>
 
-              <!-- A mode, so a standalone pill rather than a segment: it is not
-                   one of two ways to look at the library, it is something the
-                   wall is doing. Off, a click on a photograph opens it, which is
-                   what this screen has always promised.
-
-                   The only control here that leaves rather than greying out, and
-                   the only one whose job is taken over: the bar along the bottom
-                   carries the way out once there is one. Two buttons doing one
-                   thing, one of them alone and lit in a row of greyed controls,
-                   is the noise - and the way out belongs where the eye already
-                   is. It keeps saying the word the bar says, from the one
-                   property that decides it. -->
-              <ToggleButton Grid.Column="4" Style="{DynamicResource PillToggle}"
-                            VerticalAlignment="Center" Margin="10,0,0,0" MinWidth="78"
-                            Content="{Binding Gallery.ChoosingLabel}"
-                            ToolTip="{Binding Gallery.ChoosingTip}"
-                            AutomationProperties.Name="{Binding Gallery.ChoosingTip}"
-                            IsEnabled="{Binding IsIdle}"
-                            IsChecked="{Binding Gallery.IsChoosing, Mode=TwoWay}"
-                            Visibility="{Binding Gallery.IsChoosing,
-                                         Converter={StaticResource InverseBoolToVisibility}}" />
+              <!-- There was a Select pill here. Choosing now starts on the
+                   photograph - the circle appears when the pointer is over a
+                   tile - and ends at the bar along the bottom, so the pill was
+                   a third control for something with two, and the only one of
+                   the three that was never where the eye was. -->
             </Grid>
 
             <!-- Under the box and always there, rather than an error after the
@@ -3176,10 +3159,20 @@
                         Background="{DynamicResource Separator}"
                         SnapsToDevicePixels="True" />
 
+                <!-- "Cancel" rather than "Done", because leaving forgets what
+                     is ticked: nothing is being finished. And deliberately not
+                     "Select none", which is the control two along - that one
+                     unticks and stays, this one leaves.
+
+                     Written here rather than read off the view model. It used
+                     to come from a property that said "Select" or "Cancel"
+                     depending on the mode, because a pill up in the strip said
+                     the other half. The pill is gone, so the property only ever
+                     answered one way and the other half was dead. -->
                 <Button Style="{DynamicResource LinkButton}" FontSize="12"
-                        Content="{Binding Gallery.ChoosingLabel}"
-                        ToolTip="{Binding Gallery.ChoosingTip}"
-                        AutomationProperties.Name="{Binding Gallery.ChoosingTip}"
+                        Content="Cancel"
+                        ToolTip="Stop choosing and forget what is ticked. Escape does this too."
+                        AutomationProperties.Name="Stop choosing and forget what is ticked"
                         Command="{Binding Gallery.StopChoosingCommand}" />
               </StackPanel>
             </Grid>

@@ -342,35 +342,12 @@ public sealed partial class GalleryViewModel : ObservableObject
         nameof(HasChosen),
         nameof(ChosenSummary),
         nameof(DeleteChosenCaption),
-        nameof(EverythingChosen),
-        nameof(ChoosingLabel),
-        nameof(ChoosingTip))]
+        nameof(EverythingChosen))]
     private bool _isChoosing;
 
     public int ChosenCount => _chosen.Count;
 
     public bool HasChosen => _chosen.Count > 0;
-
-    /// <summary>
-    /// What the pill says, which is not the same word going in as coming out.
-    /// </summary>
-    /// <remarks>
-    /// It read "Select" in both states, so the way out of choosing was a button
-    /// labelled with the thing it would stop doing - pressed once to start, and
-    /// then still inviting you to start. Lit and unchanged is also the weakest
-    /// way a toggle can say it is on.
-    ///
-    /// <para>"Cancel" rather than "Done", because leaving the mode forgets what
-    /// was ticked: nothing is being finished. And deliberately not "Select none",
-    /// which is the other control's job - that one unticks and stays, this one
-    /// leaves.</para>
-    /// </remarks>
-    public string ChoosingLabel => IsChoosing ? "Cancel" : "Select";
-
-    /// <summary>The same distinction, said long enough to be unambiguous.</summary>
-    public string ChoosingTip => IsChoosing
-        ? "Stop choosing and forget what is ticked. Escape does this too."
-        : "Choose several photographs to move or delete";
 
     /// <summary>
     /// Whether everything on the wall is already ticked, so Select all has

@@ -307,27 +307,34 @@ public sealed class ChoosingManyPhotosTests : IDisposable
     }
 
     /// <summary>
-    /// The pill does not still say "Select" once you are selecting.
+    /// Choosing has two controls, and neither of them is a pill in the strip.
     /// </summary>
     /// <remarks>
-    /// It said the same word in both states, so the way out of choosing was a
-    /// button offering to start the thing it would stop - and an unchanged label
-    /// is the weakest way a toggle can say it is on. "Cancel" rather than "Done",
-    /// because leaving forgets what was ticked and nothing is being finished.
+    /// It starts on the photograph - the circle appears when the pointer is over
+    /// a tile - and ends at the bar along the bottom. A Select pill up in the
+    /// strip was a third control for a thing with two, and the only one of the
+    /// three that was never where the eye already was.
+    ///
+    /// <para>Its label came from a property that answered "Select" or "Cancel"
+    /// depending on the mode. With the pill gone that property could only ever
+    /// answer one way, so the word is written where it is read and the dead half
+    /// is not kept alive by a test.</para>
     /// </remarks>
     [Fact]
-    public void ThePillSaysWhatPressingItWouldDo()
+    public void TheStripNoLongerCarriesASelectPill()
     {
-        Assert.Equal("Select", _gallery.ChoosingLabel);
-        Assert.Contains("Choose several", _gallery.ChoosingTip, StringComparison.Ordinal);
+        string window = File.ReadAllText(AppMarkup.PathTo("Shell", "MainWindow.xaml"));
 
-        _gallery.IsChoosing = true;
+        Assert.DoesNotContain("Gallery.ChoosingLabel", window, StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "IsChecked=\"{Binding Gallery.IsChoosing", window, StringComparison.Ordinal);
 
-        Assert.Equal("Cancel", _gallery.ChoosingLabel);
-        Assert.Contains("Stop choosing", _gallery.ChoosingTip, StringComparison.Ordinal);
+        // The way out stays, and says what leaving costs.
+        string bar = Bar(window);
 
-        // The one gesture that does the same thing and that nothing else says.
-        Assert.Contains("Escape", _gallery.ChoosingTip, StringComparison.Ordinal);
+        Assert.Contains("Content=\"Cancel\"", bar, StringComparison.Ordinal);
+        Assert.Contains("forget what is ticked", bar, StringComparison.Ordinal);
+        Assert.Contains("Escape does this too", bar, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -418,15 +425,16 @@ public sealed class ChoosingManyPhotosTests : IDisposable
 
         Assert.Equal(5, stopped);
 
-        // And exactly one thing still leaves rather than greying out: the pill,
-        // whose job the bar takes over. Two buttons doing one thing, one of them
-        // alone and lit in a row of greyed controls, is the noise.
+        // And nothing leaves any more. The Select pill was the one control here
+        // that vanished rather than greyed out, because the bar had taken its
+        // job; it has since gone altogether, and a header that half disappears
+        // and half fades is two rules where one will do.
         int hidden = Regex.Matches(
             header,
             @"Visibility=""\{Binding Gallery\.IsChoosing,\s*"
             + @"Converter=\{StaticResource InverseBoolToVisibility\}\}""").Count;
 
-        Assert.Equal(1, hidden);
+        Assert.Equal(0, hidden);
     }
 
     /// <summary>
