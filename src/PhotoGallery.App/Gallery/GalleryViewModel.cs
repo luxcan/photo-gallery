@@ -1248,7 +1248,19 @@ public sealed partial class GalleryViewModel : ObservableObject
             return;
         }
 
-        if (facts is not null && OpenTile?.Item.Id == assetId)
+        if (facts is null)
+        {
+            // A tile whose photograph the index no longer has: it was deleted
+            // and this wall has not caught up. The panel would simply come up
+            // empty, which reads as the app having lost the details of a
+            // photograph rather than as a tile outliving its subject - so it is
+            // written down rather than left to be worked out from a screenshot.
+            DiagnosticLog.Write(
+                $"asset {assetId} is on the wall but not in the index; the wall is stale");
+            return;
+        }
+
+        if (OpenTile?.Item.Id == assetId)
         {
             OpenDetails = PhotoDetails.Of(facts);
         }
@@ -2736,19 +2748,29 @@ public sealed partial class GalleryViewModel : ObservableObject
 
         LibraryChanged?.Invoke(this, EventArgs.Empty);
 
-        // Only the library's own grid can be reloaded from here. A picture
-        // opened from somebody's photographs belongs to the People screen, which
-        // rebuilds itself on hearing the line above - so the viewer stands down
-        // rather than stepping onto a tile that is about to be replaced.
+        // Only the library's own grid can be STEPPED THROUGH from here. A
+        // picture opened from somebody's photographs belongs to the People
+        // screen, which rebuilds itself on hearing the line above - so the
+        // viewer stands down rather than stepping onto a tile that is about to
+        // be replaced.
         //
         // It closed on that path before as well, but by accident: the index
         // below was read from the library's grid whatever the viewer had been
         // opened from, and a tile the People screen built is never in it, so the
         // answer was always -1. Said out loud, it stops being a bug that happens
         // to behave and starts being a rule.
+        //
+        // The wall is read again even so, and that is the half this used to
+        // miss. Which grid the picture was opened from decides where the viewer
+        // goes next; it says nothing about the library's own wall, which is
+        // holding a tile for a photograph that has just been deleted whichever
+        // screen deleted it. Left there, the tile opens onto a cached thumbnail
+        // with nothing behind it - no album, no name, no file - because every
+        // fact about a photograph is read by an id the index no longer has.
         if (!ReferenceEquals(ViewerGrid, _window))
         {
             ClosePhoto();
+            await LoadAsync().ConfigureAwait(true);
             return;
         }
 

@@ -129,6 +129,61 @@ public sealed class ViewerSteppingTests : IDisposable
         Assert.Same(_gallery.Rows[0].Tiles[1], _gallery.OpenTile);
     }
 
+    /// <summary>
+    /// Deleting a photograph opened from another screen takes it off the
+    /// library's wall too.
+    /// </summary>
+    /// <remarks>
+    /// Which grid the picture came from decides where the viewer goes next; it
+    /// says nothing about the library's own wall, which is holding a tile for a
+    /// photograph that has just been deleted whichever screen deleted it. This
+    /// branch closed the viewer and returned, and the wall was left as it was.
+    ///
+    /// <para>What that looks like is a photograph you can still open and that
+    /// has nothing behind it: the tile draws from the cached thumbnail, which
+    /// outlives the delete, while the album, the faces and every fact about the
+    /// file are read by an id the index no longer has, so the panel beside it
+    /// comes up empty. It was reported as "this photo looks strange, no image
+    /// path" - and it was not strange, it was gone.</para>
+    /// </remarks>
+    [Fact]
+    public async Task DeletingAPictureOpenedElsewhere_TakesItOffTheLibraryWallToo()
+    {
+        await _gallery.LoadAsync();
+
+        GalleryTile going = _gallery.Rows.SelectMany(row => row.Tiles).First();
+        int id = going.Item.Id;
+
+        // Opened the way the People screen and an album open one: through their
+        // own grid, so the viewer steps through theirs rather than the library's.
+        _elsewhere.Fill([going]);
+        _gallery.OpenFrom(_elsewhere, going);
+
+        Forget(id);
+
+        await _gallery.AfterOpenPhotoDeletedAsync(new PhotoRemovalResult(1, [], false, [], []));
+
+        // The viewer stands down, because the grid it was stepping through
+        // belongs to a screen that rebuilds itself.
+        Assert.False(_gallery.IsViewerOpen);
+
+        // And the wall has forgotten it, so there is no tile left to open onto
+        // a photograph that is not there.
+        Assert.DoesNotContain(
+            _gallery.Rows.SelectMany(row => row.Tiles),
+            tile => tile.Item.Id == id);
+    }
+
+    /// <summary>Takes one photograph out of the index, as a deletion does.</summary>
+    private void Forget(int assetId)
+    {
+        using IServiceScope scope = _services.CreateScope();
+        GalleryDbContext db = scope.ServiceProvider.GetRequiredService<GalleryDbContext>();
+
+        db.Assets.Remove(db.Assets.Single(asset => asset.Id == assetId));
+        db.SaveChanges();
+    }
+
     private static IEnumerable<GalleryTile> Tiles(int firstId, int count) =>
         Enumerable.Range(0, count).Select(i => new GalleryTile(new GalleryItem(
             firstId + i,
