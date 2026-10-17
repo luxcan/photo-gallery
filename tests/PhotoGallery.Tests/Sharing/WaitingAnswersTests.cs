@@ -1,4 +1,5 @@
 using PhotoGallery.Application.Ports;
+using PhotoGallery.Application.UseCases.Sharing;
 using PhotoGallery.Domain.Assets;
 using PhotoGallery.Domain.Faces;
 using PhotoGallery.Domain.Library;
@@ -359,6 +360,89 @@ public sealed class WaitingAnswersTests : IDisposable
 
         Assert.Equal(0, after.Elsewhere.Answers);
         Assert.Equal(1, after.Missing.Answers);
+
+        // And it stays that way through the next scan. The row's folder was
+        // renamed and the answer inside it was not, so the sweep read the old
+        // folder back out of it and parked the answer there a second time.
+        await Dad.Waiting.HandleAsync();
+
+        HeldStanding swept = await Dad.Decisions.HeldStandingAsync();
+
+        Assert.Equal(0, swept.Elsewhere.Answers);
+        Assert.Single(Dad.Db.HeldDecisions);
+    }
+
+    /// <summary>
+    /// An answer parked before its folder was paired lands when the photograph
+    /// arrives, whichever way the two identities sort.
+    /// </summary>
+    /// <remarks>
+    /// What pairing is for. Renaming only the row's folder column left the
+    /// answer inside naming the folder by its old identity - the one the sweep
+    /// reads - so it looked for a photograph in a folder this library no longer
+    /// calls that, and waited for ever.
+    /// </remarks>
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task AnAnswerParkedBeforeItsFolderWasPairedLandsWhenThePhotographArrives(
+        bool theirsSortsLower)
+    {
+        PhotoSource phone = Mum.Folder(
+            @"C:\Users\Mum\Pictures",
+            theirsSortsLower ? Below(Dad.SharedSourceId) : Above(Dad.SharedSourceId));
+
+        Mum.Answer(
+            Mum.Face(Mum.Photo(@"2026 Phone Dump\b.jpg", into: phone), Head),
+            Mum.Person("Ana"),
+            AssignmentSource.Confirmed,
+            Monday);
+
+        await MergedAsync();
+        await Dad.Pairing.HandleAsync(Dad.SharedSourceId, phone.SharedId);
+
+        Dad.Face(Dad.Photo(@"2026 Phone Dump\b.jpg"), Head);
+
+        HeldResult swept = await Dad.Waiting.HandleAsync();
+
+        Assert.Equal(1, swept.Applied);
+        Assert.Single(Dad.Db.FaceAssignments);
+        Assert.Empty(Dad.Db.HeldDecisions);
+    }
+
+    /// <summary>
+    /// A row this version cannot read still moves with its folder, as it was.
+    /// </summary>
+    /// <remarks>
+    /// Rewriting the answer inside means reading it first, and a row written by
+    /// a newer release may not read. It keeps what it says rather than being
+    /// rewritten into something else or dropped - the bargain every reader of
+    /// these rows strikes - and the folder it is filed under moves regardless.
+    /// </remarks>
+    [Fact]
+    public async Task ARowThatCannotBeReadStillMovesWithItsFolder()
+    {
+        PhotoSource phone = Mum.Folder(@"C:\Users\Mum\Pictures", Above(Dad.SharedSourceId));
+        const string unreadable = "{ \"from\": \"a newer release\" }";
+
+        Dad.Db.HeldDecisions.Add(new HeldDecision
+        {
+            SharedSourceId = phone.SharedId,
+            RelativePath = @"2026 Phone Dump\b.jpg",
+            Kind = HeldDecisionKind.Turn,
+            Part = string.Empty,
+            Payload = unreadable,
+            FromMachine = Mum.MachineId,
+            DecidedUtc = Monday,
+        });
+        Dad.Db.SaveChanges();
+        Dad.Db.ChangeTracker.Clear();
+
+        await Dad.Pairing.HandleAsync(Dad.SharedSourceId, phone.SharedId);
+
+        HeldDecision moved = Dad.Db.HeldDecisions.Single();
+        Assert.Equal(Dad.SharedSourceId, moved.SharedSourceId);
+        Assert.Equal(unreadable, moved.Payload);
     }
 
     /// <summary>

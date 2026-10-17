@@ -304,12 +304,33 @@ public sealed class SqliteDecisionRepository : IDecisionRepository
             // Answers parked under the old identity are about the same
             // photographs; left behind, they would wait for a folder that no
             // longer exists under that name.
-            await _db.HeldDecisions
+            List<HeldDecision> moving = await _db.HeldDecisions
                 .Where(held => held.SharedSourceId == from)
-                .ExecuteUpdateAsync(
-                    setters => setters.SetProperty(held => held.SharedSourceId, to),
-                    cancellationToken)
+                .ToListAsync(cancellationToken)
                 .ConfigureAwait(false);
+
+            foreach (HeldDecision held in moving)
+            {
+                // The answer inside as well as the row around it, because the
+                // answer is what the sweep reads. One row at a time, and only
+                // where the answer read back names the old folder: a row this
+                // version cannot make sense of keeps what it says, and still
+                // moves with the folder.
+                HeldAnswers answer = HeldRows.Read([held]);
+
+                if (answer.Photographs.Any(photo => photo.SharedSourceId == from)
+                    && Flatten(answer.Renamed(from, to)).SingleOrDefault() is Waiting renamed)
+                {
+                    held.Payload = renamed.Payload;
+                }
+
+                held.SharedSourceId = to;
+            }
+
+            // Saved before the next rename looks for rows, as the statement
+            // this replaced was: the next one asks the database, not the
+            // change tracker.
+            await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
         }
 
         await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);

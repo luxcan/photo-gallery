@@ -60,4 +60,28 @@ public sealed record HeldAnswers(
             [.. Memberships.Except(other.Memberships)],
             [.. Rejections.Except(other.Rejections)]);
     }
+
+    /// <summary>
+    /// The same answers, with a folder called by the identity a pairing settled
+    /// it on.
+    /// </summary>
+    /// <remarks>
+    /// The answer is what a sweep reads, so it has to say the new name as well
+    /// as the row it is stored in. Renaming only the row left every answer
+    /// inside naming the folder the old way: the sweep looked for a photograph
+    /// this library no longer calls that, never found it, and parked the answer
+    /// back under the old name beside the renamed one.
+    /// </remarks>
+    public HeldAnswers Renamed(Guid from, Guid to)
+    {
+        return new HeldAnswers(
+            [.. Answers.Select(a => a with { Face = a.Face with { Photo = As(a.Face.Photo) } })],
+            [.. Strangers.Select(s => s with { Face = s.Face with { Photo = As(s.Face.Photo) } })],
+            [.. Turns.Select(t => t with { Photo = As(t.Photo) })],
+            [.. Memberships.Select(m => m with { Photo = As(m.Photo) })],
+            [.. Rejections.Select(r => r with { Photo = As(r.Photo) })]);
+
+        AssetKey As(AssetKey photo) =>
+            photo.SharedSourceId == from ? new AssetKey(to, photo.RelativePath) : photo;
+    }
 }
