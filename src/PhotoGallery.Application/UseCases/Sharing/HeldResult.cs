@@ -15,9 +15,9 @@ namespace PhotoGallery.Application.UseCases.Sharing;
 /// </param>
 /// <param name="Settled">
 /// Answers let go without writing anything: what they said was already true
-/// here, a later answer had beaten them, or the album they named had been thrown
-/// away. Nothing is lost by letting these go - the answer that stands is already
-/// in this library - but nothing arrived either.
+/// here, a later answer had beaten them, or the album or the person they named
+/// had been deleted. Nothing is lost by letting these go - the answer that
+/// stands is already in this library - but nothing arrived either.
 /// </param>
 /// <param name="Unplaced">
 /// Moves kept waiting although their photograph is here, because the album they

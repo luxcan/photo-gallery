@@ -26,9 +26,9 @@ namespace PhotoGallery.Application.UseCases.Sharing;
 /// spent an evening making, so a sweep that is stopped part-way forgets nothing
 /// and simply costs the next one the same work. Settled means the answer that
 /// stands is already in this library - it was true here already, a later answer
-/// beat it, or the album it named has been thrown away - and only then may a row
-/// go without being written. A move into an album this library does not have is
-/// neither, so it stays.</para>
+/// beat it, or the album or the person it named has been deleted - and only then
+/// may a row go without being written. A move into an album this library does
+/// not have is neither, so it stays.</para>
 /// </remarks>
 public sealed class ApplyHeldDecisionsHandler
 {

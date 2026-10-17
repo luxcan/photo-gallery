@@ -187,9 +187,9 @@ public static class DecisionMerge
     /// held, where its photograph or its face is not here yet. Unplaced, where
     /// the photograph is here and the album it names is not. And settled, where
     /// nothing needs writing because what it says is already true here, a later
-    /// answer has beaten it, or the album it names has been thrown away. The
-    /// sweep lets go of the first and the last and reports them apart, because
-    /// only one of them is work arriving.</para>
+    /// answer has beaten it, or the album or the person it names has been
+    /// deleted. The sweep lets go of the first and the last and reports them
+    /// apart, because only one of them is work arriving.</para>
     /// </remarks>
     /// <param name="mine">What this library holds, proposals included.</param>
     /// <param name="waiting">The answers that have been parked.</param>
@@ -632,8 +632,27 @@ public static class DecisionMerge
         List<FaceAnswer> heldAnswers = [];
         List<StrangerFace> heldStrangers = [];
 
+        // Everybody deleted anywhere this merge can see. A tombstone always wins
+        // whatever its date, so a person deleted here stays deleted - and an
+        // answer about them has to lose with them, or it is written onto the
+        // tombstone and, being the later name, unseats the one a face already
+        // had. Asked before the face is, for the reason a deleted album is: no
+        // scan can make the answer takeable, so there is nothing to wait for.
+        HashSet<Guid> gone =
+        [
+            .. mine.People
+                .Concat(accepted.SelectMany(them => them.People))
+                .Where(person => person.DeletedUtc is not null)
+                .Select(person => person.PublicId),
+        ];
+
         foreach (FaceAnswer answer in accepted.SelectMany(them => them.Answers))
         {
+            if (gone.Contains(answer.Person))
+            {
+                continue;
+            }
+
             if (Landed(here, answer.Face) is not FaceKey landed)
             {
                 heldAnswers.Add(answer);

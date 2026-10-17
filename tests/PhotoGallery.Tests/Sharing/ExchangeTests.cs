@@ -234,6 +234,39 @@ public sealed class ExchangeTests : IDisposable
         Assert.NotNull(Mum.Db.People.IgnoreQueryFilters().Single().DeletedUtc);
     }
 
+    /// <summary>
+    /// A name for somebody this library has deleted is not written onto what is
+    /// left of them.
+    /// </summary>
+    /// <remarks>
+    /// The other half of a deletion travelling. Mum has not heard yet, so she
+    /// goes on publishing her answer; the person stays deleted here, because a
+    /// tombstone beats any date - and her answer was then written anyway, onto
+    /// the tombstone, on every sync until she heard. The deletion has to win for
+    /// the answers about a person as it does for the person.
+    /// </remarks>
+    [Fact]
+    public async Task ANameForSomebodyDeletedHereIsNotWrittenOntoTheirTombstone()
+    {
+        Both(@"2019\a.jpg");
+        Person ana = Mum.Person("Ana");
+        Mum.Answer(Mum.Db.Faces.Single(), ana, AssignmentSource.Confirmed, Monday);
+
+        await Mum.Publishing.HandleAsync();
+        await Dad.Merging.HandleAsync();
+
+        Dad.Db.FaceAssignments.ExecuteDelete();
+        Dad.Db.People.IgnoreQueryFilters()
+            .ExecuteUpdate(s => s.SetProperty(p => p.DeletedUtc, Monday.AddDays(1)));
+        Dad.Db.ChangeTracker.Clear();
+
+        MergeResult merged = await Dad.Merging.HandleAsync();
+
+        Assert.Empty(Dad.Db.FaceAssignments);
+        Assert.Equal(0, merged.Outcome.NamesGained);
+        Assert.NotNull(Dad.Db.People.IgnoreQueryFilters().Single().DeletedUtc);
+    }
+
     [Fact]
     public async Task AMachineIsRememberedWithWhenItLastShared()
     {

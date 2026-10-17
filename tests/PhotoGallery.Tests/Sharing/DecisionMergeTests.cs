@@ -279,6 +279,87 @@ public sealed class DecisionMergeTests
         Assert.Equal(Monday, Assert.Single(plan.People).DeletedUtc);
     }
 
+    /// <summary>
+    /// A name for somebody deleted here is not taken, and does not unseat the
+    /// name this library already has on that face.
+    /// </summary>
+    /// <remarks>
+    /// The tombstone wins for the answers about a person as it does for the
+    /// person. Taken, the answer was written onto the tombstone - and, being the
+    /// later name, withdrew the one this library had, leaving the face named
+    /// after nobody anybody can see.
+    /// </remarks>
+    [Fact]
+    public void ANameForSomebodyDeletedHereIsNotTaken()
+    {
+        FaceKey face = Pictures.Face(@"2019\a.jpg");
+
+        MergePlan plan = Merge(
+            mine: new Machine("Dad")
+                .Knows(Person(Ana, "Ana") with { DeletedUtc = Monday })
+                .Knows(Person(Ben, "Ben"))
+                .Confirms(face, Ben, Monday),
+            theirs: new Machine("Mum").Knows(Person(Ana, "Ana")).Confirms(face, Ana, Wednesday),
+            here: Pictures.Holding(face));
+
+        Assert.Empty(plan.Answers);
+        Assert.Empty(plan.Withdrawn);
+        Assert.True(plan.ChangesNothing);
+    }
+
+    /// <summary>
+    /// Nor one for somebody another machine has deleted, arriving in the same
+    /// sync as the deletion.
+    /// </summary>
+    [Fact]
+    public void ANameForSomebodyDeletedElsewhereIsNotTaken()
+    {
+        FaceKey face = Pictures.Face(@"2019\a.jpg");
+
+        MergePlan plan = Merge(
+            mine: new Machine("Dad").Knows(Person(Ana, "Ana")),
+            here: Pictures.Holding(face),
+            theirs:
+            [
+                new Machine("Gran").Knows(Person(Ana, "Ana") with { DeletedUtc = Monday }),
+                new Machine("Mum").Knows(Person(Ana, "Ana")).Confirms(face, Ana, Wednesday),
+            ]);
+
+        Assert.Equal(Monday, Assert.Single(plan.People).DeletedUtc);
+        Assert.Empty(plan.Answers);
+    }
+
+    /// <summary>
+    /// A waiting name for somebody deleted while it waited is settled, not held.
+    /// </summary>
+    /// <remarks>
+    /// Whether or not its face has been found: a tombstone is final, so there is
+    /// nothing for the answer to wait for.
+    /// </remarks>
+    [Fact]
+    public void AWaitingNameForSomebodyDeletedHereIsSettled()
+    {
+        FaceKey found = Pictures.Face(@"2019\a.jpg");
+        FaceKey notYet = Pictures.Face(@"2019\b.jpg");
+        Guid mum = Guid.NewGuid();
+
+        MergePlan plan = DecisionMerge.Rejoin(
+            new Machine("Dad").Knows(Person(Ana, "Ana") with { DeletedUtc = Tuesday }).Set(),
+            HeldAnswers.None with
+            {
+                Answers =
+                [
+                    new FaceAnswer(found, Ana, AssignmentSource.Confirmed, Monday, mum),
+                    new FaceAnswer(notYet, Ana, AssignmentSource.Confirmed, Monday, mum),
+                ],
+            },
+            Pictures.Holding(found));
+
+        Assert.Empty(plan.Answers);
+        Assert.Equal(0, plan.Held.Count);
+        Assert.Equal(2, plan.Settled.Answers.Count);
+    }
+
     [Fact]
     public void TheLaterRenameStands()
     {

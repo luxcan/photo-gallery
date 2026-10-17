@@ -48,10 +48,10 @@ public sealed record MergePlan(
     /// <remarks>
     /// Only <see cref="DecisionMerge.Rejoin"/> fills this. Three kinds of answer
     /// end here: one this library already holds, one a later answer has since
-    /// beaten, and one about an album this library has thrown away. In each the
-    /// answer that stands is already in this library and nothing about it can
-    /// change - so the held row can go - but nothing was applied, and a count
-    /// that said otherwise would make "applied" mean "no longer waiting".
+    /// beaten, and one about an album or a person this library has deleted. In
+    /// each the answer that stands is already in this library and nothing about
+    /// it can change - so the held row can go - but nothing was applied, and a
+    /// count that said otherwise would make "applied" mean "no longer waiting".
     /// </remarks>
     public HeldAnswers Settled { get; init; } = HeldAnswers.None;
 

@@ -220,6 +220,34 @@ public sealed class HeldAnswersTests : IDisposable
     }
 
     /// <summary>
+    /// A name for somebody deleted here while it waited is let go, not written
+    /// onto what is left of them.
+    /// </summary>
+    /// <remarks>
+    /// The deletion wins, as it does for the person and for an album. Written,
+    /// the name landed on the tombstone and was counted as applied - an answer
+    /// about nobody anybody can see, reported as work arriving.
+    /// </remarks>
+    [Fact]
+    public async Task ANameForSomebodyDeletedWhileItWaitedIsSettledNotWritten()
+    {
+        await MumNames(@"2026 Phone Dump\b.jpg");
+        await Dad.Merging.HandleAsync();
+
+        Dad.Db.People.IgnoreQueryFilters()
+            .ExecuteUpdate(s => s.SetProperty(p => p.DeletedUtc, Tuesday));
+        Dad.Db.ChangeTracker.Clear();
+
+        DadScans(@"2026 Phone Dump\b.jpg");
+        HeldResult swept = await Dad.Waiting.HandleAsync();
+
+        Assert.Empty(Dad.Db.FaceAssignments);
+        Assert.Empty(Dad.Db.HeldDecisions);
+        Assert.Equal(0, swept.Applied);
+        Assert.Equal(1, swept.Settled);
+    }
+
+    /// <summary>
     /// A photograph is not counted into an album this library threw away while
     /// the answer waited.
     /// </summary>
