@@ -456,6 +456,17 @@
                            Foreground="{DynamicResource Editor.Placeholder}"
                            Text="{Binding Gallery.CountSummary}" />
 
+                <!-- Said beside the count it is about to change, while the wall
+                     is being read again. A full read is not instant on a large
+                     library - the thumbnails on disk are checked one by one - and
+                     a wall that sat there unchanged for that long read as the
+                     app having ignored what was just done. -->
+                <TextBlock FontSize="12" Margin="8,0,0,0" VerticalAlignment="Center"
+                           Foreground="{DynamicResource Status.Info}"
+                           Text="Updating..."
+                           Visibility="{Binding Gallery.IsLoading,
+                                        Converter={StaticResource BoolToVisibility}}" />
+
                 <!-- What the app made of the line that was typed. "Ana Lim -
                      beach" against a line entered as one says which half was
                      read as a name, so a wrong split is something the user can
@@ -795,6 +806,19 @@
                     </DataTemplate>
                   </ListBox.ItemTemplate>
                 </ListBox>
+
+                <!-- The wall faded while it is being read again, and out of reach.
+                     The pictures under it are the answer to the question as it
+                     was a moment ago, so they should not look current - and a
+                     click on one could open a photograph the new answer no longer
+                     holds. A Background, not none, is what lets it take the click.
+
+                     Laid over the list with the list's own margin, so it never
+                     reaches the bar along the bottom. -->
+                <Border Margin="{Binding WallMargin}"
+                        Background="{DynamicResource Editor.Background}" Opacity="0.55"
+                        Visibility="{Binding Gallery.IsLoading,
+                                     Converter={StaticResource BoolToVisibility}}" />
 
                 <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center"
                            FontSize="13" TextAlignment="Center" MaxWidth="380"

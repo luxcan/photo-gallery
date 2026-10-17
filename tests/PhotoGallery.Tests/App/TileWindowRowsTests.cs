@@ -91,6 +91,62 @@ public sealed class TileWindowRowsTests
         Assert.Equal(3, window.IndexOf(window[3]));
     }
 
+    /// <summary>
+    /// Taking one tile off re-cuts the rows and keeps every other tile as the
+    /// very object it was.
+    /// </summary>
+    /// <remarks>
+    /// The point of removing rather than filling again: a decoded picture lives
+    /// on its tile, so keeping the tiles is keeping the pictures - and the wall
+    /// does not go grey and re-decode to lose one photograph.
+    /// </remarks>
+    [Fact]
+    public void Remove_TakesOneTileOffAndKeepsTheRestAsTheyWere()
+    {
+        TileWindow window = NewWindow(columns: 3);
+        window.Fill(Tiles(5));
+        List<GalleryTile> before = [.. window.Tiles];
+
+        Assert.True(window.Remove(before[1]));
+
+        Assert.Equal(4, window.Count);
+        Assert.Equal([before[0], before[2], before[3], before[4]], window.Tiles);
+        Assert.Equal([3, 1], window.Rows.Select(row => row.Tiles.Count));
+    }
+
+    /// <summary>
+    /// By reference: a tile for the same photograph that this window does not
+    /// hold is not on it.
+    /// </summary>
+    /// <remarks>
+    /// Another screen's grid builds its own tiles for the same photographs. Taking
+    /// one of those off this wall would be a lie about which tile went.
+    /// </remarks>
+    [Fact]
+    public void Remove_OnlyTakesTheTileItHolds()
+    {
+        TileWindow window = NewWindow(columns: 3);
+        window.Fill(Tiles(3));
+
+        GalleryTile sameId = Tiles(1).Single();
+
+        Assert.False(window.Remove(sameId));
+        Assert.Equal(3, window.Count);
+    }
+
+    /// <summary>A heading left with nothing under it goes too.</summary>
+    [Fact]
+    public void Remove_DropsAGroupItEmpties()
+    {
+        TileWindow window = NewWindow(columns: 3);
+        window.Fill([Group("Age 11", 2), Group("Age 10", 1)]);
+
+        Assert.True(window.Remove(window[2]));
+
+        Assert.Equal(["Age 11"], window.Rows.Select(row => row.Heading).OfType<string>());
+        Assert.Equal(2, window.Count);
+    }
+
     private static TileWindow NewWindow(int columns)
     {
         var window = new TileWindow(new NoRenditionsOnDisk());

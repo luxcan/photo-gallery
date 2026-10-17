@@ -157,6 +157,66 @@ public sealed class TileWindow
     }
 
     /// <summary>
+    /// Takes one tile off, leaving every other tile - and the picture already
+    /// decoded on it - where it was.
+    /// </summary>
+    /// <remarks>
+    /// For a photograph that has stopped answering the question the wall is
+    /// asking: filed into an album while the wall shows what is in none, say.
+    /// Reading the whole wall again to lose that one picture re-checks every
+    /// thumbnail on disk, throws away every picture already decoded and goes back
+    /// to the top - which is felt as the wall lagging behind what was just done.
+    ///
+    /// <para>Headings are left as they were. A group emptied by this goes, but
+    /// one that merely shrinks keeps its heading text, so a caller whose headings
+    /// carry a count must put the count right itself. The library's own wall
+    /// carries none.</para>
+    /// </remarks>
+    /// <returns>False when the tile was not on this wall at all.</returns>
+    public bool Remove(GalleryTile tile)
+    {
+        ArgumentNullException.ThrowIfNull(tile);
+
+        // By reference: two tiles for the same photograph are two different
+        // things to this window, and only the one it holds can come off it.
+        int at = _tiles.FindIndex(other => ReferenceEquals(other, tile));
+        if (at < 0)
+        {
+            return false;
+        }
+
+        // A new list rather than RemoveAt: MarkPreparedAsync walks this one on a
+        // thread of its own, and a list shortened under it throws there. Fill and
+        // Regroup replace it the same way, so a walk already running simply
+        // finishes on the list it started with.
+        _tiles = [.. _tiles.Where((_, index) => index != at)];
+        _groups =
+        [
+            .. _groups
+                .Select(group => group.Tiles.Any(other => ReferenceEquals(other, tile))
+                    ? group with { Tiles = [.. group.Tiles.Where(other => !ReferenceEquals(other, tile))] }
+                    : group)
+                .Where(group => group.Tiles.Count > 0),
+        ];
+
+        // Asked for again once the rows are re-cut, because one picture leaving
+        // moves every picture after it along by one: the one that slides into
+        // the far end of the decoded run has no picture yet.
+        int showing = _requestedStart;
+
+        _windowStart = Math.Min(_windowStart, Math.Max(0, _tiles.Count - 1));
+        _requestedStart = -1;
+        Rebuild();
+
+        if (showing >= 0 && _tiles.Count > 0)
+        {
+            _ = ShowRangeAsync(Math.Min(showing, _tiles.Count - 1));
+        }
+
+        return true;
+    }
+
+    /// <summary>
     /// Tells the grid how tall the window is, in rows of pictures.
     /// </summary>
     /// <remarks>

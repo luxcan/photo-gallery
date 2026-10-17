@@ -883,6 +883,226 @@ public sealed partial class GalleryViewModel : ObservableObject
                         + "on this computer.";
     }
 
+    // ------------------------------------------- keeping the wall honest
+
+    /// <summary>
+    /// Photographs the viewer has changed in a way the wall's question may care
+    /// about, waiting to be checked once the viewer moves off them.
+    /// </summary>
+    /// <remarks>
+    /// Filing a photograph into an album while the wall shows what is in none,
+    /// or naming somebody in it while the wall shows what has nobody named,
+    /// means the wall should no longer show it - and it did, until something
+    /// happened to read the whole wall again.
+    ///
+    /// <para>Checked on leaving rather than at once. Filing is done in one go,
+    /// but naming is not: a group shot has several faces to name, and a
+    /// photograph that vanished from under the viewer after the first name would
+    /// take the other three with it. Leaving is the moment somebody has finished
+    /// with a photograph, whichever kind of change it was - and it keeps the line
+    /// saying what was just done on screen beside the photograph it was done
+    /// to.</para>
+    /// </remarks>
+    private readonly HashSet<int> _changedWhileOpen = [];
+
+    /// <summary>Every check started on leaving a photograph, still running or done.</summary>
+    private Task _settling = Task.CompletedTask;
+
+    /// <summary>
+    /// Finishes once every photograph left so far has been checked against the
+    /// wall.
+    /// </summary>
+    /// <remarks>
+    /// The checks run on their own, because leaving a photograph is a key press
+    /// that must not wait on a query; this is the one place anything waits for
+    /// them, so a test can say what the wall looks like afterwards.
+    /// </remarks>
+    internal Task WallSettled => _settling;
+
+    /// <summary>
+    /// Says that a photograph has just been changed in a way the wall's question
+    /// may care about, once the change has been written.
+    /// </summary>
+    /// <remarks>
+    /// Called after the write and with the photograph the write was ABOUT, never
+    /// with whatever happens to be open by then. The two can differ: naming a
+    /// face hands the screen back before its write - which re-proposes that person
+    /// across the whole library and takes seconds - and the arrows work again the
+    /// moment the list closes, so "name it, next" leaves before the write lands.
+    ///
+    /// <para>So the photograph still being looked at waits for the viewer to move
+    /// off it, as before, and one the viewer has already left is checked at
+    /// once. Marking it for a leave that has already happened left it on the wall
+    /// for good - the very thing this exists to stop.</para>
+    ///
+    /// <para>Internal so a test can land a write after the leave without racing a
+    /// real one.</para>
+    /// </remarks>
+    internal void ChangedWhileOpen(int assetId)
+    {
+        if (OpenTile?.Item.Id == assetId)
+        {
+            _changedWhileOpen.Add(assetId);
+            return;
+        }
+
+        Settle(assetId);
+    }
+
+    partial void OnOpenTileChanged(GalleryTile? oldValue, GalleryTile? newValue)
+    {
+        // The same photograph again - the wall read afresh under an open viewer
+        // and the tile replaced - has not been left, so it waits for the move
+        // that really leaves it.
+        if (oldValue is null || oldValue.Item.Id == newValue?.Item.Id)
+        {
+            return;
+        }
+
+        if (_changedWhileOpen.Remove(oldValue.Item.Id))
+        {
+            Settle(oldValue.Item.Id);
+        }
+    }
+
+    /// <summary>Starts checking one photograph against the wall, alongside any already running.</summary>
+    private void Settle(int assetId) =>
+        _settling = Task.WhenAll(_settling, SettleOnTheWallAsync(assetId));
+
+    /// <summary>
+    /// Takes a photograph off the wall if what was done to it means the wall no
+    /// longer shows it, or reads the wall again if it now should - and the same
+    /// for every copy of it the wall is showing.
+    /// </summary>
+    /// <remarks>
+    /// The copies, because a name given on one copy of a photograph is given on
+    /// all of them: AssignFacesHandler widens an answer to every row with the
+    /// same picture and the same box. Settling only the copy that was open left
+    /// the others on "No faces named" with a name on every face they have. An
+    /// album holds one copy and not the others, so for filing the copies are
+    /// asked about and simply stay.
+    /// </remarks>
+    private async Task SettleOnTheWallAsync(int assetId)
+    {
+        try
+        {
+            GalleryTile? shown = _window.Tiles.FirstOrDefault(tile => tile.Item.Id == assetId);
+
+            List<GalleryTile> copies = shown?.ThumbnailName is string picture
+                ? [.. _window.Tiles.Where(tile => tile.Item.Id != assetId && tile.ThumbnailName == picture)]
+                : [];
+
+            bool belongs = await BelongsOnTheWallAsync(assetId).ConfigureAwait(true);
+
+            if (!belongs && shown is not null)
+            {
+                DropUnlessOpen(shown);
+            }
+            else if (belongs && shown is null)
+            {
+                // Only possible for a photograph opened from another screen's
+                // grid, since everything on this wall already answers its
+                // question. Where it goes in the order is the query's to say, so
+                // the wall is read again - behind whatever screen is in front.
+                await LoadAsync().ConfigureAwait(true);
+                return;
+            }
+
+            foreach (GalleryTile copy in copies)
+            {
+                if (!await BelongsOnTheWallAsync(copy.Item.Id).ConfigureAwait(true))
+                {
+                    DropUnlessOpen(copy);
+                }
+            }
+        }
+        catch (Exception ex) when (LibraryFailure.IsExpected(ex))
+        {
+            // The wall stays as it was, which is the state it has always been
+            // left in; the next full read puts it right.
+            DiagnosticLog.Write($"could not tell whether asset {assetId} still belongs on the wall", ex);
+        }
+    }
+
+    /// <summary>
+    /// Takes a tile off the wall, unless the viewer is showing it right now.
+    /// </summary>
+    /// <remarks>
+    /// A copy can be the photograph on screen - two copies of one picture sit
+    /// side by side, so "name it, next" lands on the other - and so can a
+    /// photograph somebody stepped straight back onto while its check was still
+    /// running. Taking the open tile off would strand the viewer: it steps by
+    /// the tile's place on the wall, and a tile that is not on the wall has no
+    /// next. It waits for the viewer to move off it instead, like any other.
+    /// </remarks>
+    private void DropUnlessOpen(GalleryTile tile)
+    {
+        if (OpenTile?.Item.Id == tile.Item.Id)
+        {
+            _changedWhileOpen.Add(tile.Item.Id);
+            return;
+        }
+
+        Drop(tile);
+    }
+
+    /// <summary>
+    /// Whether the wall's own question, asked about this one photograph, still
+    /// has it in the answer.
+    /// </summary>
+    /// <remarks>
+    /// Asked of the reader rather than worked out here. Narrowed to one
+    /// photograph, every other part of the question still applies - the folder,
+    /// the person, the place, every chip - so this cannot drift from what a full
+    /// read would show, which a second copy of those rules in this class
+    /// eventually would. It is one row, found by its key.
+    /// </remarks>
+    private async Task<bool> BelongsOnTheWallAsync(int assetId)
+    {
+        // A described search has already decided which photographs are in play,
+        // and one it did not pick is not on this wall whatever else is true.
+        if (_ranked is not null && !_ranked.Contains(assetId))
+        {
+            return false;
+        }
+
+        GalleryQuery one = CurrentQuery() with { RankedAssetIds = [assetId] };
+
+        using IServiceScope scope = _scopeFactory.CreateScope();
+        GalleryPage page = await scope.ServiceProvider
+            .GetRequiredService<QueryGalleryHandler>()
+            .HandleAsync(one)
+            .ConfigureAwait(true);
+
+        return page.Items.Count > 0;
+    }
+
+    /// <summary>
+    /// Takes one photograph off the wall, leaving everything else as it was.
+    /// </summary>
+    /// <remarks>
+    /// Rather than reading the wall again. That re-checks every thumbnail on
+    /// disk - 370 ms for the 9,336 photographs outside an album on the first real
+    /// library - throws away every picture already decoded, and goes back to the
+    /// top: a reload to lose one photograph, felt as the wall lagging behind what
+    /// was just done.
+    /// </remarks>
+    private void Drop(GalleryTile tile)
+    {
+        if (!_window.Remove(tile))
+        {
+            return;
+        }
+
+        if (_chosen.Remove(tile.Item.Id))
+        {
+            NotifyChosen();
+        }
+
+        TotalCount = Math.Max(0, TotalCount - 1);
+        NotifyCounts();
+    }
+
     partial void OnOpenTileChanged(GalleryTile? value)
     {
         // Before anything else: whatever was playing belongs to the picture
@@ -1113,9 +1333,22 @@ public sealed partial class GalleryViewModel : ObservableObject
 
             // Only the viewer has an open photograph whose album line could be
             // stale; a batch has just thrown the whole wall away and rebuilt it.
-            if (!_placingIsBatch && OpenTile is GalleryTile tile)
+            // The photographs actually written, captured before the write - not
+            // whatever is open by now. Filing is quick but not instant, and the
+            // viewer's arrows work again the moment the list closes. A batch
+            // needs none of this: it has just read the whole wall again under the
+            // overlay.
+            if (!_placingIsBatch)
             {
-                await LoadOpenAlbumAsync(tile.Item.Id).ConfigureAwait(true);
+                if (OpenTile is GalleryTile tile && placing.Contains(tile.Item.Id))
+                {
+                    await LoadOpenAlbumAsync(tile.Item.Id).ConfigureAwait(true);
+                }
+
+                foreach (int filed in placing)
+                {
+                    ChangedWhileOpen(filed);
+                }
             }
 
             LibraryChanged?.Invoke(this, EventArgs.Empty);
@@ -1214,7 +1447,15 @@ public sealed partial class GalleryViewModel : ObservableObject
                 ? $"Taken out of {album.Name}"
                 : $"Taken out of {album.Name}. It will not be suggested for those days again.";
 
-            OpenPhotoAlbum = null;
+            // Only while it is still the photograph on screen: the arrows work
+            // again the moment the list closes, and the album line belongs to
+            // whatever is open by now.
+            if (ReferenceEquals(OpenTile, tile))
+            {
+                OpenPhotoAlbum = null;
+            }
+
+            ChangedWhileOpen(tile.Item.Id);
             LibraryChanged?.Invoke(this, EventArgs.Empty);
         }
         catch (Exception ex) when (ex is IOException or InvalidOperationException)
@@ -1471,6 +1712,9 @@ public sealed partial class GalleryViewModel : ObservableObject
         CancelNamingFace();
         if (assetId is int id)
         {
+            // Setting a face aside can take a name off it, which a wall showing
+            // one person - or nobody named - may care about.
+            ChangedWhileOpen(id);
             await LoadOpenFacesAsync(id).ConfigureAwait(true);
         }
     }
@@ -1556,6 +1800,14 @@ public sealed partial class GalleryViewModel : ObservableObject
             }
 
             return;
+        }
+
+        // Naming somebody takes this photograph out of "No faces named", and
+        // into any wall showing that person. Settled once the viewer moves on,
+        // so the rest of the faces in a group shot can still be named.
+        if (assetId is int photo)
+        {
+            ChangedWhileOpen(photo);
         }
 
         // Naming a face here can create somebody who did not exist a moment ago,
@@ -1915,13 +2167,18 @@ public sealed partial class GalleryViewModel : ObservableObject
             TotalCount = page.TotalCount;
             await _window.MarkPreparedAsync(cancellationToken);
             NotifyCounts();
-
-            await ShowRangeAsync(0, cancellationToken);
         }
         finally
         {
             IsLoading = false;
         }
+
+        // Outside the busy state. The wall is current by now; what is left is
+        // decoding the first screen of pictures, which waits a second for the
+        // view to stop moving and then fills in behind grey tiles as it always
+        // has. Held under the busy state it kept the wall faded and out of reach
+        // for a second and a half after it was already right.
+        await ShowRangeAsync(0, cancellationToken);
     }
 
     /// <summary>
