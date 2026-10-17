@@ -41,11 +41,13 @@ public sealed record HeldAnswers(
 
     /// <summary>The same answers with everything in <paramref name="other"/> taken out.</summary>
     /// <remarks>
-    /// What a sweep of the held answers actually landed, which is the set that
-    /// can be forgotten: everything that was waiting, less everything still
-    /// waiting. Subtracted here rather than reported by the merge because the
-    /// merge answers with what it could <em>not</em> apply, and asking it for
-    /// both would be two lists that have to agree with each other.
+    /// How a sweep works out what it can forget: everything that was waiting,
+    /// less everything it is keeping. That is <em>not</em> the same as what it
+    /// landed, and treating the two as one was a bug - an answer this library
+    /// already held, or one a later answer had beaten, was in neither list and
+    /// so was counted as applied having written nothing. The merge says which
+    /// answers it settled without a change; what landed is what is left after
+    /// those are taken out too.
     /// </remarks>
     public HeldAnswers Except(HeldAnswers other)
     {

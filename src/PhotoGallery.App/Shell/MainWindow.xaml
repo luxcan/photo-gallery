@@ -2534,15 +2534,15 @@
                   </ItemsControl>
                 </StackPanel>
 
-                <!-- Three groups, not one number. The old line said "scanning
-                     will bring them in" about every held answer, and on a real
+                <!-- Groups, not one number. The old line said "scanning will
+                     bring them in" about every held answer, and on a real
                      library that sentence was false for all thirty-eight of
                      them: the photographs had been renamed where they live, or
-                     the face had simply never been found. Only the third group
-                     is something anybody can act on, so only the third group is
-                     allowed to look like it - a callout that fires on work
-                     nobody can do is how a notice teaches people to stop reading
-                     notices. -->
+                     the face had simply never been found. Only the folder
+                     nobody else can reach is something anybody can act on, so
+                     only that group is allowed to look like it - a callout that
+                     fires on work nobody can do is how a notice teaches people
+                     to stop reading notices. -->
                 <StackPanel Margin="0,24,0,0"
                             Visibility="{Binding Sharing.HasWaiting,
                                          Converter={StaticResource BoolToVisibility}}">
@@ -2574,6 +2574,17 @@
                              TextWrapping="Wrap"
                              Text="{Binding Sharing.WaitingOnFacesLabel}"
                              Visibility="{Binding Sharing.HasWaitingOnFaces,
+                                          Converter={StaticResource BoolToVisibility}}" />
+
+                  <!-- The photograph is here and the answer is not about a face:
+                       one waiting for the end of a scan, a turn waiting for a
+                       small copy, or a move waiting for an album. Counted as
+                       faces once, under a sentence about the face pass that
+                       would never bring a turn or a move in. -->
+                  <TextBlock Style="{DynamicResource HintText}" Margin="0,8,0,0"
+                             TextWrapping="Wrap"
+                             Text="{Binding Sharing.WaitingHereLabel}"
+                             Visibility="{Binding Sharing.HasWaitingHere,
                                           Converter={StaticResource BoolToVisibility}}" />
                 </StackPanel>
 

@@ -124,8 +124,11 @@ public static class DecisionMerge
         Faces faces = SettleFaces(mine, accepted, here);
         (List<PhotoTurn> turns, List<PhotoTurn> heldTurns) = SettleTurns(mine, accepted, here);
         List<SharedAlbum> albums = SettleAlbums(mine, accepted, here);
-        (List<SharedAlbumMove> moves, List<SharedAlbumMembership> heldMoves) =
-            SettleMemberships(mine, accepted, here, albums);
+
+        // A membership with nowhere to go here is refused, not parked: the
+        // machine that sent it sends it again on every sync, and the day this
+        // library can take it, it lands.
+        Memberships memberships = SettleMemberships(mine, accepted, here, albums);
         (List<SharedAlbumRejection> rejections, List<SharedAlbumRejection> heldRejections) =
             SettleRejections(mine, accepted, here);
 
@@ -137,7 +140,7 @@ public static class DecisionMerge
             faces.Recognised,
             turns,
             albums,
-            moves,
+            memberships.Moves,
             rejections,
             SeedEras(mine, accepted),
             SettleCollections(mine, accepted),
@@ -145,7 +148,7 @@ public static class DecisionMerge
                 faces.HeldAnswers,
                 faces.HeldStrangers,
                 heldTurns,
-                heldMoves,
+                memberships.Held,
                 heldRejections),
             OfferJoins(mine, accepted, people),
             refused,
@@ -178,6 +181,15 @@ public static class DecisionMerge
     /// still cannot land stays held, which is why a photograph indexed but not
     /// yet looked at for faces keeps its names for the pass that finds
     /// them.</para>
+    ///
+    /// <para><strong>Every waiting answer comes out as one of four
+    /// things.</strong> Landing, where the plan carries a change for it. Still
+    /// held, where its photograph or its face is not here yet. Unplaced, where
+    /// the photograph is here and the album it names is not. And settled, where
+    /// nothing needs writing because what it says is already true here, a later
+    /// answer has beaten it, or the album it names has been thrown away. The
+    /// sweep lets go of the first and the last and reports them apart, because
+    /// only one of them is work arriving.</para>
     /// </remarks>
     /// <param name="mine">What this library holds, proposals included.</param>
     /// <param name="waiting">The answers that have been parked.</param>
@@ -211,29 +223,110 @@ public static class DecisionMerge
 
         Faces faces = SettleFaces(mine, parked, here);
         (List<PhotoTurn> turns, List<PhotoTurn> heldTurns) = SettleTurns(mine, parked, here);
-        (List<SharedAlbumMove> moves, List<SharedAlbumMembership> heldMoves) =
-            SettleMemberships(mine, parked, here, []);
+        Memberships memberships = SettleMemberships(mine, parked, here, []);
         (List<SharedAlbumRejection> rejections, List<SharedAlbumRejection> heldRejections) =
             SettleRejections(mine, parked, here);
 
         // No people, albums or eras. Those are not about a photograph, so they
         // were never held: they landed on the merge that carried them.
-        return MergePlan.Nothing with
+        MergePlan plan = MergePlan.Nothing with
         {
             Answers = faces.Answers,
             Withdrawn = faces.Withdrawn,
             Strangers = faces.Strangers,
             Recognised = faces.Recognised,
             Turns = turns,
-            Moves = moves,
+            Moves = memberships.Moves,
             Rejections = rejections,
+
+            // A move with nowhere to go is kept, where a merge would refuse it.
+            // A merge can afford to: the machine that sent it sends it again on
+            // every sync. Nothing sends a held answer again - for this library's
+            // own decisions, parked when a scan lost their photograph, the row is
+            // the only copy there is.
             Held = new HeldAnswers(
                 faces.HeldAnswers,
                 faces.HeldStrangers,
                 heldTurns,
-                heldMoves,
+                [
+                    .. memberships.Held,
+                    .. memberships.Nowhere.Where(move => !here.Photographs.Contains(move.Photo)),
+                ],
                 heldRejections),
+            Unplaced =
+            [
+                .. memberships.Nowhere.Where(move => here.Photographs.Contains(move.Photo)),
+            ],
         };
+
+        return plan with { Settled = Settled(waiting, plan, here) };
+    }
+
+    /// <summary>
+    /// The waiting answers a sweep is done with although its plan writes nothing
+    /// for them.
+    /// </summary>
+    /// <remarks>
+    /// Read off the plan rather than decided beside it, so there is one set of
+    /// rules and not two: whatever the ordinary settling concluded, an answer
+    /// that is neither still waiting nor carried by one of the plan's changes was
+    /// settled by something already here.
+    ///
+    /// <para>Each change answers for one waiting answer at most. Two waiting
+    /// moves for one photograph come to one move, and counting both as applied
+    /// was the same overclaim as counting the one that lost.</para>
+    /// </remarks>
+    private static HeldAnswers Settled(HeldAnswers waiting, MergePlan plan, LibraryContents here)
+    {
+        HashSet<FaceAnswer> named = [.. plan.Answers];
+        HashSet<StrangerFace> marked = [.. plan.Strangers];
+        HashSet<PhotoTurn> turned = [.. plan.Turns];
+        HashSet<(AssetKey, DateTime, Guid)> moved =
+            [.. plan.Moves.Select(move => (move.Photo, move.AddedUtc, move.DecidedBy))];
+        HashSet<SharedAlbumRejection> refused = [.. plan.Rejections];
+
+        // A face answer is planned under the box this library found, not the one
+        // it arrived with, so it is looked for where it landed.
+        return new HeldAnswers(
+            Unwritten(
+                waiting.Answers,
+                plan.Held.Answers,
+                answer => Landed(here, answer.Face) is FaceKey face
+                       && named.Remove(answer with { Face = face })),
+            Unwritten(
+                waiting.Strangers,
+                plan.Held.Strangers,
+                stranger => Landed(here, stranger.Face) is FaceKey face
+                         && marked.Remove(stranger with { Face = face })),
+            Unwritten(waiting.Turns, plan.Held.Turns, turned.Remove),
+            Unwritten(
+                waiting.Memberships,
+                [.. plan.Held.Memberships, .. plan.Unplaced],
+                membership => moved.Remove(
+                    (membership.Photo, membership.AddedUtc, membership.DecidedBy))),
+            Unwritten(waiting.Rejections, plan.Held.Rejections, refused.Remove));
+    }
+
+    /// <summary>The waiting answers neither still waiting nor written by the plan.</summary>
+    /// <param name="written">
+    /// Takes the plan's change for an answer where it carries one, so that a
+    /// change spent on one answer cannot be claimed by the next.
+    /// </param>
+    private static List<T> Unwritten<T>(
+        IReadOnlyList<T> waiting, IEnumerable<T> stillWaiting, Func<T, bool> written)
+    {
+        HashSet<T> kept = [.. stillWaiting];
+        List<T> settled = [];
+
+        foreach (T answer in waiting)
+        {
+            if (!kept.Contains(answer) && !written(answer))
+            {
+                settled.Add(answer);
+            }
+        }
+
+        return settled;
     }
 
     /// <summary>
@@ -969,7 +1062,7 @@ public static class DecisionMerge
     /// this library has never held can tell a row about to be written from a
     /// row nobody will write.
     /// </param>
-    private static (List<SharedAlbumMove> Moves, List<SharedAlbumMembership> Held) SettleMemberships(
+    private static Memberships SettleMemberships(
         DecisionSet mine,
         List<DecisionSet> accepted,
         LibraryContents here,
@@ -978,6 +1071,7 @@ public static class DecisionMerge
         Dictionary<AssetKey, SharedAlbumMembership> ours = mine.Memberships.ToDictionary(m => m.Photo);
         Dictionary<AssetKey, SharedAlbumMembership> winners = new(ours);
         List<SharedAlbumMembership> held = [];
+        List<SharedAlbumMembership> nowhere = [];
 
         Albums albums = Albums.Of(mine, settling);
 
@@ -994,15 +1088,40 @@ public static class DecisionMerge
 
             foreach (SharedAlbumMembership membership in them.Memberships)
             {
-                // Refused before it is parked rather than after. A scan cannot
-                // make an answer takeable that this library has already refused,
-                // so holding one buys a waiting answer that the very sweep which
-                // reads it back will drop - and release as applied on the way
-                // out, having written nothing.
-                if (albums.Placed(membership.Album, theirs) is not Guid album)
+                // Beaten before anything is asked about its album. Where a
+                // photograph belongs is settled on when that was decided and by
+                // whom, and two machines - or this library and an answer it has
+                // been holding - can call one album by two names. Asked first,
+                // an answer this library already holds is known for what it is
+                // whatever album it names, which is how a held move that could
+                // not be placed is let go once a sync has placed it.
+                if (winners.TryGetValue(membership.Photo, out SharedAlbumMembership? standing)
+                    && Wins(standing.AddedUtc, standing.DecidedBy, membership.AddedUtc, membership.DecidedBy))
                 {
                     continue;
                 }
+
+                Placing placing = albums.Placed(membership.Album, theirs);
+
+                // Thrown away, and a tombstone is final. No scan can make the
+                // album come back, so the answer is neither parked nor kept:
+                // the photograph stays where it is, which is already true.
+                if (placing.Gone)
+                {
+                    continue;
+                }
+
+                // Nowhere to put it yet, and asked before the photograph is, so
+                // that a merge can refuse it before it is ever parked. What it
+                // means is the caller's to say - see Merge and Rejoin.
+                if (placing.Album is not Guid album)
+                {
+                    nowhere.Add(membership);
+                    continue;
+                }
+
+                SharedAlbumMembership placed =
+                    album == membership.Album ? membership : membership with { Album = album };
 
                 if (!here.Photographs.Contains(membership.Photo))
                 {
@@ -1013,25 +1132,15 @@ public static class DecisionMerge
                     // can be read - and an answer parked under a name only that
                     // machine uses would fail to place on the very sweep that
                     // exists to make it land.
-                    held.Add(album == membership.Album
-                        ? membership
-                        : membership with { Album = album });
-
+                    held.Add(placed);
                     continue;
                 }
 
-                SharedAlbumMembership settled =
-                    album == membership.Album ? membership : membership with { Album = album };
-
-                winners[settled.Photo] =
-                    winners.TryGetValue(settled.Photo, out SharedAlbumMembership? standing)
-                    && Wins(standing.AddedUtc, standing.DecidedBy, settled.AddedUtc, settled.DecidedBy)
-                        ? standing
-                        : settled;
+                winners[placed.Photo] = placed;
             }
         }
 
-        return (
+        return new Memberships(
             [
                 .. winners.Values
                     .Select(winner => new
@@ -1047,7 +1156,35 @@ public static class DecisionMerge
                         move.Winner.AddedUtc,
                         move.Winner.DecidedBy)),
             ],
-            held);
+            held,
+            nowhere);
+    }
+
+    /// <summary>What a merge concluded about which album each photograph is in.</summary>
+    /// <param name="Held">The memberships to park until their photograph is indexed.</param>
+    /// <param name="Nowhere">
+    /// The ones with nowhere to go here yet, which a merge refuses and a sweep
+    /// keeps. A membership beaten by a later one, or naming an album this library
+    /// has thrown away, is in none of the three lists.
+    /// </param>
+    private sealed record Memberships(
+        List<SharedAlbumMove> Moves,
+        List<SharedAlbumMembership> Held,
+        List<SharedAlbumMembership> Nowhere);
+
+    /// <summary>
+    /// Where a membership goes in this library, or why it goes nowhere.
+    /// </summary>
+    /// <param name="Album">The album it goes into here, where there is one.</param>
+    /// <param name="Gone">
+    /// Whether there is none because the album has been thrown away, which is
+    /// final - unlike having no row for it yet, which a later sync can change.
+    /// </param>
+    private readonly record struct Placing(Guid? Album, bool Gone)
+    {
+        public static Placing Thrown => new(null, Gone: true);
+
+        public static Placing Nowhere => new(null, Gone: false);
     }
 
     /// <summary>
@@ -1095,12 +1232,12 @@ public static class DecisionMerge
         }
 
         /// <summary>
-        /// What this library would call the album a membership names, or null
-        /// where it will not take that membership at all.
+        /// What this library would call the album a membership names, or why it
+        /// will not take that membership.
         /// </summary>
         /// <remarks>
-        /// Two refusals, and both are decisions rather than accidents. They were
-        /// neither before: the album was looked up by the publishing machine's
+        /// Three refusals, and all are decisions rather than accidents. They were
+        /// not always: the album was looked up by the publishing machine's
         /// identity when the rows were written, that lookup quietly failed, and
         /// the membership was dropped with no row, no waiting answer and no
         /// count - which is somebody's evening of tidying disappearing without a
@@ -1122,8 +1259,17 @@ public static class DecisionMerge
         /// missing is that <em>keeping</em> a suggestion does not travel; until
         /// it does, this is the honest answer rather than a write that a scan
         /// may undo.</para>
+        ///
+        /// <para><strong>Never heard of.</strong> No row by that name, and
+        /// nothing arriving to make one. On a merge that cannot happen with an
+        /// honest publisher, which sends every album its memberships name. On a
+        /// sweep it is the ordinary case for a move parked by the first release
+        /// under another machine's name: nothing arrives with a held answer but
+        /// the answer, and a move planned into an album nobody here has was
+        /// skipped by the write without a word, then forgotten as though it had
+        /// landed.</para>
         /// </remarks>
-        public Guid? Placed(Guid named, IReadOnlyDictionary<Guid, SharedAlbum> theirs)
+        public Placing Placed(Guid named, IReadOnlyDictionary<Guid, SharedAlbum> theirs)
         {
             SharedAlbum? album = theirs.GetValueOrDefault(named);
 
@@ -1133,30 +1279,30 @@ public static class DecisionMerge
                     ? matched
                     : _byPublicId.GetValueOrDefault(named);
 
+            if (mine is not null)
+            {
+                return Into(mine);
+            }
+
             // One this library has never held, which this merge is about to
             // create - but only if what is arriving about it is that it exists.
             // An album that arrives already thrown away is never written, and
             // promising a membership a row that nobody will make is how the
             // same move came to be planned on every merge and applied on none.
-            if (mine is null)
-            {
-                if (album is null || !_arriving.TryGetValue(Identity(album), out SharedAlbum? coming))
-                {
-                    return named;
-                }
-
-                // The identity it will be created under is the one the album
-                // pass settled on, which is not always the one this membership
-                // arrived naming: two machines can hold the same run of days and
-                // only one of them wins.
-                return Refused(coming) ? null : coming.PublicId;
-            }
-
-            return Refused(mine) ? null : mine.PublicId;
+            //
+            // The identity it will be created under is the one the album pass
+            // settled on, which is not always the one this membership arrived
+            // naming: two machines can hold the same run of days and only one
+            // of them wins.
+            return album is not null && _arriving.TryGetValue(Identity(album), out SharedAlbum? coming)
+                ? Into(coming)
+                : Placing.Nowhere;
         }
 
-        private static bool Refused(SharedAlbum album) =>
-            album.DeletedUtc is not null || album.Origin == AlbumOrigin.Proposed;
+        private static Placing Into(SharedAlbum album) =>
+            album.DeletedUtc is not null ? Placing.Thrown
+            : album.Origin == AlbumOrigin.Proposed ? Placing.Nowhere
+            : new Placing(album.PublicId, Gone: false);
     }
 
     private static (List<SharedAlbumRejection> Applied, List<SharedAlbumRejection> Held) SettleRejections(

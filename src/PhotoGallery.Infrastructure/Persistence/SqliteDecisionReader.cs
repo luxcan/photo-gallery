@@ -795,12 +795,13 @@ public sealed class SqliteDecisionReader : IDecisionReader
     public async Task<HeldStanding> HeldStandingAsync(
         CancellationToken cancellationToken = default)
     {
-        // Two columns, never the payload. The whole point of this being a
+        // Three columns, never the payload. The whole point of this being a
         // separate question from WaitingAsync is that it does not parse nine
-        // thousand documents to draw a line of text.
+        // thousand documents to draw a line of text. The kind is a column of
+        // its own, so telling a face from a turn costs nothing.
         var held = await _db.HeldDecisions
             .AsNoTracking()
-            .Select(row => new { row.SharedSourceId, row.RelativePath })
+            .Select(row => new { row.SharedSourceId, row.RelativePath, row.Kind })
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
 
@@ -817,10 +818,12 @@ public sealed class SqliteDecisionReader : IDecisionReader
             [.. (await SourceIdsAsync(cancellationToken).ConfigureAwait(false)).Values];
 
         int faces = 0;
+        int other = 0;
         int missing = 0;
         int elsewhere = 0;
 
         HashSet<AssetKey> facePhotos = [];
+        HashSet<AssetKey> otherPhotos = [];
         HashSet<AssetKey> missingPhotos = [];
         HashSet<AssetKey> elsewherePhotos = [];
 
@@ -839,10 +842,21 @@ public sealed class SqliteDecisionReader : IDecisionReader
 
             var key = new AssetKey(row.SharedSourceId, row.RelativePath);
 
-            if (indexed.Contains(key))
+            // A photograph that is here holds back only what needs something
+            // else first. For a name or a mark that is a face; for a turn it is
+            // a small copy to turn, and for a move an album to put it in - and
+            // a sentence about the face pass is true of neither. Before the
+            // scan's last phase has run, any of them may need only that phase.
+            if (indexed.Contains(key)
+                && row.Kind is HeldDecisionKind.FaceAnswer or HeldDecisionKind.Stranger)
             {
                 faces++;
                 facePhotos.Add(key);
+            }
+            else if (indexed.Contains(key))
+            {
+                other++;
+                otherPhotos.Add(key);
             }
             else if (mine.Contains(key.SharedSourceId))
             {
@@ -859,6 +873,7 @@ public sealed class SqliteDecisionReader : IDecisionReader
 
         return new HeldStanding(
             new HeldTally(faces, facePhotos.Count),
+            new HeldTally(other, otherPhotos.Count),
             new HeldTally(missing, missingPhotos.Count),
             new HeldTally(elsewhere, elsewherePhotos.Count),
             folder ?? string.Empty);

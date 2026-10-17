@@ -107,6 +107,15 @@ public sealed partial class SharingViewModel : ObservableObject
     private int _waitingOnFaces;
 
     /// <summary>
+    /// Answers about a photograph that is here, waiting on something other than
+    /// a face: the end of a scan, a small copy to turn, or an album to put it in.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(
+        nameof(HasWaiting), nameof(HasWaitingHere), nameof(WaitingHereLabel))]
+    private int _waitingHere;
+
+    /// <summary>
     /// Answers waiting for photographs that are not in this library's folders
     /// under the names they were given.
     /// </summary>
@@ -184,9 +193,12 @@ public sealed partial class SharingViewModel : ObservableObject
 
     public bool HasStatus => Status.Length > 0;
 
-    public bool HasWaiting => WaitingOnFaces + WaitingOnPhotos + WaitingElsewhere > 0;
+    public bool HasWaiting =>
+        WaitingOnFaces + WaitingHere + WaitingOnPhotos + WaitingElsewhere > 0;
 
     public bool HasWaitingOnFaces => WaitingOnFaces > 0;
+
+    public bool HasWaitingHere => WaitingHere > 0;
 
     public bool HasWaitingOnPhotos => WaitingOnPhotos > 0;
 
@@ -311,6 +323,35 @@ public sealed partial class SharingViewModel : ObservableObject
               + "yet. The photos are already here - faces are found at the end of a scan, so "
               + "the next one may pick them up. A face this computer never finds keeps its "
               + "answer waiting.";
+
+    /// <summary>
+    /// Answers about photographs that are here, waiting on something that is not
+    /// a face.
+    /// </summary>
+    /// <remarks>
+    /// A turn waits for a small copy of the photograph to turn, and a move waits
+    /// for an album this computer does not have - the album somebody kept on
+    /// another computer, say, while this one still only suggests it. Both used
+    /// to be counted as faces, under a sentence about the face pass that would
+    /// never bring either of them in.
+    ///
+    /// <para>The end of a scan comes first because it is the ordinary case.
+    /// Answers land in a scan's last phase, so a scan stopped before it leaves
+    /// every answer about a photograph it has just indexed in this group - moves
+    /// into albums this computer has, rejections, turns whose small copies were
+    /// just made. Saying they wait for something this computer does not have
+    /// was false for all of those. The next scan is offered as a possibility,
+    /// as the face line offers it, because a move into an album this computer
+    /// does not have is not brought in by one.</para>
+    /// </remarks>
+    public string WaitingHereLabel =>
+        WaitingHere == 1
+            ? "1 answer about a photo that is already here is waiting for the end of a scan, "
+              + "a small copy to turn, or an album to put it in. The next scan may pick it "
+              + "up. Nothing is thrown away in the meantime."
+            : $"{WaitingHere:N0} answers about photos that are already here are waiting for "
+              + "the end of a scan, small copies to turn, or albums to put them in. The next "
+              + "scan may pick them up. Nothing is thrown away in the meantime.";
 
     /// <summary>
     /// Looks for answers waiting in the folder, and says nothing when there are
@@ -669,6 +710,7 @@ public sealed partial class SharingViewModel : ObservableObject
         Folder = status.Folder;
         Problem = status.Problem;
         WaitingOnFaces = status.Held.Faces.Answers;
+        WaitingHere = status.Held.Here.Answers;
         WaitingOnPhotos = status.Held.Missing.Answers;
         WaitingElsewhere = status.Held.Elsewhere.Answers;
         WaitingElsewherePhotos = status.Held.Elsewhere.Photos;

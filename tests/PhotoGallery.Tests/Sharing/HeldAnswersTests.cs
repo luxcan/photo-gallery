@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using PhotoGallery.Application.UseCases.Sharing;
+using PhotoGallery.Domain.Albums;
 using PhotoGallery.Domain.Assets;
 using PhotoGallery.Domain.Faces;
 using PhotoGallery.Domain.People;
@@ -19,6 +20,7 @@ namespace PhotoGallery.Tests.Sharing;
 public sealed class HeldAnswersTests : IDisposable
 {
     private static readonly DateTime Monday = new(2026, 3, 2, 9, 0, 0, DateTimeKind.Utc);
+    private static readonly DateTime Tuesday = Monday.AddDays(1);
     private static readonly FaceBounds Head = new(10, 10, 40, 40);
 
     private readonly TwoLibraries _house = new TwoLibraries().Sharing();
@@ -204,12 +206,156 @@ public sealed class HeldAnswersTests : IDisposable
         await Dad.Merging.HandleAsync();
 
         DadScans(@"2026 Phone Dump\b.jpg");
-        await Dad.Waiting.HandleAsync();
+        HeldResult swept = await Dad.Waiting.HandleAsync();
 
         // The later answer stands, and the name it beat is not applied.
         Assert.Empty(Dad.Db.FaceAssignments);
         Assert.NotNull(Dad.Db.Faces.Single().IgnoredUtc);
         Assert.Empty(Dad.Db.HeldDecisions);
+
+        // And it is not counted as though it had been. One answer was written;
+        // the other was settled by it, which is a different thing to report.
+        Assert.Equal(1, swept.Applied);
+        Assert.Equal(1, swept.Settled);
+    }
+
+    /// <summary>
+    /// A photograph is not counted into an album this library threw away while
+    /// the answer waited.
+    /// </summary>
+    /// <remarks>
+    /// Let go, because a tombstone is final and nothing may join it - but let go
+    /// as settled, not as applied. The count is the only thing anybody reads
+    /// about a sweep, and one that said "applied" about a photograph that went
+    /// nowhere is the count that cannot be trusted about the ones that did.
+    /// </remarks>
+    [Fact]
+    public async Task AMoveIntoAnAlbumDeletedWhileItWaitedIsNotCountedAsApplied()
+    {
+        Album hers = Mum.Album("Genting", Monday);
+        Mum.Put(hers, Mum.Prepared(@"2019\a.jpg", "aaa.jpg"), Monday);
+
+        await Mum.Publishing.HandleAsync();
+        await Dad.Merging.HandleAsync();
+
+        Assert.Single(Dad.Db.HeldDecisions, h => h.Kind == HeldDecisionKind.SharedAlbumMembership);
+
+        Dad.Remove(Dad.Db.Albums.Single(a => a.PublicId == hers.PublicId), Tuesday);
+        Dad.Photo(@"2019\a.jpg");
+
+        HeldResult swept = await Dad.Waiting.HandleAsync();
+
+        Assert.Empty(Dad.Db.AlbumMembers);
+        Assert.Empty(Dad.Db.HeldDecisions);
+        Assert.Equal(0, swept.Applied);
+        Assert.Equal(1, swept.Settled);
+    }
+
+    /// <summary>
+    /// A move into an album this library has no row for waits, rather than being
+    /// forgotten as though it had landed.
+    /// </summary>
+    /// <remarks>
+    /// The one real loss in the sweep. The plan moved the photograph into an
+    /// album nobody here had, the write skipped the move without a word, and the
+    /// held row - for this library's own parked decisions, the only copy - was
+    /// released and reported as applied. Rows like this were parked by the first
+    /// release, under another machine's name for a suggestion it had kept.
+    /// </remarks>
+    [Fact]
+    public async Task AMoveIntoAnAlbumThisLibraryHasNotGotWaitsRatherThanBeingCountedAsApplied()
+    {
+        await DadHoldsAMoveIntoAnAlbumHeHasNotGot(@"2019\a.jpg");
+        Dad.Photo(@"2019\a.jpg");
+
+        HeldResult swept = await Dad.Waiting.HandleAsync();
+
+        Assert.Empty(Dad.Db.AlbumMembers);
+        Assert.Equal(0, swept.Applied);
+        Assert.Single(Dad.Db.HeldDecisions);
+
+        // Counted as what it is: not waiting for its photograph, which is here,
+        // and not settled, because nothing here has answered it.
+        Assert.Equal(1, swept.Unplaced);
+        Assert.Equal(0, swept.Waiting);
+        Assert.Equal(0, swept.Settled);
+    }
+
+    /// <summary>
+    /// And it is let go once this library holds the same answer some other way.
+    /// </summary>
+    /// <remarks>
+    /// How a move that could not be placed comes good: a later sync places the
+    /// photograph from its author's own set, under whatever this library calls
+    /// that album. The held row still names the album by an identity this
+    /// library has never used, so it is judged on what the answer says - when it
+    /// was made and by whom - and not on which row it names.
+    /// </remarks>
+    [Fact]
+    public async Task AMoveThatCouldNotBePlacedIsLetGoOnceThisLibraryHoldsTheSameAnswer()
+    {
+        await DadHoldsAMoveIntoAnAlbumHeHasNotGot(@"2019\a.jpg");
+        Asset photo = Dad.Photo(@"2019\a.jpg");
+
+        await Dad.Waiting.HandleAsync();
+        Assert.Single(Dad.Db.HeldDecisions);
+
+        // What a sync does when it places that photograph: the same moment and
+        // the same author, in this library's own album.
+        Album genting = Dad.Album("Genting", Monday);
+        Dad.Db.AlbumMembers.Add(new AlbumMember
+        {
+            AlbumId = genting.Id,
+            AssetId = photo.Id,
+            AddedUtc = Monday,
+            AddedBy = Mum.MachineId,
+        });
+        Dad.Db.SaveChanges();
+        Dad.Db.ChangeTracker.Clear();
+
+        HeldResult swept = await Dad.Waiting.HandleAsync();
+
+        Assert.Empty(Dad.Db.HeldDecisions);
+        Assert.Equal(0, swept.Applied);
+        Assert.Equal(1, swept.Settled);
+        Assert.Equal(genting.Id, Dad.Db.AlbumMembers.Single().AlbumId);
+    }
+
+    /// <summary>
+    /// Two waiting moves for one photograph are one move.
+    /// </summary>
+    /// <remarks>
+    /// Parked one per album, so a photograph Mum moved from one album to another
+    /// while Dad did not have it waits as two rows. Only the later one is written,
+    /// and only the later one is counted.
+    /// </remarks>
+    [Fact]
+    public async Task TwoWaitingMovesForOnePhotographCountAsOne()
+    {
+        Album genting = Mum.Album("Genting", Monday);
+        Album chingay = Mum.Album("Chingay", Monday);
+        Asset photo = Mum.Prepared(@"2019\a.jpg", "aaa.jpg");
+        Mum.Put(genting, photo, Monday);
+
+        await Mum.Publishing.HandleAsync();
+        await Dad.Merging.HandleAsync();
+
+        Mum.Db.AlbumMembers.ExecuteDelete();
+        Mum.Put(chingay, photo, Tuesday);
+
+        await Mum.Publishing.HandleAsync();
+        await Dad.Merging.HandleAsync();
+
+        Assert.Equal(2, Dad.Db.HeldDecisions.Count());
+
+        Dad.Photo(@"2019\a.jpg");
+        HeldResult swept = await Dad.Waiting.HandleAsync();
+
+        AlbumMember landed = Assert.Single(Dad.Db.AlbumMembers);
+        Assert.Equal(Dad.Db.Albums.Single(a => a.PublicId == chingay.PublicId).Id, landed.AlbumId);
+        Assert.Empty(Dad.Db.HeldDecisions);
+        Assert.Equal(1, swept.Applied);
+        Assert.Equal(1, swept.Settled);
     }
 
     [Fact]
@@ -250,6 +396,26 @@ public sealed class HeldAnswersTests : IDisposable
 
     /// <summary>Dad's crawl finds the photograph, and his face pass finds the face.</summary>
     private void DadScans(string relativePath) => Dad.Face(Dad.Photo(relativePath), Head);
+
+    /// <summary>
+    /// Parks a move from Mum into an album Dad has no row for, through the code
+    /// that parks them.
+    /// </summary>
+    private Task DadHoldsAMoveIntoAnAlbumHeHasNotGot(string relativePath) =>
+        Dad.Writing.ApplyAsync(MergePlan.Nothing with
+        {
+            Held = HeldAnswers.None with
+            {
+                Memberships =
+                [
+                    new SharedAlbumMembership(
+                        new AssetKey(Dad.SharedSourceId, relativePath),
+                        Guid.NewGuid(),
+                        Monday,
+                        Mum.MachineId),
+                ],
+            },
+        });
 
     public void Dispose() => _house.Dispose();
 }

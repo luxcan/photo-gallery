@@ -37,6 +37,8 @@ public sealed class SharingSectionTests
     [InlineData("Sharing.WaitingOnPhotosLabel")]
     [InlineData("Sharing.HasWaitingOnFaces")]
     [InlineData("Sharing.WaitingOnFacesLabel")]
+    [InlineData("Sharing.HasWaitingHere")]
+    [InlineData("Sharing.WaitingHereLabel")]
     [InlineData("Sharing.Machines")]
     [InlineData("Sharing.HasFolder")]
     [InlineData("Sharing.HasProblem")]
@@ -126,8 +128,9 @@ public sealed class SharingSectionTests
         Assert.True(caution < actionable, "the callout does not wrap the actionable line");
         Assert.True(actionable < closes, "the actionable line is outside the callout");
 
-        // And the other two are hints rather than anything louder.
-        foreach (string quiet in new[] { "WaitingOnPhotosLabel", "WaitingOnFacesLabel" })
+        // And the others are hints rather than anything louder.
+        foreach (string quiet in new[]
+            { "WaitingOnPhotosLabel", "WaitingOnFacesLabel", "WaitingHereLabel" })
         {
             int at = waiting.IndexOf(quiet, StringComparison.Ordinal);
             int style = waiting.LastIndexOf("Style=\"{DynamicResource", at, StringComparison.Ordinal);
@@ -148,8 +151,9 @@ public sealed class SharingSectionTests
         int elsewhere = waiting.IndexOf("WaitingElsewhereLabel", StringComparison.Ordinal);
         int photos = waiting.IndexOf("WaitingOnPhotosLabel", StringComparison.Ordinal);
         int faces = waiting.IndexOf("WaitingOnFacesLabel", StringComparison.Ordinal);
+        int here = waiting.IndexOf("WaitingHereLabel", StringComparison.Ordinal);
 
-        Assert.True(elsewhere > 0 && photos > elsewhere && faces > photos);
+        Assert.True(elsewhere > 0 && photos > elsewhere && faces > photos && here > faces);
     }
 
     [Fact]

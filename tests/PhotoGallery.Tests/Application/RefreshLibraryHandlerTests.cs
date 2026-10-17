@@ -495,7 +495,8 @@ public sealed class RefreshLibraryHandlerTests : IDisposable
 
         Assert.Equal(1, result.AnswersApplied);
         Assert.Equal(0, result.AnswersWaiting);
-        Assert.Contains("1 answers applied", result.Summary);
+        Assert.Contains(", 1 answer applied", result.Summary);
+        Assert.DoesNotContain("settled", result.Summary);
 
         _db.ChangeTracker.Clear();
         AlbumRejection landed = _db.AlbumRejections.Single();
@@ -528,8 +529,125 @@ public sealed class RefreshLibraryHandlerTests : IDisposable
 
         Assert.Equal(0, result.AnswersApplied);
         Assert.Equal(1, result.AnswersWaiting);
-        Assert.Contains("1 answers are still waiting", result.Summary);
+        Assert.Contains(
+            "1 answer is still waiting for something this library does not have yet",
+            result.Summary);
+
+        // Not the old sentence, which named one cause for every held answer and
+        // was false for most of them on a real library.
+        Assert.DoesNotContain("has not indexed", result.Summary);
         Assert.Single(_db.HeldDecisions);
+    }
+
+    /// <summary>
+    /// An answer the library already holds is let go, and said to be settled
+    /// rather than applied.
+    /// </summary>
+    /// <remarks>
+    /// "Applied" is the one number in this line about another machine's work
+    /// reaching this one, so it may only count what was written. An answer that
+    /// was already true here wrote nothing, and saying it was applied would make
+    /// the number mean "no longer waiting" instead.
+    ///
+    /// <para>Nor does it say a later answer settled it. The waiting rejection is
+    /// the later of the two here, and the line once said "settled by later
+    /// answers" about exactly this.</para>
+    /// </remarks>
+    [Fact]
+    public async Task Refresh_SaysWhenAWaitingAnswerWasSettledRatherThanApplied()
+    {
+        WriteMedia("a.jpg");
+        PhotoSource source = await AddSourceAsync();
+        await NewHandler().HandleAsync([source.Id]);
+
+        // This library already said the same thing about the same photograph.
+        _db.AlbumRejections.Add(new AlbumRejection
+        {
+            AssetId = _db.Assets.Single().Id,
+            ProposalKey = "2020-01",
+            RejectedUtc = new DateTime(2026, 3, 1, 9, 0, 0, DateTimeKind.Utc),
+        });
+        await _db.SaveChangesAsync();
+        _db.ChangeTracker.Clear();
+
+        var waiting = new SharedAlbumRejection(
+            new AssetKey(source.SharedId, "a.jpg"),
+            "2020-01",
+            new DateTime(2026, 3, 2, 9, 0, 0, DateTimeKind.Utc),
+            Guid.NewGuid());
+
+        await new SqliteDecisionRepository(_db).ApplyAsync(
+            MergePlan.Nothing with
+            {
+                Held = new HeldAnswers([], [], [], [], [waiting]),
+            });
+
+        RefreshResult result = await NewHandler().HandleAsync([source.Id]);
+
+        Assert.Equal(0, result.AnswersApplied);
+        Assert.Equal(1, result.AnswersSettled);
+        Assert.Equal(0, result.AnswersWaiting);
+        Assert.Contains(", 1 answer needed no change", result.Summary);
+        Assert.DoesNotContain("later", result.Summary);
+        Assert.DoesNotContain("applied", result.Summary);
+        Assert.Empty(_db.HeldDecisions);
+        Assert.Single(_db.AlbumRejections);
+    }
+
+    /// <summary>
+    /// An answer settled by a deletion is said to have needed no change, not to
+    /// have been beaten by a later answer.
+    /// </summary>
+    /// <remarks>
+    /// A settled answer may have been true here already, beaten here, or about an
+    /// album or a person deleted here, and the scan log counts them in one
+    /// number. So the words for that number name no reason: one reason named for
+    /// all three is false for two of them.
+    /// </remarks>
+    [Fact]
+    public async Task Refresh_NamesNoReasonForAnAnswerADeletionSettled()
+    {
+        WriteMedia("a.jpg");
+        PhotoSource source = await AddSourceAsync();
+
+        // An album this library made and then deleted, while a move into it
+        // waited for its photograph.
+        var deleted = new Album
+        {
+            PublicId = Guid.NewGuid(),
+            Name = "Genting",
+            StartUtc = new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+            EndUtc = new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+            Kind = AlbumKind.Period,
+            Origin = AlbumOrigin.Made,
+            NamedUtc = new DateTime(2026, 3, 1, 9, 0, 0, DateTimeKind.Utc),
+            BuiltUtc = new DateTime(2026, 3, 1, 9, 0, 0, DateTimeKind.Utc),
+            DeletedUtc = new DateTime(2026, 3, 3, 9, 0, 0, DateTimeKind.Utc),
+        };
+        _db.Albums.Add(deleted);
+        await _db.SaveChangesAsync();
+        _db.ChangeTracker.Clear();
+
+        var waiting = new SharedAlbumMembership(
+            new AssetKey(source.SharedId, "a.jpg"),
+            deleted.PublicId,
+            new DateTime(2026, 3, 2, 9, 0, 0, DateTimeKind.Utc),
+            Guid.NewGuid());
+
+        await new SqliteDecisionRepository(_db).ApplyAsync(
+            MergePlan.Nothing with
+            {
+                Held = HeldAnswers.None with { Memberships = [waiting] },
+            });
+
+        RefreshResult result = await NewHandler().HandleAsync([source.Id]);
+
+        Assert.Equal(0, result.AnswersApplied);
+        Assert.Equal(1, result.AnswersSettled);
+        Assert.Contains(", 1 answer needed no change", result.Summary);
+        Assert.DoesNotContain("later", result.Summary);
+        Assert.Empty(_db.HeldDecisions);
+        Assert.Empty(_db.AlbumMembers);
     }
 
     /// <summary>Any unit vector; what it points at is beside the point here.</summary>

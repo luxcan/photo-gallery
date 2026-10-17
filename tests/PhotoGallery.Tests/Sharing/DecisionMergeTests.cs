@@ -623,6 +623,174 @@ public sealed class DecisionMergeTests
         Assert.Equal(photo, Assert.Single(plan.Held.Turns).Photo);
     }
 
+    /// <summary>
+    /// A waiting move into an album this library has no row for is not planned.
+    /// </summary>
+    /// <remarks>
+    /// The one way a sweep let an answer go without writing it. Nothing arrives
+    /// with a held answer but the answer itself, so the album it names is one of
+    /// this library's rows or it is nothing - and a plan that moved the
+    /// photograph into nothing was skipped by the write without a word, after
+    /// which the held row was forgotten as though it had landed.
+    /// </remarks>
+    [Fact]
+    public void AWaitingMoveIntoAnAlbumThisLibraryHasNotGotIsNotPlanned()
+    {
+        AssetKey photo = Pictures.Photo(@"2019\a.jpg");
+
+        MergePlan plan = DecisionMerge.Rejoin(
+            new Machine("Dad").Set(),
+            Waiting(new SharedAlbumMembership(photo, Guid.NewGuid(), Monday, Guid.NewGuid())),
+            Pictures.Indexed(photo));
+
+        Assert.Empty(plan.Moves);
+
+        // Kept, and kept apart from what is waiting for its photograph: the
+        // photograph is here, and nothing about it has settled the answer.
+        Assert.Equal(photo, Assert.Single(plan.Unplaced).Photo);
+        Assert.Equal(0, plan.Held.Count);
+        Assert.Equal(0, plan.Settled.Count);
+    }
+
+    /// <summary>
+    /// And it is settled once this library holds the same answer, whatever it
+    /// calls the album.
+    /// </summary>
+    /// <remarks>
+    /// Judged on when it was decided and by whom, not on the album it names. The
+    /// held row names the album as its author's machine did; this library's own
+    /// membership names its own row - so the two are never equal as records, and
+    /// a rule that compared them would keep the row for ever.
+    /// </remarks>
+    [Fact]
+    public void AWaitingMoveIsSettledOnceThisLibraryHoldsTheSameAnswerUnderAnotherName()
+    {
+        AssetKey photo = Pictures.Photo(@"2019\a.jpg");
+        Guid ours = Guid.NewGuid();
+        Machine mum = new("Mum");
+
+        MergePlan plan = DecisionMerge.Rejoin(
+            new Machine("Dad")
+                .HasAlbum(Pictures.Album(ours, "Genting", Monday))
+                .Set() with
+            {
+                Memberships = [new SharedAlbumMembership(photo, ours, Monday, mum.Id)],
+            },
+            Waiting(new SharedAlbumMembership(photo, Guid.NewGuid(), Monday, mum.Id)),
+            Pictures.Indexed(photo));
+
+        Assert.Empty(plan.Moves);
+        Assert.Empty(plan.Unplaced);
+        Assert.Single(plan.Settled.Memberships);
+    }
+
+    /// <summary>
+    /// A waiting move into an album this library threw away is settled, whether
+    /// or not its photograph has arrived.
+    /// </summary>
+    /// <remarks>
+    /// A tombstone is final, so there is nothing for either answer to wait for.
+    /// Settled rather than applied: the photograph went nowhere.
+    /// </remarks>
+    [Fact]
+    public void AWaitingMoveIntoAnAlbumThisLibraryThrewAwayIsSettled()
+    {
+        Guid genting = Guid.NewGuid();
+        AssetKey here = Pictures.Photo(@"2019\a.jpg");
+        AssetKey notYet = Pictures.Photo(@"2019\b.jpg");
+
+        MergePlan plan = DecisionMerge.Rejoin(
+            new Machine("Dad")
+                .HasAlbum(Pictures.Album(genting, "Genting", Monday) with { DeletedUtc = Tuesday })
+                .Set(),
+            Waiting(
+                new SharedAlbumMembership(here, genting, Monday, Guid.NewGuid()),
+                new SharedAlbumMembership(notYet, genting, Monday, Guid.NewGuid())),
+            Pictures.Indexed(here));
+
+        Assert.Empty(plan.Moves);
+        Assert.Equal(0, plan.Held.Count);
+        Assert.Empty(plan.Unplaced);
+        Assert.Equal(2, plan.Settled.Count);
+    }
+
+    /// <summary>
+    /// A waiting move into a suggestion nobody here has kept stays waiting.
+    /// </summary>
+    /// <remarks>
+    /// The opposite of what a merge does with the same answer, and on purpose. A
+    /// merge refuses it, because the machine that sent it sends it again on
+    /// every sync; nothing sends a held answer again, so refusing it here would
+    /// be throwing it away - and the day somebody keeps that suggestion, it can
+    /// land.
+    /// </remarks>
+    [Fact]
+    public void AWaitingMoveIntoASuggestionThisLibraryHasNotKeptStaysWaiting()
+    {
+        SharedAlbum suggested = Pictures.Proposal("2019-03-03..2019-03-05", "March 2019");
+        AssetKey here = Pictures.Photo(@"2019\a.jpg");
+        AssetKey notYet = Pictures.Photo(@"2019\b.jpg");
+
+        MergePlan plan = DecisionMerge.Rejoin(
+            new Machine("Dad").HasAlbum(suggested).Set(),
+            Waiting(
+                new SharedAlbumMembership(here, suggested.PublicId, Monday, Guid.NewGuid()),
+                new SharedAlbumMembership(notYet, suggested.PublicId, Monday, Guid.NewGuid())),
+            Pictures.Indexed(here));
+
+        Assert.Empty(plan.Moves);
+        Assert.Equal(here, Assert.Single(plan.Unplaced).Photo);
+        Assert.Equal(notYet, Assert.Single(plan.Held.Memberships).Photo);
+        Assert.Equal(0, plan.Settled.Count);
+    }
+
+    /// <summary>
+    /// A waiting answer this library already holds is settled, not landed.
+    /// </summary>
+    [Fact]
+    public void AWaitingAnswerThisLibraryAlreadyHoldsIsSettledRatherThanLanded()
+    {
+        AssetKey photo = Pictures.Photo(@"2019\a.jpg");
+        Machine mum = new("Mum");
+        var turn = new PhotoTurn(photo, 90, Monday, mum.Id);
+
+        MergePlan plan = DecisionMerge.Rejoin(
+            new Machine("Dad").Set() with { Turns = [turn] },
+            HeldAnswers.None with { Turns = [turn] },
+            Pictures.Indexed(photo));
+
+        Assert.Empty(plan.Turns);
+        Assert.Equal(turn, Assert.Single(plan.Settled.Turns));
+        Assert.True(plan.ChangesNothing, "an answer already true here writes nothing");
+    }
+
+    /// <summary>
+    /// Two waiting moves for one photograph are one move, and the other is
+    /// settled by it.
+    /// </summary>
+    [Fact]
+    public void TwoWaitingMovesForOnePhotographAreOneMoveAndOneSettled()
+    {
+        Guid genting = Guid.NewGuid();
+        Guid chingay = Guid.NewGuid();
+        AssetKey photo = Pictures.Photo(@"2019\a.jpg");
+        Guid mum = Guid.NewGuid();
+
+        var earlier = new SharedAlbumMembership(photo, genting, Monday, mum);
+        var later = new SharedAlbumMembership(photo, chingay, Tuesday, mum);
+
+        MergePlan plan = DecisionMerge.Rejoin(
+            new Machine("Dad")
+                .HasAlbum(Pictures.Album(genting, "Genting", Monday))
+                .HasAlbum(Pictures.Album(chingay, "Chingay", Monday))
+                .Set(),
+            Waiting(later, earlier),
+            Pictures.Indexed(photo));
+
+        Assert.Equal(chingay, Assert.Single(plan.Moves).To);
+        Assert.Equal(earlier, Assert.Single(plan.Settled.Memberships));
+    }
+
     [Fact]
     public void AMachineWithNoSourceInCommonIsToldSoRatherThanReportedAsASuccess()
     {
@@ -837,6 +1005,10 @@ public sealed class DecisionMergeTests
 
     private static SharedPerson Person(Guid id, string name) =>
         new(id, name, BirthYear: null, UpdatedUtc: null, DeletedUtc: null);
+
+    /// <summary>Album memberships parked on this library, waiting for a sweep.</summary>
+    private static HeldAnswers Waiting(params SharedAlbumMembership[] memberships) =>
+        HeldAnswers.None with { Memberships = memberships };
 
     private static MergePlan Merge(Machine mine, Machine theirs, LibraryContents here) =>
         DecisionMerge.Merge(mine.Set(), [theirs.Set()], here, Now);

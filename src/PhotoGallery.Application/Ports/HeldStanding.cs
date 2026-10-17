@@ -23,6 +23,16 @@ namespace PhotoGallery.Application.Ports;
 /// machine named. A scan may settle the first; nothing settles the second, and
 /// the copy must not promise otherwise.
 /// </param>
+/// <param name="Here">
+/// The photograph is indexed here and the answer is not about a face: a turn
+/// waiting for a small copy of the photograph to turn, or a move waiting for an
+/// album this library does not have. Its own group because every row on a
+/// photograph that is here used to count as a face, and the sentence about the
+/// face pass was then true of none of these. Between a scan indexing the
+/// photograph and the same scan's last phase, any move, rejection or turn about
+/// it is here too, waiting only for that phase - which a stopped scan never
+/// reaches.
+/// </param>
 /// <param name="Missing">
 /// The photograph is not indexed, but its folder is one this library has - so it
 /// is not in that folder under that name. Renamed, moved, or not arrived. It may
@@ -41,15 +51,16 @@ namespace PhotoGallery.Application.Ports;
 /// </param>
 public sealed record HeldStanding(
     HeldTally Faces,
+    HeldTally Here,
     HeldTally Missing,
     HeldTally Elsewhere,
     string Folder)
 {
     public static HeldStanding Nothing { get; } =
-        new(HeldTally.None, HeldTally.None, HeldTally.None, string.Empty);
+        new(HeldTally.None, HeldTally.None, HeldTally.None, HeldTally.None, string.Empty);
 
     /// <summary>Every held answer - what the single count used to be.</summary>
-    public int Answers => Faces.Answers + Missing.Answers + Elsewhere.Answers;
+    public int Answers => Faces.Answers + Here.Answers + Missing.Answers + Elsewhere.Answers;
 }
 
 /// <summary>How much of one group there is, in both units the copy needs.</summary>

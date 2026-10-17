@@ -21,10 +21,14 @@ namespace PhotoGallery.Application.UseCases.Sharing;
 /// no face to land on, later and the occasions would be named from people the
 /// library was about to learn about.</para>
 ///
-/// <para><strong>Nothing is released until it has landed.</strong> A held row is
-/// the only record of an answer somebody spent an evening making, so a sweep
-/// that is stopped part-way forgets nothing and simply costs the next one the
-/// same work.</para>
+/// <para><strong>Nothing is released until it has landed or been
+/// settled.</strong> A held row can be the only record of an answer somebody
+/// spent an evening making, so a sweep that is stopped part-way forgets nothing
+/// and simply costs the next one the same work. Settled means the answer that
+/// stands is already in this library - it was true here already, a later answer
+/// beat it, or the album it named has been thrown away - and only then may a row
+/// go without being written. A move into an album this library does not have is
+/// neither, so it stays.</para>
 /// </remarks>
 public sealed class ApplyHeldDecisionsHandler
 {
@@ -82,17 +86,24 @@ public sealed class ApplyHeldDecisionsHandler
         // again, which costs a sweep and loses nothing.
         if (outcome.WasCancelled || cancellationToken.IsCancellationRequested)
         {
-            return new HeldResult(0, waiting.Count, true);
+            return new HeldResult(0, 0, 0, waiting.Count, true);
         }
 
-        // Everything that was waiting, less everything still waiting. Answers
-        // this library already held, and ones a later answer has since beaten,
-        // are in neither list - and both are done with, which is what releasing
-        // them says.
-        HeldAnswers landed = waiting.Except(plan.Held);
+        // Kept: what still waits for its photograph or its face, and what has
+        // nowhere to go here yet. Everything else is done with - written, or
+        // settled by what this library already holds - and only the first of
+        // those is counted as applied.
+        HeldAnswers kept = plan.Held with
+        {
+            Memberships = [.. plan.Held.Memberships, .. plan.Unplaced],
+        };
 
-        await _repository.ReleaseAsync(landed, cancellationToken).ConfigureAwait(false);
+        HeldAnswers done = waiting.Except(kept);
+        HeldAnswers landed = done.Except(plan.Settled);
 
-        return new HeldResult(landed.Count, plan.Held.Count, false);
+        await _repository.ReleaseAsync(done, cancellationToken).ConfigureAwait(false);
+
+        return new HeldResult(
+            landed.Count, plan.Settled.Count, plan.Unplaced.Count, plan.Held.Count, false);
     }
 }

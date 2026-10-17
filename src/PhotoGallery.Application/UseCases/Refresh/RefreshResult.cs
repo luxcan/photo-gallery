@@ -70,12 +70,17 @@ public sealed record RefreshResult(
     /// <summary>How many faces were found this run.</summary>
     public int FacesFound => Faces?.FacesFound ?? 0;
 
-    /// <summary>How many answers from another machine landed this run.</summary>
+    /// <summary>How many answers from another machine were written this run.</summary>
     public int AnswersApplied => Answers?.Applied ?? 0;
 
     /// <summary>
-    /// How many answers are still waiting for photographs this library has not
-    /// indexed.
+    /// How many waiting answers were let go this run without writing anything,
+    /// because what stands here already settles them.
+    /// </summary>
+    public int AnswersSettled => Answers?.Settled ?? 0;
+
+    /// <summary>
+    /// How many answers are still waiting after this run, for whatever reason.
     /// </summary>
     /// <remarks>
     /// The one number here that is not about what just happened. Most of these
@@ -84,8 +89,13 @@ public sealed record RefreshResult(
     /// said is a count that grows quietly, and this is the difference between
     /// "nothing to do" and "an evening's work is waiting for a folder nobody has
     /// added".
+    ///
+    /// <para>One number for every reason an answer waits, including a move into
+    /// an album this library does not have. Why each one waits is the Sync
+    /// screen's to say, split by what would have to happen; a line in a scan log
+    /// that named one reason for all of them was false for most.</para>
     /// </remarks>
-    public int AnswersWaiting => Answers?.Waiting ?? 0;
+    public int AnswersWaiting => (Answers?.Waiting ?? 0) + (Answers?.Unplaced ?? 0);
 
     /// <summary>How many occasions are on offer after this run.</summary>
     public int AlbumsProposed => Collected?.Proposed ?? 0;
@@ -210,6 +220,10 @@ public sealed record RefreshResult(
     private static string Line(string name, TimeSpan elapsed, string did) =>
         $"{name,-11}{Took(elapsed),9}  {did}";
 
+    /// <summary>A count of answers, with one said as one.</summary>
+    private static string AnswerCount(int count) =>
+        count == 1 ? "1 answer" : $"{count:N0} answers";
+
     /// <summary>
     /// A duration at the precision somebody reading a scan log cares about.
     /// </summary>
@@ -251,13 +265,28 @@ public sealed record RefreshResult(
 
             // Both sides of the sharing phase, and only where there is one. A
             // library nobody shares with reads nothing about answers at all.
+            //
+            // Applied and settled apart, because only one of them is another
+            // machine's work arriving. A settled answer is let go without a
+            // write - and a single number for both said "applied" about answers
+            // that changed nothing.
+            //
+            // The settled words name no reason. An answer is settled because it
+            // was already true here, because something here beat it, or because
+            // the album or the person it named was deleted here, and "settled by
+            // later answers" was false for most of them: often the waiting answer
+            // was itself the later one, or the same answer arriving twice.
             string applied = AnswersApplied > 0
-                ? $", {AnswersApplied:N0} answers applied"
+                ? $", {AnswerCount(AnswersApplied)} applied"
+                : string.Empty;
+
+            string settled = AnswersSettled > 0
+                ? $", {AnswerCount(AnswersSettled)} needed no change"
                 : string.Empty;
 
             string counted = $"{Added:N0} new, {Updated:N0} changed, {Removed:N0} gone, "
                            + $"{Built:N0} pictures prepared{searchable}{placed}{videos}{faces}"
-                           + $"{applied} ({Elapsed.TotalSeconds:N1}s)";
+                           + $"{applied}{settled} ({Elapsed.TotalSeconds:N1}s)";
 
             if (WasCancelled)
             {
@@ -278,12 +307,18 @@ public sealed record RefreshResult(
             };
 
             // Last, and on its own, because it is the only part of this that
-            // asks for something: the photographs these answers are about are
-            // not in the library and no scan of it will bring them in.
-            string waiting = AnswersWaiting > 0
-                ? $". {AnswersWaiting:N0} answers are still waiting for photographs "
-                + "this library has not indexed"
-                : string.Empty;
+            // may ask for something. It names no reason: the answers wait on a
+            // photograph, a face, a small copy or an album, and one sentence
+            // naming one of those was false for most of them on a real library.
+            // The Sync screen says which, split by what would have to happen.
+            string waiting = AnswersWaiting switch
+            {
+                0 => string.Empty,
+                1 => ". 1 answer is still waiting for something this library does not have "
+                     + "yet - the Sync screen says what",
+                _ => $". {AnswersWaiting:N0} answers are still waiting for something this "
+                     + "library does not have yet - the Sync screen says what",
+            };
 
             if (Unavailable == 0)
             {

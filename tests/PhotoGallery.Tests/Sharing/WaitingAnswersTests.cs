@@ -85,6 +85,70 @@ public sealed class WaitingAnswersTests : IDisposable
         Assert.Equal(0, held.Missing.Answers);
     }
 
+    /// <summary>
+    /// A turn waiting for its small copy is not described as waiting on a face.
+    /// </summary>
+    /// <remarks>
+    /// The photograph is here and nothing about it is a face: the turn waits
+    /// because this computer has no picture of it to turn yet. Counting every
+    /// row on a photograph that is here as a face put this one under a sentence
+    /// about the face pass, which will never bring it in.
+    /// </remarks>
+    [Fact]
+    public async Task ATurnWaitingForItsSmallCopyIsNotWaitingOnAFace()
+    {
+        Mum.Prepared(@"2019\a.jpg", "aa11.jpg");
+
+        Asset turned = Mum.Db.Assets.Single();
+        turned.Rotation = 90;
+        turned.RotatedUtc = Monday;
+        turned.RotatedBy = Mum.MachineId;
+        Mum.Db.SaveChanges();
+        Mum.Db.ChangeTracker.Clear();
+
+        // Dad has the photograph and no small copy of it, so the turn waits.
+        Dad.Photo(@"2019\a.jpg");
+
+        HeldStanding held = await MergedAsync();
+
+        Assert.Single(Dad.Db.HeldDecisions, h => h.Kind == HeldDecisionKind.Turn);
+        Assert.Equal(0, held.Faces.Answers);
+        Assert.Equal(1, held.Here.Answers);
+        Assert.Equal(1, held.Here.Photos);
+        Assert.Equal(1, held.Answers);
+    }
+
+    /// <summary>
+    /// Nor is a photograph waiting for an album this computer does not have.
+    /// </summary>
+    [Fact]
+    public async Task AMoveWaitingForAnAlbumIsNotWaitingOnAFace()
+    {
+        await Dad.Writing.ApplyAsync(MergePlan.Nothing with
+        {
+            Held = HeldAnswers.None with
+            {
+                Memberships =
+                [
+                    new SharedAlbumMembership(
+                        new AssetKey(Dad.SharedSourceId, @"2019\a.jpg"),
+                        Guid.NewGuid(),
+                        Monday,
+                        Mum.MachineId),
+                ],
+            },
+        });
+
+        Dad.Photo(@"2019\a.jpg");
+        await Dad.Waiting.HandleAsync();
+
+        HeldStanding held = await Dad.Decisions.HeldStandingAsync();
+
+        Assert.Equal(0, held.Faces.Answers);
+        Assert.Equal(1, held.Here.Answers);
+        Assert.Equal(1, held.Answers);
+    }
+
     [Fact]
     public async Task AnAnswerForAPhotographThisLibraryHasNotIndexedIsMissing()
     {

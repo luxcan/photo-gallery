@@ -59,6 +59,59 @@ public sealed class WaitingCopyTests : IDisposable
     }
 
     /// <summary>
+    /// The line about photographs that are already here says nothing about faces.
+    /// </summary>
+    /// <remarks>
+    /// A turn waiting for a small copy and a move waiting for an album used to be
+    /// counted under the face line, which told whoever read it that a scan's
+    /// face pass might bring them in. It never would, so this line names what
+    /// they are waiting for instead and, like the missing line, promises that
+    /// nothing is lost.
+    /// </remarks>
+    [Fact]
+    public void TheLineAboutPhotosAlreadyHereSaysWhatTheyWaitForAndNotAFace()
+    {
+        _sharing.WaitingHere = 2;
+
+        string said = _sharing.WaitingHereLabel;
+
+        Assert.Contains(
+            "2 answers about photos that are already here are waiting",
+            said,
+            StringComparison.Ordinal);
+        Assert.Contains("small copies to turn", said, StringComparison.Ordinal);
+        Assert.Contains("albums to put them in", said, StringComparison.Ordinal);
+        Assert.Contains("Nothing is thrown away", said, StringComparison.Ordinal);
+        Assert.DoesNotContain("face", said, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// The line about photographs that are already here allows for a scan that
+    /// stopped before its answers landed.
+    /// </summary>
+    /// <remarks>
+    /// Answers land in a scan's last phase, so a scan stopped earlier - or one
+    /// whose earlier phase failed - leaves every answer about a photograph it has
+    /// just indexed waiting for the next one. A move into an album this computer
+    /// has, a rejection, a turn whose small copy was just made: all of them sit
+    /// in this group then, and the line once told whoever read it that this
+    /// computer did not have what they needed. It did; they needed a scan to
+    /// finish. So the line names that first, and offers the next scan only as
+    /// a possibility, as the face line does.
+    /// </remarks>
+    [Fact]
+    public void TheLineAboutPhotosAlreadyHereAllowsForAScanThatStoppedBeforeTheyLanded()
+    {
+        _sharing.WaitingHere = 1;
+
+        string said = _sharing.WaitingHereLabel;
+
+        Assert.Contains("for the end of a scan", said, StringComparison.Ordinal);
+        Assert.Contains("the next scan may pick it up", said, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("does not have", said, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// The missing line is conditional too, and promises nothing is lost.
     /// </summary>
     [Fact]
@@ -117,17 +170,22 @@ public sealed class WaitingCopyTests : IDisposable
         Assert.Contains("Put that folder", said, StringComparison.Ordinal);
     }
 
-    /// <summary>One is said as one, in all three.</summary>
+    /// <summary>One is said as one, in all four.</summary>
     [Fact]
     public void OneIsSaidAsOne()
     {
         _sharing.WaitingOnFaces = 1;
+        _sharing.WaitingHere = 1;
         _sharing.WaitingOnPhotos = 1;
         _sharing.WaitingElsewhere = 1;
         _sharing.WaitingElsewherePhotos = 1;
 
         Assert.Contains(
             "1 answer is waiting on a face", _sharing.WaitingOnFacesLabel, StringComparison.Ordinal);
+        Assert.Contains(
+            "1 answer about a photo that is already here is waiting",
+            _sharing.WaitingHereLabel,
+            StringComparison.Ordinal);
         Assert.Contains(
             "1 answer is waiting for a photo",
             _sharing.WaitingOnPhotosLabel,
@@ -156,6 +214,7 @@ public sealed class WaitingCopyTests : IDisposable
     public void NoneOfThemPromisesThatScanningWillBringThemIn()
     {
         _sharing.WaitingOnFaces = 3;
+        _sharing.WaitingHere = 3;
         _sharing.WaitingOnPhotos = 3;
         _sharing.WaitingElsewhere = 3;
         _sharing.WaitingElsewherePhotos = 3;
@@ -173,6 +232,7 @@ public sealed class WaitingCopyTests : IDisposable
     {
         Assert.False(_sharing.HasWaiting);
         Assert.False(_sharing.HasWaitingOnFaces);
+        Assert.False(_sharing.HasWaitingHere);
         Assert.False(_sharing.HasWaitingOnPhotos);
         Assert.False(_sharing.HasWaitingElsewhere);
     }
@@ -185,6 +245,10 @@ public sealed class WaitingCopyTests : IDisposable
         Assert.True(_sharing.HasWaiting);
 
         _sharing.WaitingOnFaces = 0;
+        _sharing.WaitingHere = 1;
+        Assert.True(_sharing.HasWaiting);
+
+        _sharing.WaitingHere = 0;
         _sharing.WaitingOnPhotos = 1;
         Assert.True(_sharing.HasWaiting);
 
@@ -196,6 +260,7 @@ public sealed class WaitingCopyTests : IDisposable
     private string[] All() =>
     [
         _sharing.WaitingOnFacesLabel,
+        _sharing.WaitingHereLabel,
         _sharing.WaitingOnPhotosLabel,
         _sharing.WaitingElsewhereLabel,
     ];

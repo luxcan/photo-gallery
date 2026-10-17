@@ -42,11 +42,40 @@ public sealed record MergePlan(
         new([], [], [], [], [], [], [], [], [], [], [], HeldAnswers.None, [], [],
             [], new Dictionary<Guid, Guid>(), []);
 
+    /// <summary>
+    /// Waiting answers a sweep is done with although nothing is written for them.
+    /// </summary>
+    /// <remarks>
+    /// Only <see cref="DecisionMerge.Rejoin"/> fills this. Three kinds of answer
+    /// end here: one this library already holds, one a later answer has since
+    /// beaten, and one about an album this library has thrown away. In each the
+    /// answer that stands is already in this library and nothing about it can
+    /// change - so the held row can go - but nothing was applied, and a count
+    /// that said otherwise would make "applied" mean "no longer waiting".
+    /// </remarks>
+    public HeldAnswers Settled { get; init; } = HeldAnswers.None;
+
+    /// <summary>
+    /// Waiting moves whose photograph is here, into an album this library has no
+    /// row it would put the photograph in.
+    /// </summary>
+    /// <remarks>
+    /// Kept rather than settled, because nothing here has answered them. The
+    /// album is one this library has never held under that name, or a suggestion
+    /// nobody here has kept - and the held row may be the only copy of the
+    /// answer, so letting it go would be losing it. It comes good when this
+    /// library comes to hold the same answer some other way, which is the next
+    /// sync placing the photograph from its author's own set.
+    /// </remarks>
+    public IReadOnlyList<SharedAlbumMembership> Unplaced { get; init; } = [];
+
     /// <summary>Whether this merge would change anything at all.</summary>
     /// <remarks>
     /// Joins and refusals are deliberately not counted. A join is an offer the
     /// user has not accepted and a refusal is something that did not happen, so a
     /// merge reporting either of them and nothing else has still changed nothing.
+    /// Answers a sweep settled or could not place are not counted either, for the
+    /// same reason: neither writes anything.
     /// </remarks>
     public bool ChangesNothing =>
         People.Count == 0
