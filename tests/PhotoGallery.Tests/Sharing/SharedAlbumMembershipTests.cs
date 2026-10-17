@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using PhotoGallery.Application.Ports;
 using PhotoGallery.Application.UseCases.Sharing;
 using PhotoGallery.Domain.Albums;
 using PhotoGallery.Domain.Assets;
@@ -176,14 +177,14 @@ public sealed class SharedAlbumMembershipTests : IDisposable
     /// The same when the album somebody threw away was a kept suggestion.
     /// </summary>
     /// <remarks>
-    /// The branch the first fix carved out. A tombstone is written for an album
-    /// this library never held, but not for one derived from a run of days - its
-    /// key is what a rebuild matches on, and a tombstone carrying one would sit
-    /// in the way of the days this machine is about to group again. With no row
-    /// to find, "never heard of it" and "gone" looked alike again, and the moves
-    /// came back on every merge. The plan answers it instead: an album arriving
-    /// already thrown away is one nobody will write, so nothing is promised a
-    /// row that is never made.
+    /// The branch the first fix carved out, when a tombstone was written for an
+    /// album this library never held but not for one derived from a run of days.
+    /// With no row to find, "never heard of it" and "gone" looked alike again,
+    /// and the moves came back on every merge. The plan answers it on its own:
+    /// an album arriving already thrown away is one nobody will put back, so
+    /// nothing is promised a row that is never made. The tombstone is written
+    /// now as well, for the rebuild's sake rather than the plan's - see
+    /// <see cref="AKeptSuggestionSomebodyDeletedIsNotSuggestedWhereItHadNotBeenGroupedYet"/>.
     /// </remarks>
     [Fact]
     public async Task NothingJoinsAKeptSuggestionSomebodyElseThrewAway()
@@ -206,6 +207,181 @@ public sealed class SharedAlbumMembershipTests : IDisposable
         Assert.Empty(Dad.Db.AlbumMembers);
         Assert.True(await NothingLeftAsync(Dad), "the house must converge, not ask for ever");
     }
+
+    /// <summary>
+    /// A kept suggestion somebody deleted is not suggested again on a machine
+    /// that was still only suggesting it.
+    /// </summary>
+    /// <remarks>
+    /// Deleting a kept suggestion means "never suggest those days again", and
+    /// the tombstone travels on its run of days. Here it reaches Dad's own
+    /// suggestion for the same days, turns it into a tombstone of his own and
+    /// lets its photographs go - and those photographs group into exactly the
+    /// same days on his next scan. The rebuild could not see a deleted row, so
+    /// it added a new one under a key the tombstone still held, the database
+    /// refused it, and every scan on Dad's laptop failed from then on.
+    /// </remarks>
+    [Fact]
+    public async Task AKeptSuggestionSomebodyDeletedIsNotSuggestedAgainWhereItWasOnlySuggested()
+    {
+        Album hers = Mum.Suggestion("March 2019", Days, kept: true);
+        await Mum.Albums.DeleteAsync(hers.Id);
+
+        Album his = Dad.Suggestion("March 2019", Days, kept: false);
+        Asset a = Dad.Prepared(@"2019\a.jpg", "aaa.jpg");
+        Asset b = Dad.Prepared(@"2019\b.jpg", "bbb.jpg");
+        Dad.Put(his, a, Monday);
+        Dad.Put(his, b, Monday);
+
+        await Mum.Publishing.HandleAsync();
+        await Dad.Merging.HandleAsync();
+        Dad.Db.ChangeTracker.Clear();
+
+        Assert.Empty(Dad.Db.Albums);
+        Assert.Empty(Dad.Db.AlbumMembers);
+
+        await Dad.Albums.SaveProposalsAsync([Proposal(a, b)]);
+
+        Assert.Empty(Dad.Db.Albums);
+        Assert.Empty(Dad.Db.AlbumMembers);
+        Assert.True(await NothingLeftAsync(Dad), "the house must converge, not ask for ever");
+
+        // And on the scan after the next merge, so the answer is shown to
+        // outlast both.
+        await Dad.Albums.SaveProposalsAsync([Proposal(a, b)]);
+
+        Assert.Empty(Dad.Db.Albums);
+    }
+
+    /// <summary>
+    /// The same when the deletion arrives before this library has grouped
+    /// those days at all.
+    /// </summary>
+    /// <remarks>
+    /// A tombstone for an album this library never held used to be written
+    /// only when it had no run of days, because a row carrying one would stand
+    /// in the way of the days this machine was about to group. Standing in
+    /// that way is now exactly what it is for. Without the row, Dad's next scan
+    /// suggested the days somebody had already thrown away, and kept doing so
+    /// until a merge caught up with it.
+    /// </remarks>
+    [Fact]
+    public async Task AKeptSuggestionSomebodyDeletedIsNotSuggestedWhereItHadNotBeenGroupedYet()
+    {
+        Album hers = Mum.Suggestion("March 2019", Days, kept: true);
+        await Mum.Albums.DeleteAsync(hers.Id);
+
+        Asset a = Dad.Prepared(@"2019\a.jpg", "aaa.jpg");
+        Asset b = Dad.Prepared(@"2019\b.jpg", "bbb.jpg");
+
+        await Mum.Publishing.HandleAsync();
+        await Dad.Merging.HandleAsync();
+
+        await Dad.Albums.SaveProposalsAsync([Proposal(a, b)]);
+
+        Assert.Empty(Dad.Db.Albums);
+        Assert.Empty(Dad.Db.AlbumMembers);
+        Assert.True(await NothingLeftAsync(Dad), "the house must converge, not ask for ever");
+    }
+
+    /// <summary>
+    /// And on a third machine, when what reaches it is another machine's
+    /// suggestion that the deletion turned into a tombstone.
+    /// </summary>
+    /// <remarks>
+    /// Mum deletes her kept suggestion. Dad only ever had a suggestion for
+    /// those days, and the merge turns it into a tombstone of his own - still a
+    /// suggestion, under his identity and his name. Both tombstones reach Gran,
+    /// who has not grouped those days yet, and which one she settles on follows
+    /// the name: Dad's here, because he renamed his. The merge wrote a
+    /// tombstone for days this library had no row for only when the album it
+    /// settled on was not a suggestion, so Gran was left with no answer for
+    /// those days and her next scan suggested the very days somebody had
+    /// deleted. A suggestion that is a tombstone exists only because a kept one
+    /// was deleted somewhere, so it is the same answer.
+    /// </remarks>
+    [Fact]
+    public async Task AKeptSuggestionSomebodyDeletedIsNotSuggestedWhereItArrivesAsAnotherMachinesSuggestion()
+    {
+        Library gran = _house.Add("Gran");
+
+        Album hers = Mum.Suggestion("March 2019", Days, kept: true);
+        await Mum.Albums.DeleteAsync(hers.Id);
+
+        // Renamed but never kept, so it is his name - and with it his row's
+        // origin - that wins wherever the two tombstones meet.
+        Album his = Dad.Suggestion("March 2019", Days, kept: false);
+        await Dad.Albums.RenameAsync(his.Id, "Melaka");
+        Dad.Db.ChangeTracker.Clear();
+
+        await Mum.Publishing.HandleAsync();
+        await Dad.Merging.HandleAsync();
+        await Dad.Publishing.HandleAsync();
+
+        Album thrown = Dad.Db.Albums.IgnoreQueryFilters().AsNoTracking().Single();
+        Assert.Equal(AlbumOrigin.Proposed, thrown.Origin);
+        Assert.NotNull(thrown.DeletedUtc);
+
+        Asset a = gran.Prepared(@"2019\a.jpg", "aaa.jpg");
+        Asset b = gran.Prepared(@"2019\b.jpg", "bbb.jpg");
+
+        await gran.Merging.HandleAsync();
+        await gran.Albums.SaveProposalsAsync([Proposal(a, b)]);
+
+        Assert.Empty(gran.Db.Albums);
+        Assert.Empty(gran.Db.AlbumMembers);
+        Assert.True(await NothingLeftAsync(gran), "the house must converge, not ask for ever");
+    }
+
+    /// <summary>
+    /// A photograph somebody filed stays where they filed it when another
+    /// machine later finds it among the days of a suggestion both kept.
+    /// </summary>
+    /// <remarks>
+    /// Dad files a photograph into an album of his own. Mum, who has not shared
+    /// since, scans and finds it among the days of a suggestion they both kept.
+    /// The rebuild used to put it into her kept album, dated the moment it ran -
+    /// and an album somebody kept sends its photographs as decisions, so the
+    /// app's grouping on her laptop beat Dad's filing on his, and the next merge
+    /// took the photograph out of his album. A scan is not a decision, and must
+    /// never outrank one.
+    /// </remarks>
+    [Fact]
+    public async Task APhotographFiledOnOneMachineStaysFiledWhenAnotherScansItsDays()
+    {
+        Mum.Suggestion("March 2019", Days, kept: true);
+        Asset mumsCopy = Mum.Prepared(@"2019\a.jpg", "aaa.jpg");
+
+        Dad.Suggestion("March 2019", Days, kept: true);
+        Album best = Dad.Album("Best shots", Monday);
+        Dad.Put(best, Dad.Prepared(@"2019\a.jpg", "aaa.jpg"), Tuesday);
+
+        await Mum.Albums.SaveProposalsAsync([Proposal(mumsCopy)]);
+
+        await Mum.Publishing.HandleAsync();
+        await Dad.Publishing.HandleAsync();
+        await Mum.Merging.HandleAsync();
+        await Dad.Merging.HandleAsync();
+
+        Assert.Equal(best.Id, Assert.Single(Dad.Db.AlbumMembers.AsNoTracking()).AlbumId);
+
+        Album filed = Mum.Db.Albums.AsNoTracking().Single(album => album.PublicId == best.PublicId);
+        Assert.Equal(filed.Id, Assert.Single(Mum.Db.AlbumMembers.AsNoTracking()).AlbumId);
+    }
+
+    /// <summary>
+    /// What a scan offers for <see cref="Days"/>, holding these photographs.
+    /// </summary>
+    private static ProposedAlbum Proposal(params Asset[] photos) =>
+        new(
+            Days,
+            "March 2019",
+            new DateTime(2019, 3, 3, 10, 0, 0, DateTimeKind.Unspecified),
+            new DateTime(2019, 3, 5, 18, 0, 0, DateTimeKind.Unspecified),
+            AlbumKind.Event,
+            PlaceId: null,
+            photos[0].Id,
+            [.. photos.Select(photo => photo.Id)]);
 
     /// <summary>
     /// A suggestion this library has not kept takes nothing, and says so by

@@ -1,8 +1,8 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using PhotoGallery.Application.Ports;
-using PhotoGallery.Domain.Assets;
 using PhotoGallery.Domain.Albums;
+using PhotoGallery.Domain.Assets;
 using PhotoGallery.Domain.Faces;
 using PhotoGallery.Domain.People;
 using PhotoGallery.Domain.Sharing;
@@ -657,15 +657,6 @@ public sealed class SqliteDecisionRepository : IDecisionRepository
 
             if (album is null)
             {
-                // Only an album somebody made is created from a merge. A proposal
-                // is derived, so its row is this machine's own to build - what
-                // travels about one is a name, and a name with nothing to sit on
-                // waits for the rebuild that makes it.
-                if (settled.Origin == AlbumOrigin.Proposed)
-                {
-                    continue;
-                }
-
                 // One already taken away is written as a tombstone rather than
                 // skipped, which is the opposite of what a shelf does and for a
                 // reason a shelf has not got: photographs point at albums. With
@@ -677,29 +668,54 @@ public sealed class SqliteDecisionRepository : IDecisionRepository
                 // to every query in the app and is what lets the next merge
                 // settle.
                 //
-                // A proposal's is not worth keeping: its key is what a rebuild
-                // matches on, and a tombstone carrying one would be a second row
-                // answering to days this machine is about to group again.
+                // A kept suggestion's tombstone keeps its run of days, which
+                // used to be the reason it was not written: its key is what a
+                // rebuild matches on, so it would be a second row answering to
+                // days this machine was about to group again. That is now what
+                // it is for. Deleting a kept suggestion means "never suggest
+                // these days again", the rebuild reads a tombstone's key as that
+                // answer, and without the row this machine's next scan offered
+                // the very days somebody had thrown away. No row here holds the
+                // key, or the match above would have found it, so the unique
+                // index on it has nothing to refuse.
+                //
+                // Whatever it was before it went, and that is why this comes
+                // before the rule about suggestions below. A suggestion arriving
+                // as a tombstone is another machine's own suggestion for days
+                // whose kept suggestion somebody deleted - the deletion reached
+                // it there first and turned it into one. Nothing else makes one:
+                // a rebuild deletes the suggestions it drops outright, and so
+                // does dismissing one. So it is the same answer about the same
+                // days. Which of the two this library settles on follows the
+                // name, and the origin rides along with it, so skipping it as a
+                // suggestion left the deleted days remembered here or offered
+                // again depending on who had renamed what.
                 if (settled.DeletedUtc is not null)
                 {
-                    if (settled.ProposalKey is null)
+                    _db.Albums.Add(new Album
                     {
-                        _db.Albums.Add(new Album
-                        {
-                            PublicId = settled.PublicId,
-                            Name = settled.Name,
-                            StartUtc = DateTime.UtcNow,
-                            EndUtc = DateTime.UtcNow,
-                            Kind = AlbumKind.Period,
-                            Origin = settled.Origin,
-                            NamedUtc = settled.NamedUtc,
-                            DeletedUtc = settled.DeletedUtc,
-                            BuiltUtc = DateTime.UtcNow,
-                        });
+                        PublicId = settled.PublicId,
+                        Name = settled.Name,
+                        StartUtc = DateTime.UtcNow,
+                        EndUtc = DateTime.UtcNow,
+                        Kind = AlbumKind.Period,
+                        Origin = settled.Origin,
+                        ProposalKey = settled.ProposalKey,
+                        NamedUtc = settled.NamedUtc,
+                        DeletedUtc = settled.DeletedUtc,
+                        BuiltUtc = DateTime.UtcNow,
+                    });
 
-                        changed++;
-                    }
+                    changed++;
+                    continue;
+                }
 
+                // Only an album somebody made or kept is created from a merge. A
+                // live proposal is derived, so its row is this machine's own to
+                // build - what travels about one is a name, and a name with
+                // nothing to sit on waits for the rebuild that makes it.
+                if (settled.Origin == AlbumOrigin.Proposed)
+                {
                     continue;
                 }
 
@@ -727,6 +743,11 @@ public sealed class SqliteDecisionRepository : IDecisionRepository
             // branches instead reports three albums to somebody who has one.
             bool touched = false;
 
+            // The row keeps its run of days when it goes, whatever it was here.
+            // This machine's own suggestion for days somebody else kept and then
+            // deleted lands here too, and the key it keeps is how its next scan
+            // knows not to offer those days again - the photographs let go below
+            // are exactly the ones that would.
             if (settled.DeletedUtc is not null && album.DeletedUtc is null)
             {
                 await _db.AlbumMembers

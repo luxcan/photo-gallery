@@ -16,7 +16,9 @@ namespace PhotoGallery.Application.UseCases.Albums;
 /// <para><strong>It only ever revises its own suggestions.</strong> An album
 /// the user kept or made is not in what it reads and not in what it writes.
 /// That is the difference between offering and imposing, and it is why a rebuild
-/// after adding a folder does not disturb anything somebody has organised.</para>
+/// after adding a folder does not disturb anything somebody has organised. Days
+/// somebody has already answered - by keeping them, or by deleting what they
+/// kept - are not offered again at all.</para>
 ///
 /// <para><strong>A rejection is honoured before a proposal is made, not
 /// after.</strong> The photographs the user has refused for a span are dropped

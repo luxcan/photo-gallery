@@ -1,7 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using PhotoGallery.Application.Ports;
-using PhotoGallery.Domain.Assets;
 using PhotoGallery.Domain.Albums;
+using PhotoGallery.Domain.Assets;
 using PhotoGallery.Domain.People;
 
 namespace PhotoGallery.Infrastructure.Persistence;
@@ -91,6 +91,9 @@ public sealed class SqliteAlbumRepository : IAlbumRepository
             .Where(album => album.ProposalKey is not null)
             .ToDictionary(album => album.ProposalKey!, StringComparer.Ordinal);
 
+        HashSet<string> answered =
+            await AnsweredAsync(cancellationToken).ConfigureAwait(false);
+
         var offered = new HashSet<string>(
             proposals.Select(proposal => proposal.ProposalKey), StringComparer.Ordinal);
 
@@ -152,6 +155,13 @@ public sealed class SqliteAlbumRepository : IAlbumRepository
             if (byKey.TryGetValue(proposal.ProposalKey, out Album? row))
             {
                 Fill(row, proposal, now);
+            }
+            else if (answered.Contains(proposal.ProposalKey))
+            {
+                // Not offered, and not counted as offered: somebody has already
+                // answered these days, by keeping them or by deleting what they
+                // kept.
+                continue;
             }
             else
             {
@@ -537,6 +547,13 @@ public sealed class SqliteAlbumRepository : IAlbumRepository
         // it, so they are free to join another - a tombstone holding photographs
         // against the one-album rule would be the hostage the dismissal path
         // already refuses to take.
+        //
+        // A kept suggestion's tombstone keeps its run of days, on purpose. The
+        // other machines know the album by its days rather than its row, so that
+        // is how the deletion reaches them - and it is the answer the deletion
+        // gives: never suggest these days again. The photographs let go here
+        // group into those same days on the next scan, and the rebuild reads the
+        // tombstone so as not to offer them.
         album.Members.Clear();
         album.DeletedUtc = DateTime.UtcNow;
         await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
@@ -803,6 +820,54 @@ public sealed class SqliteAlbumRepository : IAlbumRepository
                 ProposalKey = span,
                 RejectedUtc = now,
             }));
+    }
+
+    /// <summary>
+    /// Every run of days somebody has already answered, which no rebuild may
+    /// offer again.
+    /// </summary>
+    /// <remarks>
+    /// Read past the tombstone filter, because a tombstone is half of what this
+    /// is for. Deleting a kept suggestion leaves a row that keeps its run of
+    /// days - deleted here, or on another machine whose deletion reached this one
+    /// - and that key is the answer "never suggest these days again". It is also
+    /// still in the unique index on the column, which counts a deleted row like
+    /// any other. A rebuild that could not see the tombstone added a second row
+    /// under the same key, the database refused it, and the scan failed there on
+    /// every run from then on.
+    ///
+    /// <para>A kept suggestion is the other half, and it broke the rebuild the
+    /// same way: photographs of its days found after it was kept grouped into
+    /// the same run, and were offered as a new suggestion under the key the
+    /// kept album already held. They are not offered now - those days are
+    /// answered - and they do not join the kept album either, though keeping
+    /// promises that they will. The rebuild would be the one deciding, dated
+    /// the moment it ran, and a kept album sends its photographs to the other
+    /// machines as decisions: one somebody on another laptop had already filed
+    /// somewhere else would be taken back out of it on the next merge, by a
+    /// grouping nobody chose. Until a photograph the app placed loses to every
+    /// one a person placed, a kept album is left exactly as it was kept, which
+    /// is also what the screen tells somebody when they keep one.</para>
+    ///
+    /// <para>An album somebody made carries no key. One that did would be left
+    /// alone, which is what this pass owes it whatever it carries.</para>
+    ///
+    /// <para>Matched on the key alone, the way a refusal is. A run of days that
+    /// later gains photographs either side becomes a different run, and is a
+    /// different question.</para>
+    /// </remarks>
+    private async Task<HashSet<string>> AnsweredAsync(CancellationToken cancellationToken)
+    {
+        List<string> keys = await _db.Albums
+            .IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(album => album.ProposalKey != null
+                         && (album.DeletedUtc != null || album.Origin != AlbumOrigin.Proposed))
+            .Select(album => album.ProposalKey!)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        return new HashSet<string>(keys, StringComparer.Ordinal);
     }
 
     private static Album New(ProposedAlbum proposal, DateTime now)

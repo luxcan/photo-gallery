@@ -115,8 +115,15 @@ public sealed class Album
     /// <remarks>
     /// A tombstone, kept for ever, for the same reason a person's is: without one
     /// the next merge from a machine that still holds the album puts it back.
-    /// Only albums somebody made need one - a proposal removed by a rebuild was
-    /// never a decision, and a rejection already records the one that was.
+    /// Only albums somebody made or kept need one - a proposal removed by a
+    /// rebuild was never a decision, and a rejection already records the one
+    /// that was.
+    ///
+    /// <para>A kept suggestion's tombstone keeps its <see cref="ProposalKey"/>,
+    /// and that key is an answer: never suggest these days again. The rebuild
+    /// reads it as one, wherever the deletion was made. A suggestion of this
+    /// library's own that such a deletion reached keeps its key too when it
+    /// goes: still a suggestion, but the same answer about the same days.</para>
     /// </remarks>
     public DateTime? DeletedUtc { get; set; }
 

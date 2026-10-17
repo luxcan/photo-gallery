@@ -28,7 +28,12 @@ public interface IAlbumRepository
     /// Matched to what is already there by span, never by id: a proposal is a
     /// derived row and its id changes every rebuild. A proposal whose span is no
     /// longer offered goes; an album the user kept or made never does.
+    ///
+    /// <para>A span somebody has already answered is not offered again: not one
+    /// a kept suggestion holds, and not one whose kept suggestion somebody
+    /// deleted - here, or on a machine whose deletion reached this one.</para>
     /// </remarks>
+    /// <returns>How many of these are on offer once it is done.</returns>
     Task<int> SaveProposalsAsync(
         IReadOnlyList<ProposedAlbum> proposals,
         CancellationToken cancellationToken = default);

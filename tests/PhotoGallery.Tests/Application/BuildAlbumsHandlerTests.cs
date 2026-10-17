@@ -1,8 +1,8 @@
 using Microsoft.EntityFrameworkCore;
 using PhotoGallery.Application.Ports;
 using PhotoGallery.Application.UseCases.Albums;
-using PhotoGallery.Domain.Assets;
 using PhotoGallery.Domain.Albums;
+using PhotoGallery.Domain.Assets;
 using PhotoGallery.Domain.Faces;
 using PhotoGallery.Domain.Library;
 using PhotoGallery.Infrastructure.Persistence;
@@ -274,6 +274,93 @@ public sealed class BuildAlbumsHandlerTests : IDisposable
         await NewHandler().HandleAsync();
 
         Assert.Equal("Genting, at last", await _db.Albums.Select(c => c.Name).SingleAsync());
+    }
+
+    /// <summary>
+    /// Deleting a suggestion somebody kept is an answer about those days, and
+    /// every rebuild afterwards honours it.
+    /// </summary>
+    /// <remarks>
+    /// The tombstone keeps its run of days, which is how the deletion reaches
+    /// the other machines, and its photographs are let go. Those photographs
+    /// are the very ones the clusterer grouped into that run in the first
+    /// place, so the next scan offers the same key again - and the rebuild,
+    /// which could not see the tombstone, added a second row under it. The
+    /// key is unique whether or not a row is deleted, so that failed the whole
+    /// last phase of the scan, and of every scan after it.
+    /// </remarks>
+    [Fact]
+    public async Task AKeptSuggestionSomebodyDeletedIsNeverSuggestedAgain()
+    {
+        AddDays(Trip, days: 3, perDay: 6);
+        await NewHandler().HandleAsync();
+
+        IAlbumRepository repository = Repository();
+        int id = await _db.Albums.Select(c => c.Id).SingleAsync();
+        await repository.AcceptAsync(id);
+        await repository.DeleteAsync(id);
+        _db.ChangeTracker.Clear();
+
+        AlbumsResult again = await NewHandler().HandleAsync();
+
+        Assert.Equal(0, again.Proposed);
+        Assert.Empty(await _db.Albums.ToListAsync());
+        Assert.Empty(await _db.AlbumMembers.ToListAsync());
+
+        // And on the scan after that, which is where a failure that only
+        // happened once would have hidden.
+        await NewHandler().HandleAsync();
+
+        Assert.Empty(await _db.Albums.ToListAsync());
+        Assert.Equal(
+            "2019-03-03..2019-03-05",
+            await _db.Albums.IgnoreQueryFilters().Select(c => c.ProposalKey).SingleAsync());
+    }
+
+    /// <summary>
+    /// A kept suggestion is left exactly as it was kept when its days gain
+    /// photographs later, and those days are not suggested a second time.
+    /// </summary>
+    /// <remarks>
+    /// Photographs copied over after the trip was kept group into the same run
+    /// of days, and the rebuild, which read only its own suggestions, added them
+    /// as a new row under a key the kept album already held - which the
+    /// database refused, and the scan with it.
+    ///
+    /// <para>They are not put into the kept album either, though keeping
+    /// promises they will be. The rebuild would be the one deciding, at the
+    /// moment it ran, and an album somebody kept sends its photographs to the
+    /// other machines as decisions: a scan here would outrank somebody on
+    /// another laptop who had filed one of them somewhere else first. Until a
+    /// photograph the app placed loses to every one a person placed, the
+    /// rebuild writes nothing to an album somebody kept - which is also what
+    /// the screen tells them when they keep it.</para>
+    /// </remarks>
+    [Fact]
+    public async Task AKeptSuggestionIsLeftAsItWasKeptWhenItsDaysGainPhotographs()
+    {
+        AddDays(Trip, days: 3, perDay: 6);
+        await NewHandler().HandleAsync();
+
+        Album proposed = await _db.Albums.Include(c => c.Members).AsNoTracking().SingleAsync();
+        await Repository().AcceptAsync(proposed.Id);
+        _db.ChangeTracker.Clear();
+
+        // Copied over afterwards: the same three days, and enough of them to be
+        // an occasion on their own.
+        AddDays(Trip.AddMinutes(20), days: 3, perDay: 3);
+
+        AlbumsResult again = await NewHandler().HandleAsync();
+
+        Album kept = await _db.Albums.Include(c => c.Members).SingleAsync();
+        Assert.Equal(proposed.Id, kept.Id);
+        Assert.Equal(AlbumOrigin.Accepted, kept.Origin);
+        Assert.Equal(proposed.Name, kept.Name);
+        Assert.Equal(proposed.CoverAssetId, kept.CoverAssetId);
+        Assert.Equal(
+            proposed.Members.Select(m => m.AssetId).Order(),
+            kept.Members.Select(m => m.AssetId).Order());
+        Assert.Equal(0, again.Proposed);
     }
 
     [Fact]

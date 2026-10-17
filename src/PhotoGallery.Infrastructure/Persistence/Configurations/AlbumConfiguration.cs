@@ -44,6 +44,11 @@ public sealed class AlbumConfiguration : IEntityTypeConfiguration<Album>
         // How a rebuild finds the row it wrote last time instead of adding a
         // second one. Unique because two occasions cannot cover the same run of
         // days - runs are disjoint by construction.
+        //
+        // Not filtered on DeletedUtc, so a tombstone still holds its key. That
+        // is wanted - a deleted kept suggestion's key is the answer "never
+        // suggest these days again" - but it means anything adding a row with a
+        // key has to look past the tombstone filter first, as the rebuild does.
         builder.HasIndex(c => c.ProposalKey).IsUnique();
 
         // The pass reads "the proposals only"; the screen reads "mine only".
