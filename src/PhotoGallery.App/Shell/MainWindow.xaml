@@ -215,21 +215,24 @@
                     <GridViewColumn Header="Last scanned" Width="160">
                       <GridViewColumn.CellTemplate>
                         <DataTemplate>
+                          <!-- One of the three at a time, each on its own answer
+                               from the row: a TextBlock has no background, so one
+                               stacked on another hides nothing beneath it. -->
                           <Grid>
                             <TextBlock Style="{DynamicResource TableCell}"
                                        Text="{Binding LastScanDisplay}"
                                        Foreground="{DynamicResource Editor.Placeholder}"
-                                       Visibility="{Binding IsScanning,
-                                                    Converter={StaticResource InverseBoolToVisibility}}" />
+                                       Visibility="{Binding ShowsLastScan,
+                                                    Converter={StaticResource BoolToVisibility}}" />
                             <TextBlock Style="{DynamicResource TableCell}" Text="Scanning..."
                                        Foreground="{DynamicResource Status.Info}"
                                        Visibility="{Binding IsScanning,
                                                     Converter={StaticResource BoolToVisibility}}" />
-                            <!-- Painted over the date, because a date would say the
+                            <!-- Instead of the date, because a date would say the
                                  folder was checked when it could not even be opened. -->
                             <TextBlock Style="{DynamicResource TableCell}" Text="Not reachable"
                                        Foreground="{DynamicResource Status.Danger}"
-                                       Visibility="{Binding IsUnavailable,
+                                       Visibility="{Binding ShowsUnavailable,
                                                     Converter={StaticResource BoolToVisibility}}" />
                           </Grid>
                         </DataTemplate>

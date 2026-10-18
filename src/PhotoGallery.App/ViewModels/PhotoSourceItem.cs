@@ -16,6 +16,7 @@ public sealed partial class PhotoSourceItem : ObservableObject
 
     /// <summary>True while this source is being scanned, so its row can say so.</summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowsLastScan), nameof(ShowsUnavailable))]
     private bool _isScanning;
 
     /// <summary>
@@ -28,6 +29,7 @@ public sealed partial class PhotoSourceItem : ObservableObject
     /// and the row must not imply they were checked.
     /// </remarks>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowsLastScan), nameof(ShowsUnavailable))]
     private bool _isUnavailable;
 
     public PhotoSourceItem(int id, string path, int photoCount, DateTime? lastScanUtc)
@@ -58,6 +60,18 @@ public sealed partial class PhotoSourceItem : ObservableObject
     public string PhotoCountDisplay => LastScanUtc is null
         ? "—"
         : PhotoCount.ToString("N0", CultureInfo.CurrentCulture);
+
+    /// <summary>Whether the row's "Last scanned" cell shows the date.</summary>
+    /// <remarks>
+    /// The cell says one thing at a time - the date, "Scanning...", or "Not
+    /// reachable" - and a scan running now outranks what the last one found.
+    /// Stacked in one cell, a TextBlock has no background to hide the one
+    /// beneath it, so each needs its own answer rather than a place on top.
+    /// </remarks>
+    public bool ShowsLastScan => !IsScanning && !IsUnavailable;
+
+    /// <summary>Whether the row's "Last scanned" cell says "Not reachable".</summary>
+    public bool ShowsUnavailable => IsUnavailable && !IsScanning;
 
     public string LastScanDisplay => LastScanUtc is null
         ? "Never"
