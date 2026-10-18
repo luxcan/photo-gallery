@@ -64,7 +64,8 @@ public sealed class SqliteDecisionRepository : IDecisionRepository
                 0, 0, 0, 0, [], plan.Joins, plan.Refused, WasCancelled: true);
         }
 
-        progress?.Report(new MergeProgress("Albums", 0, plan.Albums.Count + plan.Moves.Count));
+        progress?.Report(new MergeProgress(
+            "Albums", 0, plan.Albums.Count + plan.Moves.Count + plan.DismissedHere.Count));
 
         // Shelves before the albums that sit on them, so an album arriving on a
         // shelf this library is hearing about in the same breath finds it there.
@@ -73,10 +74,18 @@ public sealed class SqliteDecisionRepository : IDecisionRepository
         int collections =
             await ApplyCollectionsAsync(plan, cancellationToken).ConfigureAwait(false);
 
-        int albums = await ApplyAlbumsAsync(plan, cancellationToken).ConfigureAwait(false);
+        await ApplyDismissalsAsync(plan, cancellationToken).ConfigureAwait(false);
+
+        (int albums, HashSet<int> kept) =
+            await ApplyAlbumsAsync(plan, cancellationToken).ConfigureAwait(false);
 
         (int moved, HashSet<int> settling) =
             await ApplyMovesAsync(plan, cancellationToken).ConfigureAwait(false);
+
+        // A suggestion this merge kept can lose its cover among the photographs
+        // let go as it was taken in, so the rule runs over it whether or not
+        // anything moved into it.
+        settling.UnionWith(kept);
 
         // After the photographs have moved and been saved, because which picture
         // an album shows is worked out by reading its memberships back out.
@@ -647,17 +656,44 @@ public sealed class SqliteDecisionRepository : IDecisionRepository
 
     // ---------------------------------------------------------------- albums
 
-    private async Task<int> ApplyAlbumsAsync(MergePlan plan, CancellationToken cancellationToken)
+    /// <returns>
+    /// How many albums changed, and the rows of the suggestions this merge
+    /// kept - each of which needs its cover worked out again.
+    /// </returns>
+    private async Task<(int Changed, HashSet<int> Kept)> ApplyAlbumsAsync(
+        MergePlan plan, CancellationToken cancellationToken)
     {
-        if (plan.Albums.Count == 0)
+        if (plan.Albums.Count == 0 && plan.DismissedHere.Count == 0)
         {
-            return 0;
+            return (0, []);
         }
 
         List<Album> here = await _db.Albums
             .IgnoreQueryFilters()
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
+
+        int changed = await TakeAwayAsync(plan.DismissedHere, here, cancellationToken)
+            .ConfigureAwait(false);
+
+        HashSet<int> kept = [];
+
+        // Every refusal this merge leaves standing, read once and only if a
+        // suggestion is kept - which most merges keep none of.
+        Dictionary<string, HashSet<int>>? refusals = null;
+
+        async Task KeepAsync(Album album, DateTime? keptUtc)
+        {
+            refusals ??= await RefusalsAsync(plan, cancellationToken).ConfigureAwait(false);
+
+            await KeepHereAsync(
+                album,
+                keptUtc,
+                refusals.GetValueOrDefault(album.ProposalKey ?? string.Empty) ?? [],
+                cancellationToken).ConfigureAwait(false);
+
+            kept.Add(album.Id);
+        }
 
         // Written by the pass just above this one, so a shelf arriving in the
         // same merge is already here to be found.
@@ -669,8 +705,6 @@ public sealed class SqliteDecisionRepository : IDecisionRepository
                 collection => collection.Id,
                 cancellationToken)
             .ConfigureAwait(false);
-
-        int changed = 0;
 
         foreach (SharedAlbum settled in plan.Albums)
         {
@@ -723,6 +757,7 @@ public sealed class SqliteDecisionRepository : IDecisionRepository
                         Origin = settled.Origin,
                         ProposalKey = settled.ProposalKey,
                         NamedUtc = settled.NamedUtc,
+                        KeptUtc = settled.KeptUtc,
                         DeletedUtc = settled.DeletedUtc,
                         BuiltUtc = DateTime.UtcNow,
                     });
@@ -734,12 +769,17 @@ public sealed class SqliteDecisionRepository : IDecisionRepository
                 // Only an album somebody made or kept is created from a merge. A
                 // live proposal is derived, so its row is this machine's own to
                 // build - what travels about one is a name, and a name with
-                // nothing to sit on waits for the rebuild that makes it.
-                if (settled.Origin == AlbumOrigin.Proposed)
+                // nothing to sit on waits for the rebuild that makes it. The
+                // merge asks the same question before planning one at all, so
+                // this is a guard rather than a decision.
+                if (!DecisionMerge.CreatesARow(settled))
                 {
                     continue;
                 }
 
+                // Kept elsewhere at the moment it was kept there, not the moment
+                // it arrived here: a dismissal made in between has to be able
+                // to tell which came last.
                 _db.Albums.Add(new Album
                 {
                     PublicId = settled.PublicId,
@@ -750,6 +790,7 @@ public sealed class SqliteDecisionRepository : IDecisionRepository
                     Origin = settled.Origin,
                     ProposalKey = settled.ProposalKey,
                     NamedUtc = settled.NamedUtc,
+                    KeptUtc = settled.KeptUtc,
                     BuiltUtc = DateTime.UtcNow,
                     CollectionId = Shelf(shelves, settled),
                     ShelvedUtc = settled.ShelvedUtc,
@@ -779,12 +820,53 @@ public sealed class SqliteDecisionRepository : IDecisionRepository
                 album.DeletedUtc = settled.DeletedUtc;
                 touched = true;
             }
+            else if (settled.DeletedUtc < album.DeletedUtc)
+            {
+                // Two tombstones, and the merge settled on the earlier moment.
+                // Nobody sees which, so it is not counted, but left behind it
+                // keeps the album in every plan from here on.
+                album.DeletedUtc = settled.DeletedUtc;
+            }
 
-            if (!string.Equals(album.Name, settled.Name, StringComparison.Ordinal))
+            // The name and its date together, whenever either differs. Written
+            // only when the name itself changed, a name typed on another laptop
+            // to the very words this one already showed never took that
+            // laptop's date - and the album was planned again on every merge
+            // afterwards, for a change nobody could see. Counted only when the
+            // name is different, because that is the one somebody would notice.
+            bool renamed = !string.Equals(album.Name, settled.Name, StringComparison.Ordinal);
+
+            if (renamed || album.NamedUtc != settled.NamedUtc)
             {
                 album.Name = settled.Name;
                 album.NamedUtc = settled.NamedUtc;
+                touched |= renamed;
+            }
+
+            // Kept on another laptop, where this one still only suggests those
+            // days: kept here too, where it stands. The row keeps its own
+            // identity and its place on the wall, and from now on the rebuild
+            // leaves it alone, the album picker offers it, and its photographs
+            // are published. Never the other way: nothing a merge carries turns
+            // a kept album back into a suggestion.
+            if (settled.Origin == AlbumOrigin.Accepted
+                && album.Origin == AlbumOrigin.Proposed
+                && settled.DeletedUtc is null
+                && album.DeletedUtc is null)
+            {
+                await KeepAsync(album, settled.KeptUtc).ConfigureAwait(false);
                 touched = true;
+            }
+            else if (settled.Origin == AlbumOrigin.Accepted
+                && album.Origin == AlbumOrigin.Accepted
+                && settled.DeletedUtc is null
+                && album.DeletedUtc is null
+                && album.KeptUtc != settled.KeptUtc)
+            {
+                // The latest keep anybody can date, which is what the next
+                // dismissal of these days is judged against. Not counted:
+                // nothing about the album that anybody sees has changed.
+                album.KeptUtc = settled.KeptUtc;
             }
 
             // Compared against the row rather than trusted from the plan: the
@@ -802,10 +884,13 @@ public sealed class SqliteDecisionRepository : IDecisionRepository
                 // decision the tick list makes, and for the same reason. A
                 // proposal is still a question as far as a rebuild is concerned,
                 // and a rebuild removes a question nobody answered, taking the
-                // album off the shelf somebody just filled with it.
+                // album off the shelf somebody just filled with it. Only a
+                // suggestion shelved by a release before shelving kept one
+                // reaches this; a keep arriving with its shelf was kept above,
+                // and the shelving was the keep, so it carries that moment.
                 if (shelf is not null && album.Origin == AlbumOrigin.Proposed)
                 {
-                    album.Origin = AlbumOrigin.Accepted;
+                    await KeepAsync(album, settled.ShelvedUtc).ConfigureAwait(false);
                 }
 
                 album.CollectionId = shelf;
@@ -822,7 +907,202 @@ public sealed class SqliteDecisionRepository : IDecisionRepository
         await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
         _db.ChangeTracker.Clear();
 
-        return changed;
+        return (changed, kept);
+    }
+
+    /// <summary>
+    /// Takes away this library's own kept albums that a later dismissal beat.
+    /// </summary>
+    /// <remarks>
+    /// Deleted outright, with the photographs' places in them, and leaving no
+    /// tombstone. A tombstone keeping these days would be read by the rebuild
+    /// as "never suggest these days again", which is what deleting a kept album
+    /// says and not what dismissing a suggestion says - and no later keep could
+    /// ever bring the album back. The photographs themselves stay in the
+    /// library.
+    ///
+    /// <para>No refusals are written. The dismisser's own arrive in this same
+    /// merge, and writing more would put words in somebody's mouth about
+    /// photographs they never looked at.</para>
+    ///
+    /// <para>Moves waiting here for a photograph to arrive into one of these
+    /// albums go with it. Nothing will ever place them once the album is gone,
+    /// and kept, they would sit on the Sync screen as waiting for good.</para>
+    ///
+    /// <para>Saved before anything else is written, for the reason the rebuild
+    /// saves its removals first: a photograph has one membership row, and a move
+    /// filing it elsewhere in this same merge must not meet the old one.</para>
+    /// </remarks>
+    private async Task<int> TakeAwayAsync(
+        IReadOnlyList<SharedAlbumDismissal> dismissedHere,
+        List<Album> here,
+        CancellationToken cancellationToken)
+    {
+        int taken = 0;
+
+        foreach (SharedAlbumDismissal dismissal in dismissedHere)
+        {
+            Album? kept = here.FirstOrDefault(row =>
+                row.ProposalKey == dismissal.ProposalKey
+                && row.DeletedUtc == null
+                && row.Origin == AlbumOrigin.Accepted);
+
+            if (kept is null)
+            {
+                continue;
+            }
+
+            string waitingFor = PartOf(kept.PublicId);
+
+            await _db.HeldDecisions
+                .Where(held => held.Kind == HeldDecisionKind.SharedAlbumMembership
+                            && held.Part == waitingFor)
+                .ExecuteDeleteAsync(cancellationToken)
+                .ConfigureAwait(false);
+
+            _db.Albums.Remove(kept);
+            here.Remove(kept);
+            taken++;
+        }
+
+        if (taken > 0)
+        {
+            await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        return taken;
+    }
+
+    /// <summary>
+    /// Keeps this library's own suggestion for days somebody kept on another
+    /// laptop, where it stands.
+    /// </summary>
+    /// <remarks>
+    /// Until now the rebuild owned everything in it, and everything in it the
+    /// rebuild put there carries no author. From now on it is published as this
+    /// library's answer, so two things about it change first.
+    ///
+    /// <para>What the rebuild put there that somebody refused for these days
+    /// goes. Taken out of the kept album on the other laptop, a photograph is
+    /// remembered only as a refusal - and published here as this library's
+    /// answer, newer than anything said there, it would go straight back into
+    /// the album it was taken out of. Only what the rebuild put there: a
+    /// photograph somebody put back after taking it out keeps its place,
+    /// because putting it back never clears the refusal.</para>
+    ///
+    /// <para>What the rebuild put there that stays is dated
+    /// <see cref="AlbumMember.AppPlacedUtc"/>, the earliest moment there is. It
+    /// was dated whenever the last scan ran, and published at that date it
+    /// would beat somebody on another laptop who filed the photograph elsewhere
+    /// days before. Nobody chose this one, so anything a person chose beats
+    /// it.</para>
+    ///
+    /// <para>Before the moves of the same merge, which then rewrite every
+    /// photograph the other laptop's album holds with that laptop's moment and
+    /// author.</para>
+    /// </remarks>
+    /// <param name="refused">
+    /// The photographs refused for these days, here and in this merge's plan -
+    /// the plan's are written later in the merge, and are wanted now.
+    /// </param>
+    private async Task KeepHereAsync(
+        Album album,
+        DateTime? keptUtc,
+        IReadOnlySet<int> refused,
+        CancellationToken cancellationToken)
+    {
+        int[] unwanted = [.. refused];
+
+        await _db.AlbumMembers
+            .Where(member => member.AlbumId == album.Id
+                          && member.AddedBy == Guid.Empty
+                          && unwanted.Contains(member.AssetId))
+            .ExecuteDeleteAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        await _db.AlbumMembers
+            .Where(member => member.AlbumId == album.Id && member.AddedBy == Guid.Empty)
+            .ExecuteUpdateAsync(
+                setters => setters.SetProperty(member => member.AddedUtc, AlbumMember.AppPlacedUtc),
+                cancellationToken)
+            .ConfigureAwait(false);
+
+        album.Keep(keptUtc);
+    }
+
+    /// <summary>
+    /// Every photograph refused for each run of days, as it will stand by the
+    /// end of this merge: what this library holds, and what the plan is about
+    /// to add.
+    /// </summary>
+    private async Task<Dictionary<string, HashSet<int>>> RefusalsAsync(
+        MergePlan plan, CancellationToken cancellationToken)
+    {
+        var held = await _db.AlbumRejections
+            .AsNoTracking()
+            .Select(rejection => new { rejection.AssetId, rejection.ProposalKey })
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        Dictionary<AssetKey, int> assets =
+            await AssetRowsAsync(cancellationToken).ConfigureAwait(false);
+
+        IEnumerable<(int AssetId, string ProposalKey)> arriving = plan.Rejections
+            .Where(rejection => assets.ContainsKey(rejection.Photo))
+            .Select(rejection => (assets[rejection.Photo], rejection.ProposalKey));
+
+        Dictionary<string, HashSet<int>> refused = new(StringComparer.Ordinal);
+
+        foreach ((int assetId, string days) in
+                 held.Select(row => (row.AssetId, row.ProposalKey)).Concat(arriving))
+        {
+            if (!refused.TryGetValue(days, out HashSet<int>? photographs))
+            {
+                refused[days] = photographs = [];
+            }
+
+            photographs.Add(assetId);
+        }
+
+        return refused;
+    }
+
+    /// <summary>
+    /// Remembers the latest dismissal of each run of days the merge settled on.
+    /// </summary>
+    /// <remarks>
+    /// The merge has already chosen the winner, so this only writes it, author
+    /// and moment as they arrived. Before the albums, so that a merge stopped
+    /// between the two still finds the dismissal standing next time and takes
+    /// the kept album away then. Not counted: it changes nothing anybody sees,
+    /// only what this library tells the next one.
+    /// </remarks>
+    private async Task ApplyDismissalsAsync(MergePlan plan, CancellationToken cancellationToken)
+    {
+        if (plan.Dismissals.Count == 0)
+        {
+            return;
+        }
+
+        Dictionary<string, AlbumDismissal> here = await _db.AlbumDismissals
+            .ToDictionaryAsync(row => row.ProposalKey, StringComparer.Ordinal, cancellationToken)
+            .ConfigureAwait(false);
+
+        foreach (SharedAlbumDismissal dismissal in plan.Dismissals)
+        {
+            if (!here.TryGetValue(dismissal.ProposalKey, out AlbumDismissal? row))
+            {
+                row = new AlbumDismissal { ProposalKey = dismissal.ProposalKey };
+                _db.AlbumDismissals.Add(row);
+                here[dismissal.ProposalKey] = row;
+            }
+
+            row.DismissedUtc = dismissal.DismissedUtc;
+            row.DismissedBy = dismissal.DecidedBy;
+        }
+
+        await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        _db.ChangeTracker.Clear();
     }
 
     /// <summary>
@@ -1447,7 +1727,7 @@ public sealed class SqliteDecisionRepository : IDecisionRepository
             yield return new Waiting(
                 membership.Photo,
                 HeldDecisionKind.SharedAlbumMembership,
-                membership.Album.ToString("D"),
+                PartOf(membership.Album),
                 Written(membership),
                 membership.DecidedBy,
                 membership.AddedUtc);
@@ -1464,6 +1744,17 @@ public sealed class SqliteDecisionRepository : IDecisionRepository
                 rejection.RejectedUtc);
         }
     }
+
+    /// <summary>
+    /// The part a move waiting for its photograph is filed under: the album it
+    /// is going into.
+    /// </summary>
+    /// <remarks>
+    /// One spelling for the two places that need it - parking a move, and
+    /// letting go of the moves into an album a dismissal took away. Spelt twice,
+    /// the two would drift, and moves into a removed album would wait for ever.
+    /// </remarks>
+    private static string PartOf(Guid album) => album.ToString("D");
 
     // ----------------------------------------------------------------- shared
 

@@ -21,6 +21,7 @@ internal sealed class Machine
     private readonly List<SharedAlbum> _albums = [];
     private readonly List<SharedAlbumMembership> _memberships = [];
     private readonly List<SharedAlbumRejection> _rejections = [];
+    private readonly List<SharedAlbumDismissal> _dismissals = [];
     private readonly List<SharedEra> _eras = [];
     private readonly List<SharedSource> _sources;
     private readonly List<SourceLink> _links = [];
@@ -109,6 +110,13 @@ internal sealed class Machine
         return this;
     }
 
+    /// <summary>Somebody here dismissed the suggestion for this run of days.</summary>
+    public Machine Dismisses(string proposalKey, DateTime when)
+    {
+        _dismissals.Add(new SharedAlbumDismissal(proposalKey, when, Id));
+        return this;
+    }
+
     public Machine Remembers(
         Guid person, DateTime fromUtc, DateTime toUtc, double degrees, int samples = 12)
     {
@@ -129,5 +137,8 @@ internal sealed class Machine
             _memberships,
             _rejections,
             _eras,
-            _links);
+            _links)
+        {
+            Dismissals = _dismissals,
+        };
 }

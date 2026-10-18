@@ -16,7 +16,7 @@ namespace PhotoGallery.Infrastructure.Persistence.Migrations
         protected override void BuildModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
-            modelBuilder.HasAnnotation("ProductVersion", "9.0.20");
+            modelBuilder.HasAnnotation("ProductVersion", "9.0.21");
 
             modelBuilder.Entity("PhotoGallery.Domain.Albums.Album", b =>
                 {
@@ -40,6 +40,9 @@ namespace PhotoGallery.Infrastructure.Persistence.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<DateTime>("EndUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("KeptUtc")
                         .HasColumnType("TEXT");
 
                     b.Property<int>("Kind")
@@ -97,6 +100,23 @@ namespace PhotoGallery.Infrastructure.Persistence.Migrations
                     b.HasIndex("StartUtc");
 
                     b.ToTable("Albums", (string)null);
+                });
+
+            modelBuilder.Entity("PhotoGallery.Domain.Albums.AlbumDismissal", b =>
+                {
+                    b.Property<string>("ProposalKey")
+                        .HasMaxLength(24)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("DismissedBy")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("DismissedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("ProposalKey");
+
+                    b.ToTable("AlbumDismissals", (string)null);
                 });
 
             modelBuilder.Entity("PhotoGallery.Domain.Albums.AlbumFileMove", b =>

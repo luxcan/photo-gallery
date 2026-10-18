@@ -110,6 +110,30 @@ public sealed class Album
     public DateTime? NamedUtc { get; set; }
 
     /// <summary>
+    /// When somebody kept this suggestion, or null while nobody has - or where
+    /// they did and the moment was never recorded.
+    /// </summary>
+    /// <remarks>
+    /// Keeping and dismissing are two answers about the same run of days, and
+    /// when two laptops give different ones the later stands. That needs a
+    /// moment for each, and keeping had none: <see cref="Origin"/> says
+    /// whether, never when.
+    ///
+    /// <para>Null on a suggestion nobody answered and on an album somebody made,
+    /// because neither was kept. Null on a kept one as well where the keep came
+    /// from a release that did not record it - and that null is honest rather
+    /// than a gap: the moment is unknown, so it loses to any dismissal that
+    /// knows its own, the way every undated answer in this app loses to a dated
+    /// one. Nothing fills it in. <see cref="BuiltUtc"/> is the only date such a
+    /// row has, and on a row a merge created that is when it arrived, not when
+    /// anybody kept it.</para>
+    ///
+    /// <para>Set by <see cref="Keep"/>, and moved on by <see cref="KeepAgain"/>
+    /// whenever somebody works on the album afterwards.</para>
+    /// </remarks>
+    public DateTime? KeptUtc { get; set; }
+
+    /// <summary>
     /// When this album was deleted, or null while it is still in the library.
     /// </summary>
     /// <remarks>
@@ -196,4 +220,68 @@ public sealed class Album
         || RuleToUtc is not null
         || RulePeople.Count > 0
         || RulePlaces.Count > 0;
+
+    /// <summary>
+    /// Keeps a suggestion, saying when. The one way a suggestion becomes
+    /// somebody's.
+    /// </summary>
+    /// <remarks>
+    /// One method rather than the two lines it replaces, because there are
+    /// five ways to keep a suggestion - the Keep button, a shelf from the tick
+    /// list, a shelf from the album's own panel, the rebuild promoting a
+    /// suggestion an older release shelved, and a merge taking in a keep from
+    /// another laptop - and a keep that forgot its moment on any one of them
+    /// would lose to every dismissal in the house without anybody seeing why.
+    /// </remarks>
+    /// <param name="keptUtc">
+    /// When it was kept, or null where nobody can say: a keep arriving from a
+    /// release that did not record one.
+    /// </param>
+    /// <returns>Whether this was a suggestion that is now kept.</returns>
+    public bool Keep(DateTime? keptUtc)
+    {
+        if (Origin != AlbumOrigin.Proposed)
+        {
+            return false;
+        }
+
+        Origin = AlbumOrigin.Accepted;
+        KeptUtc = keptUtc;
+        return true;
+    }
+
+    /// <summary>
+    /// Records that somebody has just worked on this album, which keeps it
+    /// again if it is a kept suggestion.
+    /// </summary>
+    /// <remarks>
+    /// Renaming a kept suggestion, putting it on a shelf, choosing its cover or
+    /// adding photographs to it is a later act of wanting the album. Under
+    /// "whichever answer came last stands" a dismissal made on another laptop
+    /// before that work must not take it away - losing an album somebody has
+    /// been tending to an earlier dismissal is the worse of the two mistakes.
+    /// Every one of those writes comes through here, so the rule can be changed
+    /// in one place.
+    ///
+    /// <para>Nothing happens to a suggestion nobody kept - renaming one is not
+    /// keeping it - or to an album somebody made, which was never a suggestion
+    /// and has no dismissal to lose to.</para>
+    ///
+    /// <para>The later of the two moments, never the earlier. A keep arriving
+    /// from a laptop whose clock is a little ahead can carry a moment after
+    /// this one, and taking it back would let a dismissal between the two
+    /// win.</para>
+    /// </remarks>
+    public void KeepAgain(DateTime workedOnUtc)
+    {
+        if (Origin != AlbumOrigin.Accepted || ProposalKey is null)
+        {
+            return;
+        }
+
+        if (KeptUtc is null || KeptUtc < workedOnUtc)
+        {
+            KeptUtc = workedOnUtc;
+        }
+    }
 }

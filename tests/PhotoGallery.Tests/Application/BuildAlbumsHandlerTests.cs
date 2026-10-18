@@ -363,6 +363,47 @@ public sealed class BuildAlbumsHandlerTests : IDisposable
         Assert.Equal(0, again.Proposed);
     }
 
+    /// <summary>
+    /// A rebuild leaves a cover somebody chose alone, for as long as the album
+    /// still holds that photograph.
+    /// </summary>
+    /// <remarks>
+    /// The rebuild wrote the clusterer's pick over every suggestion's cover and
+    /// left the date saying somebody had chosen it - so the app's guess went on
+    /// being published as a person's choice, under their moment, and could beat
+    /// a real choice on another laptop. Once the chosen photograph has left the
+    /// album the clusterer's pick is the better answer, and the choice is
+    /// forgotten, which is what adding or removing a photograph already does.
+    /// </remarks>
+    [Fact]
+    public async Task ARebuildLeavesAChosenCoverAlone()
+    {
+        AddDays(Trip, days: 3, perDay: 6);
+        await NewHandler().HandleAsync();
+
+        Album proposed = await _db.Albums.Include(c => c.Members).AsNoTracking().SingleAsync();
+        int[] members = [.. proposed.Members.Select(m => m.AssetId).Order()];
+        int chosen = members[0];
+        int picked = members[^1];
+
+        Assert.True(await Repository().SetCoverAsync(proposed.Id, chosen));
+        _db.ChangeTracker.Clear();
+
+        await Repository().SaveProposalsAsync([Offered(proposed, members, picked)]);
+        _db.ChangeTracker.Clear();
+
+        Album rebuilt = await _db.Albums.AsNoTracking().SingleAsync();
+        Assert.Equal(chosen, rebuilt.CoverAssetId);
+        Assert.NotNull(rebuilt.CoverChosenUtc);
+
+        await Repository().SaveProposalsAsync([Offered(proposed, members[1..], picked)]);
+        _db.ChangeTracker.Clear();
+
+        rebuilt = await _db.Albums.AsNoTracking().SingleAsync();
+        Assert.Equal(picked, rebuilt.CoverAssetId);
+        Assert.Null(rebuilt.CoverChosenUtc);
+    }
+
     [Fact]
     public async Task PhotographsWithNoCaptureDateAreLeftOutRatherThanMisfiled()
     {
@@ -445,6 +486,10 @@ public sealed class BuildAlbumsHandlerTests : IDisposable
         new(Repository(), new SqliteAlbumFactsReader(_db));
 
     private IAlbumRepository Repository() => new SqliteAlbumRepository(_db);
+
+    /// <summary>The same run of days offered again, holding these photographs.</summary>
+    private static ProposedAlbum Offered(Album row, IReadOnlyList<int> assetIds, int cover) =>
+        new(row.ProposalKey!, row.Name, row.StartUtc, row.EndUtc, row.Kind, row.PlaceId, cover, assetIds);
 
     /// <summary>An occasion: several days running, several photographs a day.</summary>
     private void AddDays(DateTime start, int days, int perDay)

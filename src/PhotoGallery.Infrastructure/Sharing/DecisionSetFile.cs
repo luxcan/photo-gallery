@@ -53,6 +53,16 @@ public static class DecisionSetFile
         },
     };
 
+    /// <summary>Writes a decision set as it sits in the shared folder.</summary>
+    /// <remarks>
+    /// Every deleted album that carries a run of days is set aside in a list of
+    /// its own on the way out - see <see cref="DecisionSet.DeletedSuggestions"/>.
+    /// The previous release reads one where it always looked as a reason to
+    /// break its own scans, and skips a list it does not know. Done here, and
+    /// only here, because this is the one door a decision set leaves a library
+    /// by: everything that settles a merge goes on seeing them exactly where it
+    /// always did.
+    /// </remarks>
     public static async Task WriteAsync(
         Stream destination, DecisionSet decisions, CancellationToken cancellationToken = default)
     {
@@ -63,10 +73,16 @@ public static class DecisionSetFile
         // it to disk and rename it into place.
         await using var gzip = new GZipStream(destination, CompressionLevel.Optimal, leaveOpen: true);
         await JsonSerializer
-            .SerializeAsync(gzip, decisions, Shape, cancellationToken)
+            .SerializeAsync(gzip, decisions.WithDeletedSuggestionsSetAside(), Shape, cancellationToken)
             .ConfigureAwait(false);
     }
 
+    /// <summary>Reads a decision set from the shared folder.</summary>
+    /// <remarks>
+    /// The deleted suggestions set aside on the way out are put back among the
+    /// albums on the way in, so nothing past this point can tell they were
+    /// ever apart - nor forget to look for them.
+    /// </remarks>
     public static async Task<DecisionSet> ReadAsync(
         Stream source, CancellationToken cancellationToken = default)
     {
@@ -74,9 +90,11 @@ public static class DecisionSetFile
 
         await using var gzip = new GZipStream(source, CompressionMode.Decompress, leaveOpen: true);
 
-        return await JsonSerializer
+        DecisionSet read = await JsonSerializer
             .DeserializeAsync<DecisionSet>(gzip, Shape, cancellationToken)
             .ConfigureAwait(false)
             ?? throw new JsonException("The file held no answers.");
+
+        return read.WithDeletedSuggestionsPutBack();
     }
 }

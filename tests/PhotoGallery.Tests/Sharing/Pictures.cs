@@ -46,12 +46,28 @@ internal static class Pictures
         new(id, name, AlbumOrigin.Made, null, namedUtc, null);
 
     /// <summary>One the app proposed, named after the run of days it covers.</summary>
+    /// <param name="namedUtc">
+    /// When somebody typed a name for it. Renaming a suggestion is not keeping
+    /// it, so it stays a suggestion either way - this helper used to make one
+    /// kept whenever it was renamed, and a test could not then say "kept, and
+    /// never renamed", which is the very album keeping has to carry.
+    /// </param>
     public static SharedAlbum Proposal(string proposalKey, string name, DateTime? namedUtc = null) =>
+        new(Guid.NewGuid(), name, AlbumOrigin.Proposed, proposalKey, namedUtc, null);
+
+    /// <summary>One the app proposed and somebody kept, at the moment they kept it.</summary>
+    /// <param name="keptUtc">
+    /// When it was kept, or null for a keep made by a release that never
+    /// recorded one.
+    /// </param>
+    public static SharedAlbum Kept(
+        string proposalKey, string name, DateTime? keptUtc, DateTime? namedUtc = null) =>
         new(
             Guid.NewGuid(),
             name,
-            namedUtc is null ? AlbumOrigin.Proposed : AlbumOrigin.Accepted,
+            AlbumOrigin.Accepted,
             proposalKey,
             namedUtc,
-            null);
+            null,
+            KeptUtc: keptUtc);
 }

@@ -110,9 +110,10 @@ public sealed class SqliteAlbumRepository : IAlbumRepository
             // delete rather than a tombstone. Waiting for its key to go stale
             // would never heal it: shelving an album changes no photograph, so
             // the clusterer offers that same key again on every later scan.
+            // The shelving was the keep, so it is kept as of then.
             if (album.CollectionId is not null)
             {
-                album.Origin = AlbumOrigin.Accepted;
+                album.Keep(album.ShelvedUtc);
                 continue;
             }
 
@@ -476,12 +477,11 @@ public sealed class SqliteAlbumRepository : IAlbumRepository
             .FirstOrDefaultAsync(row => row.Id == albumId, cancellationToken)
             .ConfigureAwait(false);
 
-        if (album is null || album.Origin != AlbumOrigin.Proposed)
+        if (album is null || !album.Keep(DateTime.UtcNow))
         {
             return;
         }
 
-        album.Origin = AlbumOrigin.Accepted;
         await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
     }
 
@@ -492,10 +492,20 @@ public sealed class SqliteAlbumRepository : IAlbumRepository
             .FirstOrDefaultAsync(row => row.Id == albumId, cancellationToken)
             .ConfigureAwait(false);
 
-        if (album is null)
+        // Only a suggestion can be thrown away, as only a suggestion can be
+        // kept. The screen offers the button for nothing else, but a Sync can
+        // keep the suggestion underneath it - taking in a keep from another
+        // laptop - after the screen was read. Throwing that away would take a
+        // kept album out with no dismissal to say so, and the next Sync would
+        // bring it straight back.
+        if (album is null || album.Origin != AlbumOrigin.Proposed)
         {
             return;
         }
+
+        // One moment for the whole press, so the refusals and the dismissal
+        // are one decision wherever they travel.
+        DateTime now = DateTime.UtcNow;
 
         // Dismissing is remembering, one row per photograph. The album row
         // itself goes: a dismissed row would hold its photographs hostage
@@ -504,7 +514,16 @@ public sealed class SqliteAlbumRepository : IAlbumRepository
         await RememberAsync(
             await SpanKeyAsync(albumId, cancellationToken).ConfigureAwait(false),
             [.. album.Members.Select(member => member.AssetId)],
+            now,
             cancellationToken).ConfigureAwait(false);
+
+        // And the dismissal itself, once for the run of days, which is what a
+        // keep of the same days on another laptop is weighed against. In the
+        // same save, so the two cannot come apart.
+        if (album.ProposalKey is not null)
+        {
+            await DismissedAsync(album.ProposalKey, now, cancellationToken).ConfigureAwait(false);
+        }
 
         _db.Albums.Remove(album);
         await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
@@ -524,8 +543,11 @@ public sealed class SqliteAlbumRepository : IAlbumRepository
             return;
         }
 
+        DateTime now = DateTime.UtcNow;
+
         album.Name = name.Trim();
-        album.NamedUtc = DateTime.UtcNow;
+        album.NamedUtc = now;
+        album.KeepAgain(now);
         await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
     }
 
@@ -609,6 +631,12 @@ public sealed class SqliteAlbumRepository : IAlbumRepository
             AddedUtc = now,
         }));
 
+        Album? album = await _db.Albums
+            .FirstOrDefaultAsync(row => row.Id == albumId, cancellationToken)
+            .ConfigureAwait(false);
+
+        album?.KeepAgain(now);
+
         // Saved before any cover is chosen, because choosing one reads the
         // memberships back out of the database and a pending insert is not
         // there to be read. An album whose first photographs all arrived in one
@@ -679,6 +707,7 @@ public sealed class SqliteAlbumRepository : IAlbumRepository
         await RememberAsync(
             await SpanKeyAsync(albumId, cancellationToken).ConfigureAwait(false),
             [.. members.Select(member => member.AssetId)],
+            DateTime.UtcNow,
             cancellationToken).ConfigureAwait(false);
 
         await AlbumCovers.EnsureAsync(_db, albumId, cancellationToken).ConfigureAwait(false);
@@ -709,6 +738,7 @@ public sealed class SqliteAlbumRepository : IAlbumRepository
         await RememberAsync(
             await SpanKeyAsync(albumId, cancellationToken).ConfigureAwait(false),
             assetIds,
+            DateTime.UtcNow,
             cancellationToken).ConfigureAwait(false);
 
         await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
@@ -740,8 +770,11 @@ public sealed class SqliteAlbumRepository : IAlbumRepository
             return false;
         }
 
+        DateTime now = DateTime.UtcNow;
+
         album.CoverAssetId = assetId;
-        album.CoverChosenUtc = DateTime.UtcNow;
+        album.CoverChosenUtc = now;
+        album.KeepAgain(now);
 
         await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
         _db.ChangeTracker.Clear();
@@ -796,7 +829,10 @@ public sealed class SqliteAlbumRepository : IAlbumRepository
 
     /// <summary>Records that these photographs do not belong in that run of days.</summary>
     private async Task RememberAsync(
-        string span, IReadOnlyList<int> assetIds, CancellationToken cancellationToken)
+        string span,
+        IReadOnlyList<int> assetIds,
+        DateTime rejectedUtc,
+        CancellationToken cancellationToken)
     {
         if (assetIds.Count == 0)
         {
@@ -810,7 +846,6 @@ public sealed class SqliteAlbumRepository : IAlbumRepository
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false)];
 
-        DateTime now = DateTime.UtcNow;
         _db.AlbumRejections.AddRange(assetIds
             .Distinct()
             .Where(assetId => !already.Contains(assetId))
@@ -818,8 +853,34 @@ public sealed class SqliteAlbumRepository : IAlbumRepository
             {
                 AssetId = assetId,
                 ProposalKey = span,
-                RejectedUtc = now,
+                RejectedUtc = rejectedUtc,
             }));
+    }
+
+    /// <summary>
+    /// Records that the suggestion for these days was dismissed at that moment,
+    /// replacing any earlier dismissal of them.
+    /// </summary>
+    /// <remarks>
+    /// One row per run of days: a later dismissal of days offered afresh is the
+    /// answer that stands, and the moment a keep elsewhere has to beat. Left
+    /// unsaved, so it goes in the caller's save with the rest of the press.
+    /// </remarks>
+    private async Task DismissedAsync(
+        string proposalKey, DateTime dismissedUtc, CancellationToken cancellationToken)
+    {
+        AlbumDismissal? dismissal = await _db.AlbumDismissals
+            .FirstOrDefaultAsync(row => row.ProposalKey == proposalKey, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (dismissal is null)
+        {
+            dismissal = new AlbumDismissal { ProposalKey = proposalKey };
+            _db.AlbumDismissals.Add(dismissal);
+        }
+
+        dismissal.DismissedUtc = dismissedUtc;
+        dismissal.DismissedBy = Guid.Empty;
     }
 
     /// <summary>
@@ -935,8 +996,20 @@ public sealed class SqliteAlbumRepository : IAlbumRepository
         row.EndUtc = proposal.EndUtc;
         row.Kind = proposal.Kind;
         row.PlaceId = proposal.PlaceId;
-        row.CoverAssetId = proposal.CoverAssetId;
         row.BuiltUtc = now;
+
+        // A cover somebody chose stays for as long as the album holds it. It
+        // used to be replaced by the clusterer's pick on every scan while its
+        // date stayed behind, so the app's guess went on being published as a
+        // person's choice - one that could beat a real choice on another
+        // laptop. Once the photograph has gone the pick is the better answer
+        // and the choice is forgotten, which is the rule every add and remove
+        // already follows.
+        if (row.CoverChosenUtc is null || !proposal.AssetIds.Contains(row.CoverAssetId))
+        {
+            row.CoverAssetId = proposal.CoverAssetId;
+            row.CoverChosenUtc = null;
+        }
 
         // Read after the removals have been written, so a photograph this
         // proposal is giving up and taking back again is not counted as held.

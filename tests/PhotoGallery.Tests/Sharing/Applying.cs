@@ -25,17 +25,62 @@ internal static class Applying
         ArgumentNullException.ThrowIfNull(mine);
         ArgumentNullException.ThrowIfNull(plan);
 
-        return mine with
+        // A kept album that a later dismissal beat is deleted outright, and its
+        // photographs go with it - the database cascades them.
+        HashSet<string> dismissed = [.. plan.DismissedHere.Select(d => $"days:{d.ProposalKey}")];
+        HashSet<Guid> gone =
+        [
+            .. mine.Albums.Where(album => dismissed.Contains(Identity(album)))
+                .Select(album => album.PublicId),
+        ];
+
+        DecisionSet kept = mine with
         {
-            People = Upsert(mine.People, plan.People, person => person.PublicId),
-            Answers = Answers(mine, plan),
-            Strangers = Strangers(mine, plan),
-            Turns = Upsert(mine.Turns, plan.Turns, turn => turn.Photo),
-            Albums = Upsert(mine.Albums, plan.Albums, Identity),
-            Memberships = Memberships(mine, plan),
-            Rejections = [.. mine.Rejections, .. plan.Rejections],
-            Eras = [.. mine.Eras, .. plan.Eras],
+            Albums = [.. mine.Albums.Where(album => !gone.Contains(album.PublicId))],
+            Memberships = [.. mine.Memberships.Where(membership => !gone.Contains(membership.Album))],
         };
+
+        return kept with
+        {
+            People = Upsert(kept.People, plan.People, person => person.PublicId),
+            Answers = Answers(kept, plan),
+            Strangers = Strangers(kept, plan),
+            Turns = Upsert(kept.Turns, plan.Turns, turn => turn.Photo),
+            Albums = Albums(kept, plan),
+            Memberships = Memberships(kept, plan),
+            Rejections = [.. kept.Rejections, .. plan.Rejections],
+            Eras = [.. kept.Eras, .. plan.Eras],
+            Dismissals = Upsert(kept.Dismissals, plan.Dismissals, d => d.ProposalKey),
+        };
+    }
+
+    /// <summary>
+    /// The albums afterwards, each row keeping the identity it already had.
+    /// </summary>
+    /// <remarks>
+    /// The write matches a row by its run of days and never renumbers it, so a
+    /// suggestion this library adopts keeps its own identity whatever the album
+    /// that won was called on the machine that kept it. Taking the winner's
+    /// identity here instead would let a second merge pass for the wrong
+    /// reason.
+    /// </remarks>
+    private static IReadOnlyList<SharedAlbum> Albums(DecisionSet mine, MergePlan plan)
+    {
+        Dictionary<string, SharedAlbum> byIdentity = [];
+        foreach (SharedAlbum album in mine.Albums)
+        {
+            byIdentity[Identity(album)] = album;
+        }
+
+        foreach (SharedAlbum settled in plan.Albums)
+        {
+            byIdentity[Identity(settled)] =
+                byIdentity.TryGetValue(Identity(settled), out SharedAlbum? row)
+                    ? settled with { PublicId = row.PublicId }
+                    : settled;
+        }
+
+        return [.. byIdentity.Values];
     }
 
     private static IReadOnlyList<FaceAnswer> Answers(DecisionSet mine, MergePlan plan)

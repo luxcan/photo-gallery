@@ -45,6 +45,8 @@ public sealed class GalleryDbContext : DbContext
 
     public DbSet<AlbumRejection> AlbumRejections => Set<AlbumRejection>();
 
+    public DbSet<AlbumDismissal> AlbumDismissals => Set<AlbumDismissal>();
+
     public DbSet<AlbumRulePerson> AlbumRulePeople => Set<AlbumRulePerson>();
 
     public DbSet<AlbumRulePlace> AlbumRulePlaces => Set<AlbumRulePlace>();

@@ -31,6 +31,14 @@ namespace PhotoGallery.Domain.Sharing;
 /// When they chose it. Null loses to any date, the same way a name nobody typed
 /// does.
 /// </param>
+/// <param name="KeptUtc">
+/// When somebody kept this suggestion, or null where nobody did - or did, on a
+/// release that never said when. Last of the parameters and optional, so every
+/// file written before it existed still reads: the property is simply absent,
+/// which reads as a keep with no moment on an album whose origin says it was
+/// kept. That keep beats a suggestion nobody answered and loses to any
+/// dismissal that can say when it was made. See <see cref="Albums.Album.KeptUtc"/>.
+/// </param>
 /// <remarks>
 /// <strong>Only a chosen cover travels.</strong> The one the app works out is a
 /// guess, and the other machine makes its own from its own faces - so sending it
@@ -49,4 +57,5 @@ public sealed record SharedAlbum(
     Guid? Shelf = null,
     DateTime? ShelvedUtc = null,
     AssetKey? Cover = null,
-    DateTime? CoverChosenUtc = null);
+    DateTime? CoverChosenUtc = null,
+    DateTime? KeptUtc = null);

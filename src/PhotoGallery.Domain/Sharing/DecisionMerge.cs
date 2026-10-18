@@ -123,7 +123,7 @@ public static class DecisionMerge
         List<SharedPerson> people = SettlePeople(mine, accepted);
         Faces faces = SettleFaces(mine, accepted, here);
         (List<PhotoTurn> turns, List<PhotoTurn> heldTurns) = SettleTurns(mine, accepted, here);
-        List<SharedAlbum> albums = SettleAlbums(mine, accepted, here);
+        AlbumSettlement albums = SettleAlbums(mine, accepted, here);
 
         // A membership with nowhere to go here is refused, not parked: the
         // machine that sent it sends it again on every sync, and the day this
@@ -139,7 +139,7 @@ public static class DecisionMerge
             faces.Strangers,
             faces.Recognised,
             turns,
-            albums,
+            albums.Planned,
             memberships.Moves,
             rejections,
             SeedEras(mine, accepted),
@@ -154,7 +154,11 @@ public static class DecisionMerge
             refused,
             links,
             renames,
-            pairings);
+            pairings)
+        {
+            Dismissals = albums.Dismissals,
+            DismissedHere = albums.DismissedHere,
+        };
     }
 
     /// <summary>
@@ -223,7 +227,7 @@ public static class DecisionMerge
 
         Faces faces = SettleFaces(mine, parked, here);
         (List<PhotoTurn> turns, List<PhotoTurn> heldTurns) = SettleTurns(mine, parked, here);
-        Memberships memberships = SettleMemberships(mine, parked, here, []);
+        Memberships memberships = SettleMemberships(mine, parked, here, AlbumSettlement.None);
         (List<SharedAlbumRejection> rejections, List<SharedAlbumRejection> heldRejections) =
             SettleRejections(mine, parked, here);
 
@@ -859,43 +863,206 @@ public static class DecisionMerge
 
     // ---------------------------------------------------------------- albums
 
+    /// <summary>
+    /// Whether a merge writes a row for an album this library has none for.
+    /// </summary>
+    /// <remarks>
+    /// A tombstone always. With no row this library cannot tell "deleted" from
+    /// "never heard of", and a deleted kept suggestion's run of days is what
+    /// stops its next scan suggesting the days somebody threw away. An album
+    /// somebody kept or made, too. A live suggestion is derived, though, so its
+    /// row is this machine's own to build: what travels about one is a name,
+    /// and a name with nothing to sit on waits for the rebuild that makes it.
+    ///
+    /// <para>Public because the write asks exactly this, and the two must not
+    /// disagree. A plan carrying an album the write then skips is a plan that
+    /// carries it again on the next merge, and the one after.</para>
+    /// </remarks>
+    public static bool CreatesARow(SharedAlbum album)
+    {
+        ArgumentNullException.ThrowIfNull(album);
+
+        return album.DeletedUtc is not null || album.Origin != AlbumOrigin.Proposed;
+    }
+
+    /// <summary>
+    /// Settles every album, and the dismissals that compete with keeping one.
+    /// </summary>
+    /// <remarks>
+    /// <strong>Every account of an album at once, not two at a time.</strong> A
+    /// run of days can be kept on one laptop, dismissed on a second and kept
+    /// again on a third, and which of those came last is a question about all
+    /// three. Folded two at a time, the answer could depend on the order the
+    /// files were read in, and a date could ride from one laptop's album onto
+    /// another's. So each album's accounts are gathered first - this library's
+    /// own first - and then settled in one of three ways.
+    ///
+    /// <para><strong>Deleted</strong>, where any account is a tombstone. That
+    /// beats every keep and every dismissal whatever the dates, because deleting
+    /// a kept album means never suggest these days again. Settled exactly as it
+    /// always was.</para>
+    ///
+    /// <para><strong>Lost</strong>, where somebody kept the suggestion and a
+    /// dismissal of the same days came later. A keep that cannot say when it was
+    /// made loses to any dismissal that can, and a keep and a dismissal in the
+    /// same instant leave it kept. Nothing about a keep that lost travels - not
+    /// its name, and not its shelf, which would keep the suggestion all over
+    /// again - and where the keep is this library's own, it is taken away.</para>
+    ///
+    /// <para><strong>Live</strong>, everything else: name, keep, shelf and cover
+    /// each settled on their own.</para>
+    /// </remarks>
     /// <param name="here">
     /// What this machine has actually indexed, which is what decides whether a
     /// cover can be taken. A cover names a photograph, so it is the one thing
     /// about an album that can arrive before its picture does.
     /// </param>
-    private static List<SharedAlbum> SettleAlbums(
+    private static AlbumSettlement SettleAlbums(
         DecisionSet mine, List<DecisionSet> accepted, LibraryContents here)
     {
         Dictionary<string, SharedAlbum> ours = mine.Albums.ToDictionary(Identity);
-        Dictionary<string, SharedAlbum> winners = new(ours);
+        Dictionary<string, SharedAlbumDismissal> dismissed = SettleDismissals(mine, accepted);
 
-        foreach (SharedAlbum album in accepted.SelectMany(them => them.Albums))
+        Dictionary<string, List<SharedAlbum>> accounts = [];
+
+        foreach (SharedAlbum album in mine.Albums.Concat(Theirs(accepted)))
         {
-            // A proposal nobody has renamed or thrown away carries no decision at
-            // all. The other machine makes its own from the same photographs, and
-            // better ones once it has the confirmations that came with this.
-            if (album.Origin == AlbumOrigin.Proposed
-                && album.NamedUtc is null
-                && album.DeletedUtc is null)
+            string identity = Identity(album);
+
+            if (!accounts.TryGetValue(identity, out List<SharedAlbum>? told))
+            {
+                accounts[identity] = told = [];
+            }
+
+            told.Add(album);
+        }
+
+        Dictionary<string, SharedAlbum> standing = [];
+        HashSet<string> lost = [];
+        List<SharedAlbumDismissal> dismissedHere = [];
+
+        foreach ((string identity, List<SharedAlbum> told) in accounts)
+        {
+            if (told.Any(album => album.DeletedUtc is not null))
+            {
+                standing[identity] = told.Aggregate(Settle);
+                continue;
+            }
+
+            if (LostTo(told, dismissed) is SharedAlbumDismissal dismissal)
+            {
+                lost.Add(identity);
+
+                if (ours.TryGetValue(identity, out SharedAlbum? kept)
+                    && kept.Origin == AlbumOrigin.Accepted)
+                {
+                    dismissedHere.Add(dismissal);
+                }
+
+                continue;
+            }
+
+            standing[identity] = told.Aggregate(SettleLive);
+        }
+
+        return new AlbumSettlement(
+            [
+                .. standing.Values
+                    .Select(winner => Keepable(winner, ours, here))
+                    .Where(winner => ours.TryGetValue(Identity(winner), out SharedAlbum? was)
+                        ? was != winner
+                        : CreatesARow(winner)),
+            ],
+            standing,
+            lost,
+            [.. dismissed.Values.Where(winner => !mine.Dismissals.Contains(winner))],
+            dismissedHere);
+    }
+
+    /// <summary>
+    /// The other machines' albums worth settling, in an order that does not
+    /// depend on the order their files were read in.
+    /// </summary>
+    /// <remarks>
+    /// A proposal nobody has renamed or thrown away carries no decision at all.
+    /// The other machine makes its own from the same photographs, and better
+    /// ones once it has the confirmations that came with this.
+    ///
+    /// <para>In order of identity, because two accounts can tie on everything a
+    /// settle compares - two laptops that both kept the same days under the
+    /// same name - and then the first of them stands. The folder lists files in
+    /// whatever order the disk keeps them, so without this two laptops could
+    /// settle one album under two identities.</para>
+    /// </remarks>
+    private static IEnumerable<SharedAlbum> Theirs(List<DecisionSet> accepted) =>
+        accepted
+            .SelectMany(them => them.Albums)
+            .Where(album => album.Origin != AlbumOrigin.Proposed
+                         || album.NamedUtc is not null
+                         || album.DeletedUtc is not null)
+            .OrderBy(album => album.PublicId);
+
+    /// <summary>
+    /// The latest dismissal of each run of days anybody in the house has made.
+    /// </summary>
+    /// <remarks>
+    /// Only which dismissal of those days is the latest - by its moment, then
+    /// by the machine, so every laptop picks the same one. What it beats is
+    /// decided with the albums. Never held: a dismissal is about days rather
+    /// than a photograph, so there is nothing for it to wait for. One naming no
+    /// days is passed over, because a file is read from a drive another
+    /// machine may be writing to and is trusted no further than that.
+    /// </remarks>
+    private static Dictionary<string, SharedAlbumDismissal> SettleDismissals(
+        DecisionSet mine, List<DecisionSet> accepted)
+    {
+        Dictionary<string, SharedAlbumDismissal> latest = [];
+
+        foreach (SharedAlbumDismissal dismissal in
+                 mine.Dismissals.Concat(accepted.SelectMany(them => them.Dismissals)))
+        {
+            if (string.IsNullOrWhiteSpace(dismissal.ProposalKey))
             {
                 continue;
             }
 
-            string identity = Identity(album);
-
-            winners[identity] = winners.TryGetValue(identity, out SharedAlbum? standing)
-                ? Settle(standing, album)
-                : album;
+            latest[dismissal.ProposalKey] =
+                latest.TryGetValue(dismissal.ProposalKey, out SharedAlbumDismissal? standing)
+                && Wins(standing.DismissedUtc, standing.DecidedBy, dismissal.DismissedUtc, dismissal.DecidedBy)
+                    ? standing
+                    : dismissal;
         }
 
-        return
-        [
-            .. winners.Values
-                .Select(winner => Keepable(winner, ours, here))
-                .Where(winner =>
-                    !ours.TryGetValue(Identity(winner), out SharedAlbum? was) || was != winner),
-        ];
+        return latest;
+    }
+
+    /// <summary>
+    /// The dismissal every keep of these days lost to, or null where they did
+    /// not lose.
+    /// </summary>
+    /// <remarks>
+    /// Judged against the latest keep anybody can date. A keep that cannot say
+    /// when it was made ranks below every one that can, and loses to any
+    /// dismissal at all - it is a moment nobody knows, and a moment nobody
+    /// knows must not beat a real one. On the same instant the keep stands: an
+    /// album kept by mistake is one press from gone, and one dismissed by
+    /// mistake is already gone.
+    /// </remarks>
+    private static SharedAlbumDismissal? LostTo(
+        List<SharedAlbum> accounts, Dictionary<string, SharedAlbumDismissal> dismissed)
+    {
+        List<SharedAlbum> keeps = [.. accounts.Where(album => album.Origin == AlbumOrigin.Accepted)];
+
+        if (keeps.Count == 0
+            || accounts[0].ProposalKey is not string days
+            || !dismissed.TryGetValue(days, out SharedAlbumDismissal? dismissal))
+        {
+            return null;
+        }
+
+        DateTime? keptAt = keeps.Max(keep => keep.KeptUtc);
+
+        return keptAt is null || keptAt < dismissal.DismissedUtc ? dismissal : null;
     }
 
     /// <summary>
@@ -943,6 +1110,16 @@ public static class DecisionMerge
     private static string Identity(SharedAlbum album) =>
         album.ProposalKey is null ? $"id:{album.PublicId:D}" : $"days:{album.ProposalKey}";
 
+    /// <summary>
+    /// Which of two accounts of an album stands, where somebody has thrown it
+    /// away.
+    /// </summary>
+    /// <remarks>
+    /// The earliest deletion stands, and everything else about the album rides
+    /// on whichever account won the name. Exactly what it always was: a
+    /// tombstone is final, so nothing about keeping or dismissing can change
+    /// what it settles to.
+    /// </remarks>
     private static SharedAlbum Settle(SharedAlbum mine, SharedAlbum theirs)
     {
         int byDate = Nullable.Compare(mine.NamedUtc, theirs.NamedUtc);
@@ -972,6 +1149,73 @@ public static class DecisionMerge
             CoverChosenUtc = covered.CoverChosenUtc,
         };
     }
+
+    /// <summary>
+    /// Which of two accounts of an album stands, where nobody has thrown it
+    /// away: each answer about it settled on its own.
+    /// </summary>
+    /// <remarks>
+    /// <strong>Keeping is its own answer.</strong> It used to ride on whichever
+    /// account won the name, so a suggestion kept on one laptop and merely
+    /// suggested on another stayed a suggestion whenever the names tied - which,
+    /// for two laptops that grouped the same days, is nearly always. The
+    /// stronger answer stands instead: a suggestion is the app's guess and a
+    /// keep is a person's answer, and an album somebody made is stronger than
+    /// either. When it was kept is the latest moment anybody can give, so a keep
+    /// arriving from a release that never said when cannot wipe out one that
+    /// did.
+    ///
+    /// <para><strong>The name</strong> is the later one typed. Where nobody
+    /// typed one, the name it has where it was kept stands over a suggestion's:
+    /// two names the app chose are equally good guesses, and a laptop taking in
+    /// a kept album must not rename it, on the laptop that kept it, to a guess
+    /// nobody there has seen. Then the text, so two laptops settle the same
+    /// tie the same way, and a tie on everything keeps this library's own -
+    /// which is what lets the next merge find nothing to do.</para>
+    ///
+    /// <para><strong>The cover</strong> on its own date as ever. Two chosen in
+    /// the same instant go the way the name does, the kept album's first, and
+    /// only then to the photograph's own key.</para>
+    /// </remarks>
+    private static SharedAlbum SettleLive(SharedAlbum mine, SharedAlbum theirs)
+    {
+        int byDate = Nullable.Compare(mine.NamedUtc, theirs.NamedUtc);
+
+        SharedAlbum named = byDate != 0
+            ? (byDate > 0 ? mine : theirs)
+            : Keeping(mine, theirs)
+              ?? (string.CompareOrdinal(mine.Name, theirs.Name) >= 0 ? mine : theirs);
+
+        SharedAlbum shelved = Shelf(mine, theirs);
+
+        SharedAlbum covered =
+            Nullable.Compare(mine.CoverChosenUtc, theirs.CoverChosenUtc) == 0
+                ? Keeping(mine, theirs) ?? Cover(mine, theirs)
+                : Cover(mine, theirs);
+
+        return named with
+        {
+            // Proposed, then Accepted, then Made: the order the values are
+            // declared in, which is the order of how much a person said.
+            Origin = mine.Origin > theirs.Origin ? mine.Origin : theirs.Origin,
+            KeptUtc = Latest(mine.KeptUtc, theirs.KeptUtc),
+            Shelf = shelved.Shelf,
+            ShelvedUtc = shelved.ShelvedUtc,
+            Cover = covered.Cover,
+            CoverChosenUtc = covered.CoverChosenUtc,
+        };
+    }
+
+    /// <summary>
+    /// The one of two accounts somebody kept, where only one of them is kept.
+    /// </summary>
+    private static SharedAlbum? Keeping(SharedAlbum mine, SharedAlbum theirs) =>
+        (mine.Origin != AlbumOrigin.Proposed, theirs.Origin != AlbumOrigin.Proposed) switch
+        {
+            (true, false) => mine,
+            (false, true) => theirs,
+            _ => null,
+        };
 
     /// <summary>
     /// Which of two machines last chose the picture an album shows.
@@ -1076,23 +1320,33 @@ public static class DecisionMerge
         return named with { DeletedUtc = Earliest(mine.DeletedUtc, theirs.DeletedUtc) };
     }
 
-    /// <param name="settling">
-    /// The albums this merge has just settled, so that a membership naming one
-    /// this library has never held can tell a row about to be written from a
-    /// row nobody will write.
+    /// <param name="settled">
+    /// What the album pass just concluded, so that a membership is placed
+    /// against what each album is about to become rather than what it was. A
+    /// suggestion being taken in as kept takes its photographs on this merge,
+    /// an album being taken away takes none, and one this library has never
+    /// held is written only if what arrives about it is that it exists.
     /// </param>
     private static Memberships SettleMemberships(
         DecisionSet mine,
         List<DecisionSet> accepted,
         LibraryContents here,
-        IReadOnlyList<SharedAlbum> settling)
+        AlbumSettlement settled)
     {
-        Dictionary<AssetKey, SharedAlbumMembership> ours = mine.Memberships.ToDictionary(m => m.Photo);
+        Albums albums = Albums.Of(mine, settled);
+
+        // A photograph in an album this merge takes away is no longer standing
+        // anywhere: the album goes, and the photograph's place in it with it.
+        // Counted as standing, its membership would beat an earlier filing
+        // somewhere else and then vanish with the album, leaving the
+        // photograph in nothing until the next merge put it right.
+        Dictionary<AssetKey, SharedAlbumMembership> ours = mine.Memberships
+            .Where(membership => !albums.IsGoing(membership.Album))
+            .ToDictionary(m => m.Photo);
+
         Dictionary<AssetKey, SharedAlbumMembership> winners = new(ours);
         List<SharedAlbumMembership> held = [];
         List<SharedAlbumMembership> nowhere = [];
-
-        Albums albums = Albums.Of(mine, settling);
 
         // One machine at a time, because an album is named by the identity the
         // machine that published it uses, and working out what that names here
@@ -1206,6 +1460,32 @@ public static class DecisionMerge
         public static Placing Nowhere => new(null, Gone: false);
     }
 
+    /// <summary>What the album pass concluded.</summary>
+    /// <param name="Planned">The albums this library should write.</param>
+    /// <param name="Standing">
+    /// What every album here or arriving settled to, written or not - which is
+    /// what a membership has to be placed against. A run of days whose keeps
+    /// lost has no entry: nothing about it stands.
+    /// </param>
+    /// <param name="Lost">The runs of days whose keeps a later dismissal beat.</param>
+    /// <param name="Dismissals">The latest dismissals this library has not stored yet.</param>
+    /// <param name="DismissedHere">This library's own keeps those dismissals take away.</param>
+    private sealed record AlbumSettlement(
+        List<SharedAlbum> Planned,
+        IReadOnlyDictionary<string, SharedAlbum> Standing,
+        IReadOnlySet<string> Lost,
+        List<SharedAlbumDismissal> Dismissals,
+        List<SharedAlbumDismissal> DismissedHere)
+    {
+        /// <summary>
+        /// Nothing settled at all: every album judged as it stands here, which
+        /// is what a sweep of waiting answers places them against. No album
+        /// arrives with a waiting answer.
+        /// </summary>
+        public static AlbumSettlement None { get; } =
+            new([], new Dictionary<string, SharedAlbum>(), new HashSet<string>(), [], []);
+    }
+
     /// <summary>
     /// This library's own albums, by both of the names another machine can call
     /// one.
@@ -1224,17 +1504,21 @@ public static class DecisionMerge
     {
         private readonly Dictionary<string, SharedAlbum> _byIdentity = [];
         private readonly Dictionary<Guid, SharedAlbum> _byPublicId = [];
-        private readonly Dictionary<string, SharedAlbum> _arriving = [];
+        private readonly AlbumSettlement _settled;
 
-        /// <param name="settling">
+        private Albums(AlbumSettlement settled) => _settled = settled;
+
+        /// <param name="settled">
         /// What the album pass just concluded, which is the other half of the
-        /// question. An album this library has never held is about to be created
-        /// - unless the very thing arriving about it is that somebody threw it
-        /// away, and then it is not.
+        /// question. Every album is placed against what it is about to become:
+        /// one this library has never held is about to be created - unless the
+        /// very thing arriving about it is that somebody threw it away - and one
+        /// it holds may be about to be kept, thrown away, or taken away by a
+        /// later dismissal.
         /// </param>
-        public static Albums Of(DecisionSet mine, IReadOnlyList<SharedAlbum> settling)
+        public static Albums Of(DecisionSet mine, AlbumSettlement settled)
         {
-            var albums = new Albums();
+            var albums = new Albums(settled);
 
             foreach (SharedAlbum album in mine.Albums)
             {
@@ -1242,13 +1526,18 @@ public static class DecisionMerge
                 albums._byPublicId[album.PublicId] = album;
             }
 
-            foreach (SharedAlbum album in settling)
-            {
-                albums._arriving[Identity(album)] = album;
-            }
-
             return albums;
         }
+
+        /// <summary>
+        /// Whether this library's album of that identity is on its way out in
+        /// this merge: kept and beaten by a later dismissal, or about to become
+        /// a tombstone.
+        /// </summary>
+        public bool IsGoing(Guid publicId) =>
+            _byPublicId.TryGetValue(publicId, out SharedAlbum? album)
+            && (_settled.Lost.Contains(Identity(album))
+                || _settled.Standing.GetValueOrDefault(Identity(album))?.DeletedUtc is not null);
 
         /// <summary>
         /// What this library would call the album a membership names, or why it
@@ -1266,18 +1555,25 @@ public static class DecisionMerge
         ///
         /// <para><strong>Gone here.</strong> A tombstone is kept for ever and
         /// beats any date, so an album this library has deleted is not coming
-        /// back and nothing may join it. The other machine learns of the
-        /// deletion on its own next merge and stops publishing them.</para>
+        /// back and nothing may join it - nor one this very merge is turning
+        /// into a tombstone, which the write would skip. The other machine
+        /// learns of the deletion on its own next merge and stops publishing
+        /// them.</para>
         ///
         /// <para><strong>Still only a suggestion here.</strong> A proposal's
         /// contents are derived, and the rebuild owns them - it prunes whatever
         /// its own clustering no longer claims. Taking another machine's
         /// memberships into one would put that machine's answers up against this
         /// one's next scan, which is the mirror of the rule that stops a
-        /// proposal's contents being published in the first place. What is
-        /// missing is that <em>keeping</em> a suggestion does not travel; until
-        /// it does, this is the honest answer rather than a write that a scan
-        /// may undo.</para>
+        /// proposal's contents being published in the first place. Keeping now
+        /// travels, and a suggestion somebody kept elsewhere is kept here by the
+        /// same merge - so this guards only a suggestion nobody has kept, and a
+        /// keep that a later dismissal beat. Both are honest refusals rather
+        /// than a write a scan, or the next merge, would undo.</para>
+        ///
+        /// <para>A suggestion being kept by this merge takes the photographs
+        /// under this library's own identity for it, because the write keeps
+        /// the row where it stands rather than renumbering it.</para>
         ///
         /// <para><strong>Never heard of.</strong> No row by that name, and
         /// nothing arriving to make one. On a merge that cannot happen with an
@@ -1298,9 +1594,22 @@ public static class DecisionMerge
                     ? matched
                     : _byPublicId.GetValueOrDefault(named);
 
+            string? identity = mine is not null ? Identity(mine)
+                : album is not null ? Identity(album)
+                : null;
+
+            // Kept somewhere, and a later dismissal beat every keep. Nothing
+            // joins it here, whether this library holds it or not.
+            if (identity is null || _settled.Lost.Contains(identity))
+            {
+                return Placing.Nowhere;
+            }
+
             if (mine is not null)
             {
-                return Into(mine);
+                Placing placing = Into(_settled.Standing.GetValueOrDefault(identity) ?? mine);
+
+                return placing.Album is null ? placing : new Placing(mine.PublicId, Gone: false);
             }
 
             // One this library has never held, which this merge is about to
@@ -1313,7 +1622,7 @@ public static class DecisionMerge
             // settled on, which is not always the one this membership arrived
             // naming: two machines can hold the same run of days and only one
             // of them wins.
-            return album is not null && _arriving.TryGetValue(Identity(album), out SharedAlbum? coming)
+            return _settled.Standing.TryGetValue(identity, out SharedAlbum? coming)
                 ? Into(coming)
                 : Placing.Nowhere;
         }
@@ -1517,6 +1826,12 @@ public static class DecisionMerge
         left is null ? right
         : right is null ? left
         : left < right ? left : right;
+
+    /// <summary>The later of two moments, where a missing one loses to any.</summary>
+    private static DateTime? Latest(DateTime? left, DateTime? right) =>
+        left is null ? right
+        : right is null ? left
+        : left > right ? left : right;
 
     /// <summary>How far ahead a clock is, in words somebody can act on.</summary>
     /// <remarks>

@@ -510,7 +510,11 @@ internal sealed class Library : IDisposable
     /// identity for the same days, and two of these built with the same key on
     /// two libraries is exactly the state a test about proposals needs.
     /// </remarks>
-    public Album Suggestion(string name, string proposalKey, bool kept)
+    /// <param name="keptUtc">
+    /// When it was kept, for one that was. Left out, the keep has no moment -
+    /// which is what every keep made before keeping was dated looks like.
+    /// </param>
+    public Album Suggestion(string name, string proposalKey, bool kept, DateTime? keptUtc = null)
     {
         var album = new Album
         {
@@ -521,11 +525,55 @@ internal sealed class Library : IDisposable
             Origin = kept ? AlbumOrigin.Accepted : AlbumOrigin.Proposed,
             ProposalKey = proposalKey,
             BuiltUtc = new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+            KeptUtc = kept ? keptUtc : null,
         };
 
         Db.Albums.Add(album);
         Db.SaveChanges();
         return album;
+    }
+
+    /// <summary>
+    /// Somebody dismissed the suggestion for these days, at a moment the test
+    /// chooses.
+    /// </summary>
+    /// <remarks>
+    /// The row alone, without the refusals a dismissal on screen also writes,
+    /// because the tests that use it are about which of a keep and a
+    /// dismissal came last - and those need dates a test can put in order.
+    /// </remarks>
+    /// <param name="by">The machine that dismissed it, or null for this one.</param>
+    public void Dismissal(string proposalKey, DateTime when, Guid? by = null)
+    {
+        Db.AlbumDismissals.Add(new AlbumDismissal
+        {
+            ProposalKey = proposalKey,
+            DismissedUtc = when,
+            DismissedBy = by ?? Guid.Empty,
+        });
+
+        Db.SaveChanges();
+        Db.ChangeTracker.Clear();
+    }
+
+    /// <summary>Whether one more merge would plan anything at all.</summary>
+    /// <remarks>
+    /// Asked of the plan, built from exactly what a merge reads, rather than
+    /// of the counts the write reports. A dismissal stored, a keep re-dated or
+    /// a name's date settled is a write nobody sees counted, and a plan that
+    /// carries one on every merge is two libraries that have not agreed.
+    /// </remarks>
+    public async Task<bool> NothingPlannedAsync()
+    {
+        MachineIdentity machine =
+            await PublishDecisionsHandler.ThisMachineAsync(Index, CancellationToken.None);
+
+        DecisionSet mine = await Decisions.ReadAsync(machine);
+        LibraryContents here = await Decisions.ContentsAsync();
+        FetchedDecisions fetched = await Exchange.FetchAsync();
+        Db.ChangeTracker.Clear();
+
+        return DecisionMerge.Merge(mine, fetched.Sets, here, DateTime.UtcNow).ChangesNothing;
     }
 
     /// <summary>Throws an album away, leaving the tombstone a merge travels on.</summary>

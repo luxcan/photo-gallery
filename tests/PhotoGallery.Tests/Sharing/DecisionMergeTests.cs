@@ -1,3 +1,4 @@
+using PhotoGallery.Domain.Albums;
 using PhotoGallery.Domain.People;
 using PhotoGallery.Domain.Sharing;
 
@@ -515,8 +516,8 @@ public sealed class DecisionMergeTests
         const string days = "2019-03-03..2019-03-05";
         AssetKey photo = Pictures.Photo(@"2019\a.jpg");
 
-        SharedAlbum his = Pictures.Proposal(days, "March 2019", Monday);
-        SharedAlbum hers = Pictures.Proposal(days, "March 2019", Monday);
+        SharedAlbum his = Pictures.Kept(days, "March 2019", Monday);
+        SharedAlbum hers = Pictures.Kept(days, "March 2019", Monday);
 
         // The same days, kept on both machines, and two different identities -
         // which is what a rebuild leaves behind and what this has to see past.
@@ -531,7 +532,8 @@ public sealed class DecisionMergeTests
     }
 
     /// <summary>
-    /// And a suggestion nobody here has kept takes nothing.
+    /// And a suggestion nobody has kept takes nothing, however many people have
+    /// renamed it.
     /// </summary>
     /// <remarks>
     /// The mirror of the rule that stops a proposal's contents being published:
@@ -539,6 +541,11 @@ public sealed class DecisionMergeTests
     /// another machine's answers into one would put them against that rebuild,
     /// which prunes whatever its own clustering no longer claims. Refused here
     /// rather than written and then quietly undone.
+    ///
+    /// <para>Renamed on the other machine but never kept there, so nobody
+    /// anywhere has said this album is theirs. A keep would be a different
+    /// answer - see
+    /// <see cref="AKeptSuggestionReachesALibraryThatOnlySuggestsTheSameDays"/>.</para>
     /// </remarks>
     [Fact]
     public void PhotographsAreNotTakenIntoAnAlbumThisLibraryOnlySuggests()
@@ -584,6 +591,508 @@ public sealed class DecisionMergeTests
             here: Pictures.Indexed());
 
         Assert.Empty(plan.Albums);
+    }
+
+    /// <summary>
+    /// A suggestion kept on one laptop arrives kept on another that only
+    /// suggests the same days, and brings its photographs with it.
+    /// </summary>
+    /// <remarks>
+    /// The common case, and the one that never worked. Both laptops grouped the
+    /// same days, so each has its own row for them. Keeping rode along with
+    /// whichever side won the name, and with neither renamed the tie went to
+    /// this library's own suggestion - which then refused every photograph put
+    /// into the kept album, because a suggestion's contents belong to its
+    /// rebuild.
+    /// </remarks>
+    [Fact]
+    public void AKeptSuggestionReachesALibraryThatOnlySuggestsTheSameDays()
+    {
+        const string days = "2019-03-03..2019-03-05";
+        AssetKey photo = Pictures.Photo(@"2019\a.jpg");
+
+        SharedAlbum his = Pictures.Proposal(days, "March 2019");
+        SharedAlbum hers = Pictures.Kept(days, "March 2019", Monday);
+
+        MergePlan plan = Merge(
+            mine: new Machine("Dad").HasAlbum(his),
+            theirs: new Machine("Mum").HasAlbum(hers).Puts(photo, hers.PublicId, Wednesday),
+            here: Pictures.Indexed(photo));
+
+        SharedAlbum settled = Assert.Single(plan.Albums);
+        Assert.Equal(AlbumOrigin.Accepted, settled.Origin);
+        Assert.Equal(Monday, settled.KeptUtc);
+
+        // Under this library's own row, which is the one the write keeps.
+        Assert.Equal(his.PublicId, Assert.Single(plan.Moves).To);
+    }
+
+    /// <summary>
+    /// A keep made by the previous release, which never said when, still beats
+    /// a suggestion nobody has answered.
+    /// </summary>
+    [Fact]
+    public void AKeepFromThePreviousReleaseStillBeatsAnUnansweredSuggestion()
+    {
+        const string days = "2019-03-03..2019-03-05";
+        AssetKey photo = Pictures.Photo(@"2019\a.jpg");
+
+        SharedAlbum his = Pictures.Proposal(days, "March 2019");
+        var hers = new SharedAlbum(
+            Guid.NewGuid(), "March 2019", AlbumOrigin.Accepted, days, null, null);
+
+        MergePlan plan = Merge(
+            mine: new Machine("Dad").HasAlbum(his),
+            theirs: new Machine("Mum").HasAlbum(hers).Puts(photo, hers.PublicId, Wednesday),
+            here: Pictures.Indexed(photo));
+
+        SharedAlbum settled = Assert.Single(plan.Albums);
+        Assert.Equal(AlbumOrigin.Accepted, settled.Origin);
+        Assert.Null(settled.KeptUtc);
+        Assert.Equal(his.PublicId, Assert.Single(plan.Moves).To);
+    }
+
+    /// <summary>
+    /// Keeping an album and renaming it are two answers, and each stands on its
+    /// own.
+    /// </summary>
+    /// <remarks>
+    /// Whether the album was kept used to ride on whichever side won the name.
+    /// So a suggestion renamed on one laptop after it was kept on another came
+    /// out renamed and not kept - the later name quietly undoing a keep it
+    /// never argued with.
+    /// </remarks>
+    [Fact]
+    public void KeepingAndRenamingAreSettledApart()
+    {
+        const string days = "2019-03-03..2019-03-05";
+
+        MergePlan plan = Merge(
+            mine: new Machine("Dad").HasAlbum(Pictures.Proposal(days, "Genting", Wednesday)),
+            theirs: new Machine("Mum").HasAlbum(Pictures.Kept(days, "March 2019", Monday)),
+            here: Pictures.Indexed());
+
+        SharedAlbum settled = Assert.Single(plan.Albums);
+        Assert.Equal("Genting", settled.Name);
+        Assert.Equal(Wednesday, settled.NamedUtc);
+        Assert.Equal(AlbumOrigin.Accepted, settled.Origin);
+        Assert.Equal(Monday, settled.KeptUtc);
+    }
+
+    /// <summary>
+    /// Where nobody typed a name, the album takes the one its keeper sees rather
+    /// than this laptop's own guess.
+    /// </summary>
+    /// <remarks>
+    /// Two names the app chose are equally good guesses, and the tie used to go
+    /// to whichever sorted later - so a laptop taking in a kept album could
+    /// rename it, on the laptop that kept it, to a name nobody there had seen.
+    /// </remarks>
+    [Fact]
+    public void TheKeepersNameBeatsTheOtherLaptopsGuess()
+    {
+        const string days = "2019-03-03..2019-03-05";
+
+        MergePlan plan = Merge(
+            mine: new Machine("Dad").HasAlbum(Pictures.Proposal(days, "Zz app name")),
+            theirs: new Machine("Mum").HasAlbum(Pictures.Kept(days, "March 2019", Monday)),
+            here: Pictures.Indexed());
+
+        Assert.Equal("March 2019", Assert.Single(plan.Albums).Name);
+    }
+
+    /// <summary>
+    /// A dismissal made after the keep takes the kept album away.
+    /// </summary>
+    /// <remarks>
+    /// Whichever answer came last stands, and here it is Dad's. Gran's copy of
+    /// the same keep is no later than Mum's, so it changes nothing and its
+    /// photographs have nowhere to go. The dismissal is remembered under Dad's
+    /// name and moment, because it is what this library goes on to tell the
+    /// next laptop.
+    /// </remarks>
+    [Fact]
+    public void ADismissalMadeAfterTheKeepTakesTheKeptAlbumAway()
+    {
+        const string days = "2019-03-03..2019-03-05";
+        AssetKey photo = Pictures.Photo(@"2019\a.jpg");
+        Machine dad = new("Dad");
+
+        SharedAlbum hers = Pictures.Kept(days, "March 2019", Monday);
+        SharedAlbum grans = Pictures.Kept(days, "March 2019", Monday);
+
+        MergePlan plan = Merge(
+            mine: new Machine("Mum").HasAlbum(hers).Puts(photo, hers.PublicId, Monday),
+            theirs:
+            [
+                dad.Dismisses(days, Tuesday),
+                new Machine("Gran").HasAlbum(grans).Puts(photo, grans.PublicId, Wednesday),
+            ],
+            here: Pictures.Indexed(photo));
+
+        Assert.Equal(days, Assert.Single(plan.DismissedHere).ProposalKey);
+        Assert.Empty(plan.Albums);
+        Assert.Equal(new SharedAlbumDismissal(days, Tuesday, dad.Id), Assert.Single(plan.Dismissals));
+        Assert.Empty(plan.Moves);
+    }
+
+    /// <summary>And a keep made after the dismissal stands.</summary>
+    [Fact]
+    public void AKeepMadeAfterTheDismissalStands()
+    {
+        const string days = "2019-03-03..2019-03-05";
+        AssetKey photo = Pictures.Photo(@"2019\a.jpg");
+
+        SharedAlbum hers = Pictures.Kept(days, "March 2019", Tuesday);
+
+        MergePlan plan = Merge(
+            mine: new Machine("Dad").Dismisses(days, Monday),
+            theirs: new Machine("Mum").HasAlbum(hers).Puts(photo, hers.PublicId, Tuesday),
+            here: Pictures.Indexed(photo));
+
+        SharedAlbum settled = Assert.Single(plan.Albums);
+        Assert.Equal(AlbumOrigin.Accepted, settled.Origin);
+        Assert.Equal(Tuesday, settled.KeptUtc);
+        Assert.Equal(hers.PublicId, settled.PublicId);
+        Assert.Equal(hers.PublicId, Assert.Single(plan.Moves).To);
+        Assert.Empty(plan.DismissedHere);
+        Assert.Empty(plan.Dismissals);
+    }
+
+    /// <summary>
+    /// A keep that says nothing about when it was made loses to a dismissal
+    /// that does.
+    /// </summary>
+    /// <remarks>
+    /// The house rule for a moment nobody recorded: it is unknown, so it must
+    /// not beat a real one. Every keep made before keeping was dated is one of
+    /// these.
+    /// </remarks>
+    [Fact]
+    public void AnUndatedKeepLosesToADismissal()
+    {
+        const string days = "2019-03-03..2019-03-05";
+        AssetKey photo = Pictures.Photo(@"2019\a.jpg");
+
+        SharedAlbum hers = Pictures.Kept(days, "March 2019", keptUtc: null);
+
+        MergePlan plan = Merge(
+            mine: new Machine("Dad").Dismisses(days, Monday),
+            theirs: new Machine("Mum").HasAlbum(hers).Puts(photo, hers.PublicId, Tuesday),
+            here: Pictures.Indexed(photo));
+
+        Assert.Empty(plan.Albums);
+        Assert.Empty(plan.Moves);
+    }
+
+    /// <summary>
+    /// A keep and a dismissal made in the same instant leave the album kept.
+    /// </summary>
+    /// <remarks>
+    /// Somebody has to win the tie, and the same somebody on every laptop. The
+    /// keep is the answer that can still be taken back: an album kept by
+    /// mistake is one press from gone, and one dismissed by mistake is gone.
+    /// </remarks>
+    [Fact]
+    public void AKeepAndADismissalAtTheSameMomentLeaveItKept()
+    {
+        const string days = "2019-03-03..2019-03-05";
+        AssetKey photo = Pictures.Photo(@"2019\a.jpg");
+
+        SharedAlbum hers = Pictures.Kept(days, "March 2019", Monday);
+
+        MergePlan plan = Merge(
+            mine: new Machine("Dad").Dismisses(days, Monday),
+            theirs: new Machine("Mum").HasAlbum(hers).Puts(photo, hers.PublicId, Monday),
+            here: Pictures.Indexed(photo));
+
+        Assert.Equal(AlbumOrigin.Accepted, Assert.Single(plan.Albums).Origin);
+        Assert.Equal(hers.PublicId, Assert.Single(plan.Moves).To);
+    }
+
+    /// <summary>Nothing about a keep that lost travels.</summary>
+    /// <remarks>
+    /// Not its name, and not its shelf. A shelf arriving at a suggestion keeps
+    /// it, so a losing keeper's shelf would bring back the very album the
+    /// dismissal took away.
+    /// </remarks>
+    [Fact]
+    public void NothingFromAKeepThatLostTravels()
+    {
+        const string days = "2019-03-03..2019-03-05";
+
+        SharedAlbum hers = Pictures.Kept(days, "Genting", Monday, namedUtc: Monday) with
+        {
+            Shelf = Guid.NewGuid(),
+            ShelvedUtc = Monday,
+        };
+
+        MergePlan plan = Merge(
+            mine: new Machine("Dad").HasAlbum(Pictures.Proposal(days, "March 2019")),
+            theirs:
+            [
+                new Machine("Mum").HasAlbum(hers),
+                new Machine("Gran").Dismisses(days, Tuesday),
+            ],
+            here: Pictures.Indexed());
+
+        Assert.Empty(plan.Albums);
+    }
+
+    /// <summary>
+    /// Every laptop settles on the same answer whatever order it reads the
+    /// others in.
+    /// </summary>
+    /// <remarks>
+    /// Keeps, dismissals and their dates are decided from every laptop's answer
+    /// at once rather than two at a time, so no reading order can carry one
+    /// laptop's date onto another's album.
+    /// </remarks>
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void TheHouseSettlesTheSameInEveryReadingOrder(bool dismissedLast)
+    {
+        const string days = "2019-03-03..2019-03-05";
+        AssetKey a = Pictures.Photo(@"2019\a.jpg");
+        AssetKey b = Pictures.Photo(@"2019\b.jpg");
+
+        // Kept, dismissed, kept again - or kept twice and then dismissed.
+        DateTime granKept = dismissedLast ? Tuesday : Wednesday;
+        DateTime dadDismissed = dismissedLast ? Wednesday : Tuesday;
+
+        SharedAlbum hers = Pictures.Kept(days, "March 2019", Monday);
+        SharedAlbum grans = Pictures.Kept(days, "March 2019", granKept);
+
+        Machine[] house =
+        [
+            new Machine("Mum").HasAlbum(hers).Puts(a, hers.PublicId, Monday),
+            new Machine("Dad").Dismisses(days, dadDismissed),
+            new Machine("Gran").HasAlbum(grans).Puts(b, grans.PublicId, granKept),
+        ];
+
+        Machine mine = new Machine("Ana's laptop").HasAlbum(Pictures.Proposal(days, "March 2019"));
+
+        List<MergePlan> plans =
+        [
+            .. Orders(house).Select(order => Merge(mine, order, Pictures.Indexed(a, b))),
+        ];
+
+        Assert.Equal(6, plans.Count);
+
+        foreach (MergePlan plan in plans)
+        {
+            Assert.Equal(plans[0].Albums, plan.Albums);
+            Assert.Equal(plans[0].Dismissals, plan.Dismissals);
+            Assert.Equal(plans[0].DismissedHere, plan.DismissedHere);
+            Assert.Equal(Sorted(plans[0].Moves), Sorted(plan.Moves));
+        }
+
+        Assert.Empty(plans[0].DismissedHere);
+
+        if (dismissedLast)
+        {
+            Assert.Empty(plans[0].Albums);
+            Assert.Empty(plans[0].Moves);
+        }
+        else
+        {
+            SharedAlbum settled = Assert.Single(plans[0].Albums);
+            Assert.Equal(AlbumOrigin.Accepted, settled.Origin);
+            Assert.Equal(Wednesday, settled.KeptUtc);
+        }
+    }
+
+    /// <summary>
+    /// Merging again after a keep or a dismissal has landed changes nothing.
+    /// </summary>
+    /// <remarks>
+    /// Three ways in: a suggestion taken in as kept, a kept album taken away by
+    /// a later dismissal, and a kept album brought back by a later keep. Each
+    /// is applied the way the write applies it, and the next merge must find
+    /// nothing left to do.
+    /// </remarks>
+    [Fact]
+    public void MergingTwiceAfterAKeepOrADismissalChangesNothing()
+    {
+        const string days = "2019-03-03..2019-03-05";
+        AssetKey photo = Pictures.Photo(@"2019\a.jpg");
+        LibraryContents here = Pictures.Indexed(photo);
+
+        SharedAlbum his = Pictures.Proposal(days, "March 2019");
+        SharedAlbum hers = Pictures.Kept(days, "March 2019", Monday);
+
+        SettlesInOneMerge(
+            new Machine("Dad").HasAlbum(his).Set(),
+            [new Machine("Mum").HasAlbum(hers).Puts(photo, hers.PublicId, Wednesday).Set()],
+            here);
+
+        SharedAlbum mums = Pictures.Kept(days, "March 2019", Monday);
+        SharedAlbum grans = Pictures.Kept(days, "March 2019", Monday);
+
+        SettlesInOneMerge(
+            new Machine("Mum").HasAlbum(mums).Puts(photo, mums.PublicId, Monday).Set(),
+            [
+                new Machine("Dad").Dismisses(days, Tuesday).Set(),
+                new Machine("Gran").HasAlbum(grans).Puts(photo, grans.PublicId, Wednesday).Set(),
+            ],
+            here);
+
+        SharedAlbum keptLater = Pictures.Kept(days, "March 2019", Tuesday);
+
+        SettlesInOneMerge(
+            new Machine("Dad").Dismisses(days, Monday).Set(),
+            [new Machine("Mum").HasAlbum(keptLater).Puts(photo, keptLater.PublicId, Tuesday).Set()],
+            here);
+    }
+
+    /// <summary>
+    /// Only an album the write can put somewhere is planned.
+    /// </summary>
+    /// <remarks>
+    /// A suggestion renamed elsewhere, for days this library has not grouped,
+    /// has nowhere to land: only a keep or a deletion makes a row from a merge.
+    /// It used to be planned on every merge and skipped by the write every
+    /// time. A deletion with no row here is written - it is what stops this
+    /// library suggesting days somebody threw away - so that one must still be
+    /// planned.
+    /// </remarks>
+    [Fact]
+    public void OnlyWhatCanBeWrittenIsPlanned()
+    {
+        const string days = "2019-03-03..2019-03-05";
+
+        MergePlan renamed = Merge(
+            mine: new Machine("Dad"),
+            theirs: new Machine("Mum").HasAlbum(Pictures.Proposal(days, "Genting", Monday)),
+            here: Pictures.Indexed());
+
+        Assert.Empty(renamed.Albums);
+
+        MergePlan deleted = Merge(
+            mine: new Machine("Dad"),
+            theirs: new Machine("Mum").HasAlbum(
+                Pictures.Kept(days, "March 2019", Monday) with { DeletedUtc = Tuesday }),
+            here: Pictures.Indexed());
+
+        Assert.Equal(Tuesday, Assert.Single(deleted.Albums).DeletedUtc);
+    }
+
+    /// <summary>
+    /// A cover chosen on a kept album beats one chosen in the same instant on a
+    /// suggestion.
+    /// </summary>
+    /// <remarks>
+    /// The tie used to fall to the photograph's own key, which is the right
+    /// answer only between two albums with the same standing. Between a kept
+    /// album and a suggestion it hands the picture to whichever sorts later.
+    /// </remarks>
+    [Fact]
+    public void AChosenCoverOnAKeptAlbumBeatsTheSameMomentOnASuggestion()
+    {
+        const string days = "2019-03-03..2019-03-05";
+        AssetKey his = Pictures.Photo(@"2019\z.jpg");
+        AssetKey hers = Pictures.Photo(@"2019\a.jpg");
+
+        // His sorts later, which is the tie-break that used to decide it.
+        Assert.True(string.CompareOrdinal(his.ToString(), hers.ToString()) > 0);
+
+        MergePlan plan = Merge(
+            mine: new Machine("Dad").HasAlbum(
+                Pictures.Proposal(days, "March 2019") with { Cover = his, CoverChosenUtc = Monday }),
+            theirs: new Machine("Mum").HasAlbum(
+                Pictures.Kept(days, "March 2019", Monday) with { Cover = hers, CoverChosenUtc = Monday }),
+            here: Pictures.Indexed(his, hers));
+
+        Assert.Equal(hers, Assert.Single(plan.Albums).Cover);
+    }
+
+    /// <summary>
+    /// A keep or a dismissal dated too far ahead is refused, as any other
+    /// answer is.
+    /// </summary>
+    /// <remarks>
+    /// Both now compete on their dates, so a clock a year ahead would win every
+    /// argument about keeping through a door the guard had not shut.
+    /// </remarks>
+    [Fact]
+    public void AKeepOrADismissalDatedTooFarAheadIsRefused()
+    {
+        const string days = "2019-03-03..2019-03-05";
+
+        MergePlan kept = Merge(
+            mine: new Machine("Dad"),
+            theirs: new Machine("Mum").HasAlbum(Pictures.Kept(days, "March 2019", Now.AddDays(2))),
+            here: Pictures.Indexed());
+
+        Assert.Equal(RefusalReason.ClockTooFarAhead, Assert.Single(kept.Refused).Reason);
+
+        MergePlan dismissed = Merge(
+            mine: new Machine("Dad"),
+            theirs: new Machine("Mum").Dismisses(days, Now.AddDays(2)),
+            here: Pictures.Indexed());
+
+        Assert.Equal(RefusalReason.ClockTooFarAhead, Assert.Single(dismissed.Refused).Reason);
+    }
+
+    /// <summary>
+    /// Nothing joins a kept album on the merge that throws it away.
+    /// </summary>
+    /// <remarks>
+    /// The album is still live here when the merge plans, but the same merge
+    /// turns it into a tombstone - and the write skips a move into a tombstone,
+    /// so planning one is a move that never lands and is planned again.
+    /// </remarks>
+    [Fact]
+    public void NothingJoinsAKeptAlbumOnTheMergeThatThrowsItAway()
+    {
+        const string days = "2019-03-03..2019-03-05";
+        AssetKey photo = Pictures.Photo(@"2019\a.jpg");
+
+        SharedAlbum dads = Pictures.Kept(days, "March 2019", Monday);
+
+        MergePlan plan = Merge(
+            mine: new Machine("Mum").HasAlbum(Pictures.Kept(days, "March 2019", Monday)),
+            theirs:
+            [
+                new Machine("Gran").HasAlbum(
+                    Pictures.Kept(days, "March 2019", Monday) with { DeletedUtc = Tuesday }),
+                new Machine("Dad").HasAlbum(dads).Puts(photo, dads.PublicId, Wednesday),
+            ],
+            here: Pictures.Indexed(photo));
+
+        Assert.Empty(plan.Moves);
+    }
+
+    /// <summary>
+    /// A photograph filed elsewhere lands on the same merge that takes its kept
+    /// album away.
+    /// </summary>
+    /// <remarks>
+    /// The membership in the album being removed is later than the filing, so
+    /// it used to beat it - and then went with the album, leaving the
+    /// photograph in nothing until a second merge.
+    /// </remarks>
+    [Fact]
+    public void AFilingElsewhereLandsOnTheMergeThatTakesAKeptAlbumAway()
+    {
+        const string days = "2019-03-03..2019-03-05";
+        DateTime sunday = Monday.AddDays(-1);
+        AssetKey photo = Pictures.Photo(@"2019\a.jpg");
+        Guid best = Guid.NewGuid();
+
+        SharedAlbum hers = Pictures.Kept(days, "March 2019", Monday);
+
+        MergePlan plan = Merge(
+            mine: new Machine("Mum").HasAlbum(hers).Puts(photo, hers.PublicId, Monday),
+            theirs: new Machine("Dad")
+                .Dismisses(days, Tuesday)
+                .HasAlbum(Pictures.Album(best, "Best shots", sunday))
+                .Puts(photo, best, sunday),
+            here: Pictures.Indexed(photo));
+
+        Assert.Single(plan.DismissedHere);
+        Assert.Equal(best, Assert.Single(plan.Moves).To);
     }
 
     /// <summary>
@@ -1097,4 +1606,42 @@ public sealed class DecisionMergeTests
     private static MergePlan Merge(
         Machine mine, IReadOnlyList<Machine> theirs, LibraryContents here) =>
         DecisionMerge.Merge(mine.Set(), [.. theirs.Select(m => m.Set())], here, Now);
+
+    /// <summary>
+    /// Asserts that a merge which changes something leaves nothing for the next
+    /// one, once it has been carried out.
+    /// </summary>
+    private static void SettlesInOneMerge(
+        DecisionSet mine, IReadOnlyList<DecisionSet> theirs, LibraryContents here)
+    {
+        MergePlan first = DecisionMerge.Merge(mine, theirs, here, Now);
+        Assert.False(first.ChangesNothing, "the first merge should have had something to do");
+
+        MergePlan second = DecisionMerge.Merge(mine.Apply(first), theirs, here, Now);
+        Assert.True(second.ChangesNothing, "the second merge should find nothing to do");
+    }
+
+    /// <summary>Every order the same machines can be read in.</summary>
+    private static IEnumerable<IReadOnlyList<T>> Orders<T>(IReadOnlyList<T> items)
+    {
+        if (items.Count <= 1)
+        {
+            yield return items;
+            yield break;
+        }
+
+        for (int first = 0; first < items.Count; first++)
+        {
+            List<T> rest = [.. items.Where((_, index) => index != first)];
+
+            foreach (IReadOnlyList<T> tail in Orders(rest))
+            {
+                yield return [items[first], .. tail];
+            }
+        }
+    }
+
+    /// <summary>Moves in an order that does not depend on the order they were read in.</summary>
+    private static List<SharedAlbumMove> Sorted(IEnumerable<SharedAlbumMove> moves) =>
+        [.. moves.OrderBy(move => move.Photo.ToString(), StringComparer.Ordinal)];
 }

@@ -69,6 +69,30 @@ public sealed record MergePlan(
     /// </remarks>
     public IReadOnlyList<SharedAlbumMembership> Unplaced { get; init; } = [];
 
+    /// <summary>
+    /// Dismissals to remember, where what this library holds for those days
+    /// is older or missing.
+    /// </summary>
+    /// <remarks>
+    /// Beside the constructor, as the two lists above are, so every copy of a
+    /// plan made with <c>with</c> carries them. Writing one changes nothing
+    /// anybody sees, but it is a change: it is what this library tells the
+    /// next laptop, and a plan that kept carrying it would never settle.
+    /// </remarks>
+    public IReadOnlyList<SharedAlbumDismissal> Dismissals { get; init; } = [];
+
+    /// <summary>
+    /// This library's own kept albums that a later dismissal has beaten, each
+    /// with the dismissal that beat it.
+    /// </summary>
+    /// <remarks>
+    /// Taken away outright rather than left as a tombstone. A tombstone keeping
+    /// its run of days would tell the rebuild "never suggest these days again",
+    /// which is what deleting a kept album says - and a later keep could never
+    /// bring it back.
+    /// </remarks>
+    public IReadOnlyList<SharedAlbumDismissal> DismissedHere { get; init; } = [];
+
     /// <summary>Whether this merge would change anything at all.</summary>
     /// <remarks>
     /// Joins and refusals are deliberately not counted. A join is an offer the
@@ -90,6 +114,8 @@ public sealed record MergePlan(
         && Eras.Count == 0
         && Collections.Count == 0
         && Held.Count == 0
+        && Dismissals.Count == 0
+        && DismissedHere.Count == 0
 
         // A rename is a change, and a big one: every key in this library's own
         // answers means a different photograph afterwards. Links on their own

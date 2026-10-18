@@ -199,6 +199,7 @@ public sealed class SqliteCollectionRepository : ICollectionRepository
             {
                 album.CollectionId = null;
                 album.ShelvedUtc = nowUtc;
+                album.KeepAgain(nowUtc);
                 removed++;
                 continue;
             }
@@ -215,14 +216,15 @@ public sealed class SqliteCollectionRepository : ICollectionRepository
 
                 album.CollectionId = collectionId;
                 album.ShelvedUtc = nowUtc;
+                album.KeepAgain(nowUtc);
                 added++;
             }
 
             // Putting a suggestion on a shelf is keeping it. One write rather
-            // than a keep and then a move, so the two cannot come apart.
-            if (album.Origin == AlbumOrigin.Proposed)
+            // than a keep and then a move, so the two cannot come apart - and
+            // one moment for both.
+            if (album.Keep(nowUtc))
             {
-                album.Origin = AlbumOrigin.Accepted;
                 kept++;
             }
         }
@@ -277,20 +279,18 @@ public sealed class SqliteCollectionRepository : ICollectionRepository
                 .ConfigureAwait(false)
             : null;
 
+        DateTime nowUtc = DateTime.UtcNow;
+
         album.CollectionId = collectionId;
-        album.ShelvedUtc = DateTime.UtcNow;
+        album.ShelvedUtc = nowUtc;
+        album.KeepAgain(nowUtc);
 
         // Putting a suggestion on a shelf is keeping it, the same decision the
         // tick list makes, and in the same write so the two cannot come apart.
         // A proposal is still a question as far as a rebuild is concerned, and
         // a rebuild removes a question nobody answered - taking the album off
         // the shelf somebody filled with it, and its photographs with it.
-        bool kept = collectionId is not null && album.Origin == AlbumOrigin.Proposed;
-
-        if (kept)
-        {
-            album.Origin = AlbumOrigin.Accepted;
-        }
+        bool kept = collectionId is not null && album.Keep(nowUtc);
 
         await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
 

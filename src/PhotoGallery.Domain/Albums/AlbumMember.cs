@@ -16,6 +16,24 @@ namespace PhotoGallery.Domain.Albums;
 /// </remarks>
 public sealed class AlbumMember
 {
+    /// <summary>
+    /// When a photograph the app placed was added, once the album it is in has
+    /// become somebody's.
+    /// </summary>
+    /// <remarks>
+    /// The earliest moment there is, so it loses to every photograph a person
+    /// placed. A rebuild dates what it groups at the moment it runs, which is
+    /// harmless while the album is a suggestion - nothing in one is published.
+    /// Once a laptop takes in a keep from another, though, everything in its
+    /// own suggestion is published as its answer, and a grouping nobody chose,
+    /// dated whenever the last scan ran, would outrank somebody who filed the
+    /// photograph elsewhere days before.
+    ///
+    /// <para>The same "moment unknown" the house already uses for answers given
+    /// before answers were dated, so it settles the way those do.</para>
+    /// </remarks>
+    public static readonly DateTime AppPlacedUtc = DateTime.MinValue;
+
     public int AssetId { get; set; }
 
     public Asset? Asset { get; set; }

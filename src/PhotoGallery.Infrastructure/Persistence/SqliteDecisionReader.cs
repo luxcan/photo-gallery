@@ -64,6 +64,7 @@ public sealed class SqliteDecisionReader : IDecisionReader
             await LinksAsync(cancellationToken).ConfigureAwait(false))
         {
             Collections = await CollectionsAsync(cancellationToken).ConfigureAwait(false),
+            Dismissals = await DismissalsAsync(machine, cancellationToken).ConfigureAwait(false),
         };
     }
 
@@ -421,7 +422,8 @@ public sealed class SqliteDecisionReader : IDecisionReader
                 album.CollectionId,
                 album.ShelvedUtc,
                 album.CoverAssetId,
-                album.CoverChosenUtc))
+                album.CoverChosenUtc,
+                album.KeptUtc))
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
 
@@ -455,7 +457,12 @@ public sealed class SqliteDecisionReader : IDecisionReader
                 // The date only travels with the photograph it is about. A
                 // moment on its own would win the argument and then have
                 // nothing to put on the wall.
-                Chosen(photographs, row) is null ? null : row.CoverChosenUtc)),
+                Chosen(photographs, row) is null ? null : row.CoverChosenUtc,
+
+                // Only ever set on a suggestion somebody kept, and null where
+                // the keep could not say when - which is how it travels, so
+                // the file says nothing rather than inventing a moment.
+                row.KeptUtc)),
         ];
     }
 
@@ -475,7 +482,8 @@ public sealed class SqliteDecisionReader : IDecisionReader
         int? CollectionId,
         DateTime? ShelvedUtc,
         int CoverAssetId,
-        DateTime? CoverChosenUtc);
+        DateTime? CoverChosenUtc,
+        DateTime? KeptUtc);
 
     /// <summary>
     /// Which photographs are in which album - for albums somebody made or kept,
@@ -537,6 +545,34 @@ public sealed class SqliteDecisionReader : IDecisionReader
                     row.ProposalKey,
                     row.RejectedUtc,
                     Whose(row.RejectedBy, machine))),
+        ];
+    }
+
+    /// <summary>
+    /// The latest dismissal of each run of days this library has heard of, its
+    /// own and the ones it was told about.
+    /// </summary>
+    /// <remarks>
+    /// Forwarded with the author and the moment they arrived with, for the
+    /// reason every answer here is: a dismissal republished as this machine's
+    /// own would start settling ties it has no business settling. Still
+    /// forwarded after a later keep has beaten it, because the next laptop has
+    /// to be able to weigh the two for itself.
+    /// </remarks>
+    private async Task<IReadOnlyList<SharedAlbumDismissal>> DismissalsAsync(
+        MachineIdentity machine, CancellationToken cancellationToken)
+    {
+        List<AlbumDismissal> rows = await _db.AlbumDismissals
+            .AsNoTracking()
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        return
+        [
+            .. rows.Select(row => new SharedAlbumDismissal(
+                row.ProposalKey,
+                row.DismissedUtc,
+                Whose(row.DismissedBy, machine))),
         ];
     }
 

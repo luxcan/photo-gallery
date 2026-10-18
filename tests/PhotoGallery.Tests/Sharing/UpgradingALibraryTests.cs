@@ -35,6 +35,9 @@ public sealed class UpgradingALibraryTests : IDisposable
     /// </remarks>
     private const string BeforeSharing = "AddCollectionRules";
 
+    /// <summary>The last release before keeping a suggestion said when.</summary>
+    private const string BeforeKeepsWereDated = "AddAlbumCoverChosenUtc";
+
     private readonly string _root;
     private readonly GalleryDbContext _db;
 
@@ -190,6 +193,39 @@ public sealed class UpgradingALibraryTests : IDisposable
 
         Assert.NotEqual(Guid.Empty, settings.MachineId);
         Assert.NotEmpty(settings.MachineName);
+    }
+
+    /// <summary>
+    /// A suggestion kept before keeps were dated says it cannot say when, and
+    /// the library starts with no dismissals.
+    /// </summary>
+    /// <remarks>
+    /// No moment is invented for it. The only date the row has is when the
+    /// rebuild last wrote it - and on a row a merge created, when it arrived -
+    /// so a keep dated by either could beat a dismissal that really came later.
+    /// A keep that cannot say when is the honest answer, and it loses to any
+    /// dismissal that can, the way every other undated answer loses.
+    /// </remarks>
+    [Fact]
+    public void AKeepMadeBeforeThisReleaseSaysItCannotSayWhen()
+    {
+        _db.GetService<IMigrator>().Migrate(BeforeKeepsWereDated);
+
+        Sql($"""
+             INSERT INTO Albums
+                 (PublicId, Name, StartUtc, EndUtc, CoverAssetId, Kind, Origin, ProposalKey, BuiltUtc)
+             VALUES ('{Guid.NewGuid().ToString().ToUpperInvariant()}', 'March 2019',
+                     '2019-03-03 00:00:00', '2019-03-05 00:00:00', 0,
+                     {(int)AlbumKind.Event}, {(int)AlbumOrigin.Accepted},
+                     '2019-03-03..2019-03-05', '2026-09-01 00:00:00');
+             """);
+
+        Upgrade();
+
+        Album kept = _db.Albums.Single();
+        Assert.Equal(AlbumOrigin.Accepted, kept.Origin);
+        Assert.Null(kept.KeptUtc);
+        Assert.Empty(_db.AlbumDismissals);
     }
 
     [Fact]

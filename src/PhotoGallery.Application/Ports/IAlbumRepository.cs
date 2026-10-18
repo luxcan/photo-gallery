@@ -90,6 +90,10 @@ public interface IAlbumRepository
     /// <summary>
     /// Throws a proposal away and remembers every photograph that was in it.
     /// </summary>
+    /// <remarks>
+    /// Does nothing to an album that is no longer a proposal - one a Sync kept
+    /// after the screen asking was read - just as keeping does nothing to one.
+    /// </remarks>
     Task DismissAsync(int albumId, CancellationToken cancellationToken = default);
 
     /// <summary>Renames one, and records that the name is the user's now.</summary>

@@ -51,6 +51,43 @@ public sealed record DecisionSet(
     IReadOnlyList<SourceLink> Links)
 {
     /// <summary>
+    /// The latest dismissal of each run of days this library has heard of, its
+    /// own and everybody else's.
+    /// </summary>
+    /// <remarks>
+    /// Beside the constructor and empty unless filled, for the reason
+    /// <see cref="Collections"/> is: a release that recorded no dismissals
+    /// writes no such property, and reading that as none is the truth about
+    /// that machine. A release that does not know the property skips it.
+    ///
+    /// <para>Forwarded with their own author and moment, like every other
+    /// answer here, and still forwarded after a later keep has beaten one -
+    /// the next laptop to hear of the keep has to be able to weigh the two.</para>
+    /// </remarks>
+    public IReadOnlyList<SharedAlbumDismissal> Dismissals { get; init; } = [];
+
+    /// <summary>
+    /// Deleted albums that carry a run of days, set aside from
+    /// <see cref="Albums"/> while the set is written to the shared folder.
+    /// </summary>
+    /// <remarks>
+    /// Filled only on the way into the file and emptied on the way back out, so
+    /// every set a merge settles has it empty. The previous release reads a
+    /// deleted album carrying a run of days as "turn my own suggestion for these
+    /// days into a tombstone", and its next scan then adds a second row under a
+    /// key that tombstone still holds - which the database refuses, on that scan
+    /// and every one after it. A release skips a property it does not know, so
+    /// moving them here is what keeps that release from ever hearing of one. It
+    /// also stops hearing that those days were deleted, which is the price, and
+    /// an honest one: it goes on showing an album rather than failing every
+    /// scan.
+    ///
+    /// <para>See <see cref="WithDeletedSuggestionsSetAside"/> and
+    /// <see cref="WithDeletedSuggestionsPutBack"/>.</para>
+    /// </remarks>
+    public IReadOnlyList<SharedAlbum> DeletedSuggestions { get; init; } = [];
+
+    /// <summary>
     /// The shelves of albums this library holds.
     /// </summary>
     /// <remarks>
@@ -117,6 +154,41 @@ public sealed record DecisionSet(
         Answers = [.. Answers.Where(a => a.Source != AssignmentSource.Proposed)],
     };
 
+    /// <summary>
+    /// The same set with every deleted album that carries a run of days moved
+    /// out of <see cref="Albums"/> into <see cref="DeletedSuggestions"/>.
+    /// </summary>
+    /// <remarks>
+    /// Called by the file writer and by nothing else - public only because the
+    /// file lives in another layer. A deleted album somebody made carries no
+    /// run of days and stays where it always was: the previous release handles
+    /// that one safely.
+    /// </remarks>
+    public DecisionSet WithDeletedSuggestionsSetAside() => this with
+    {
+        Albums = [.. Albums.Where(album => !IsDeletedSuggestion(album))],
+        DeletedSuggestions = [.. DeletedSuggestions, .. Albums.Where(IsDeletedSuggestion)],
+    };
+
+    /// <summary>
+    /// The same set with the deleted suggestions put back among the albums,
+    /// where everything that settles a merge expects them.
+    /// </summary>
+    /// <remarks>
+    /// Called by the file reader and by nothing else - public only because the
+    /// file lives in another layer. They go back at the end of the list, which
+    /// is safe because a merge settles albums by who they are, never by where
+    /// they sit.
+    /// </remarks>
+    public DecisionSet WithDeletedSuggestionsPutBack() => this with
+    {
+        Albums = [.. Albums, .. DeletedSuggestions],
+        DeletedSuggestions = [],
+    };
+
+    private static bool IsDeletedSuggestion(SharedAlbum album) =>
+        album.ProposalKey is not null && album.DeletedUtc is not null;
+
     /// <summary>The latest moment anybody decided anything in here.</summary>
     /// <remarks>
     /// A method rather than a property because a decision set is written to a
@@ -155,6 +227,12 @@ public sealed record DecisionSet(
             // clock a year ahead would be refused for the names it typed and
             // believed for the picture it put on every album.
             Albums.Count == 0 ? DateTime.MinValue : Albums.Max(album => Or(album.CoverChosenUtc)),
+
+            // And keeping and dismissing, which compete on their dates now too.
+            // Left out, a clock a year ahead would win every argument about
+            // whether an album stays.
+            Albums.Count == 0 ? DateTime.MinValue : Albums.Max(album => Or(album.KeptUtc)),
+            Dismissals.Count == 0 ? DateTime.MinValue : Dismissals.Max(d => d.DismissedUtc),
         }.Max();
 
     private static DateTime Moment(SharedCollection collection) =>
