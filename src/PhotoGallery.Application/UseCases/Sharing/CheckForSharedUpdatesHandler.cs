@@ -32,8 +32,10 @@ namespace PhotoGallery.Application.UseCases.Sharing;
 /// time.</strong> Reaching a folder is <c>Directory.Exists</c> underneath, which
 /// cannot be cancelled and which blocks for as long as the operating system
 /// takes to give up on an address that is not answering. This handler does not
-/// bound that, because the Sharing screen wants the real answer however long it
-/// takes; a periodic check does not, and its caller says so.</para>
+/// bound that itself: its one caller is a look nobody asked for, which races it
+/// against a deadline of its own and says nothing when it loses. The Sync screen
+/// and its button do not come here; they ask the folder under the deadline
+/// <see cref="SyncFolderProbe"/> keeps.</para>
 /// </remarks>
 public sealed class CheckForSharedUpdatesHandler
 {

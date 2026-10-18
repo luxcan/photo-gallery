@@ -511,7 +511,7 @@ public sealed class RenditionPoolTests : IDisposable
     /// <summary>Mum's two scan phases, giving through a folder a test controls.</summary>
     private ShareRenditionsHandler Through(IRenditionPool pool) =>
         new(Mum.Index, Mum.Decisions, Mum.Writing, pool, Mum.Thumbnails, Mum.Waiting,
-            Mum.Models, Mum.Exchange);
+            Mum.Models, Mum.Exchange, new SyncFolderProbe(Mum.Index, pool));
 
     /// <summary>
     /// The real folder, except that copying into it fails - every time, after

@@ -1059,14 +1059,18 @@ public sealed class RefreshLibraryHandlerTests : IDisposable
                 _index,
                 new SqliteDecisionReader(_db),
                 new SqliteDecisionRepository(_db),
-                pool ?? new SharedFolderPool(_index, _workingFolder),
+                pool ??= new SharedFolderPool(_index, _workingFolder),
                 _store,
                 Waiting(),
                 models ?? new NoModels(),
-                new SharedFolderExchange(_index))
-            {
-                Patience = TimeSpan.FromMilliseconds(200),
-            });
+                new SharedFolderExchange(_index),
+
+                // The folder the phases copy through is the one asked whether
+                // it is there.
+                new SyncFolderProbe(_index, pool)
+                {
+                    Patience = TimeSpan.FromMilliseconds(200),
+                }));
 
     /// <summary>
     /// The real sweep over held answers, not a stub.

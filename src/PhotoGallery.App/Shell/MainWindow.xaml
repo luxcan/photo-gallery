@@ -2483,6 +2483,15 @@
                            Visibility="{Binding Sharing.HasProblem,
                                         Converter={StaticResource BoolToVisibility}}" />
 
+                <!-- While the folder is asked whether it is there, which takes
+                     the whole of the deadline when it is asleep or out of reach.
+                     The screen said nothing for those seconds once, with Sync
+                     now live underneath; it is off until the folder answers. -->
+                <TextBlock Style="{DynamicResource HintText}" TextWrapping="Wrap"
+                           Text="Checking the sync folder..."
+                           Visibility="{Binding Sharing.IsChecking,
+                                        Converter={StaticResource BoolToVisibility}}" />
+
                 <!-- One button. Nobody wants to publish; they want the names
                      they typed last night to be on the other laptop, and two
                      buttons would be a procedure to remember - whose wrong

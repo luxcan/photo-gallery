@@ -48,6 +48,7 @@ public sealed class SharingSectionTests
     [InlineData("Sharing.HasWaiting")]
     [InlineData("Sharing.HasMachines")]
     [InlineData("Sharing.IsIdle")]
+    [InlineData("Sharing.IsChecking")]
     [InlineData("Sharing.ShareCommand")]
     [InlineData("Sharing.Offers")]
     [InlineData("Sharing.HasOffers")]
@@ -97,6 +98,59 @@ public sealed class SharingSectionTests
         Assert.DoesNotContain("Content=\"Publish", section);
         Assert.DoesNotContain("Content=\"Send", section);
         Assert.DoesNotContain("Content=\"Receive", section);
+    }
+
+    /// <summary>
+    /// While the folder is asked whether it is there, the screen says so, right
+    /// under the folder it is asking.
+    /// </summary>
+    /// <remarks>
+    /// The question takes as long as the deadline when the folder is asleep or
+    /// out of reach, and the screen used to say nothing at all for those
+    /// seconds - with Sync now live underneath.
+    /// </remarks>
+    [Fact]
+    public void TheScreenSaysItIsCheckingTheFolderWhileItAsks()
+    {
+        string section = Section();
+
+        int checking = section.IndexOf(
+            "Text=\"Checking the sync folder...\"", StringComparison.Ordinal);
+        Assert.True(checking > 0, "the screen does not say it is checking the folder");
+
+        int shown = section.IndexOf("Sharing.IsChecking", checking, StringComparison.Ordinal);
+        int closes = section.IndexOf("/>", checking, StringComparison.Ordinal);
+        Assert.True(shown > checking && shown < closes, "the line is not shown only while checking");
+
+        int folder = section.IndexOf("{Binding Sharing.Folder}", StringComparison.Ordinal);
+        int button = section.IndexOf("Content=\"Sync now\"", StringComparison.Ordinal);
+        Assert.True(
+            folder < checking && checking < button,
+            "the line is not between the folder and Sync now");
+    }
+
+    /// <summary>
+    /// What the screen says of a folder that did not answer in time names the
+    /// deadline, and keeps the vocabulary.
+    /// </summary>
+    /// <remarks>
+    /// The sentence is built in the use case rather than written in the markup,
+    /// so the rule that reads the markup for these words never sees it.
+    /// </remarks>
+    [Fact]
+    public void WhatTheScreenSaysOfAFolderThatDidNotAnswerNamesNoDeviceAndNoProtocol()
+    {
+        const string folder = @"\\drive\photo-data";
+
+        string said = PhotoGallery.Application.UseCases.Sharing.SyncFolderAnswer.Silent(
+            folder, PhotoGallery.Application.UseCases.Sharing.SyncFolderProbe.Deadline).Problem;
+
+        Assert.Equal($"That folder did not answer within 15 seconds: {folder}", said);
+
+        foreach (string banned in Banned)
+        {
+            Assert.DoesNotContain(banned, said, StringComparison.OrdinalIgnoreCase);
+        }
     }
 
     /// <summary>
@@ -252,6 +306,36 @@ public sealed class SharingSectionTests
 
         Assert.Contains("Click=\"OnChooseSharedFolderClicked\"", s_window);
         Assert.Contains("private async void OnChooseSharedFolderClicked", codeBehind);
+    }
+
+    /// <summary>
+    /// Opening the folder picker asks the screen where to open, and never asks
+    /// the folder on the window's own thread.
+    /// </summary>
+    /// <remarks>
+    /// It asked the folder itself once, to decide where the picker opens - and a
+    /// folder out of reach held the window's thread for as long as the operating
+    /// system took to give up on it: a frozen window, for twenty seconds and
+    /// more, before the picker appeared. It then went by the screen's last look
+    /// instead, which could be hours old, and handed the picker a folder that
+    /// had gone since. The screen asks again, off the window's thread and under
+    /// the deadline everything else keeps.
+    /// </remarks>
+    [Fact]
+    public void ThePickerAsksTheScreenWhereToOpenRatherThanAskingTheFolderItself()
+    {
+        string codeBehind = File.ReadAllText(AppMarkup.PathTo("Shell", "MainWindow.xaml.cs"));
+
+        int start = codeBehind.IndexOf(
+            "private async void OnChooseSharedFolderClicked", StringComparison.Ordinal);
+        int end = codeBehind.IndexOf("\r\n    }\r\n", start, StringComparison.Ordinal);
+        Assert.True(start > 0 && end > start, "the picker's handler cannot be found");
+
+        string picker = codeBehind[start..end];
+
+        Assert.DoesNotContain("Directory.", picker, StringComparison.Ordinal);
+        Assert.DoesNotContain("Sharing.FolderWasThere", picker, StringComparison.Ordinal);
+        Assert.Contains("await _viewModel.Sharing.FolderToBrowseFromAsync()", picker, StringComparison.Ordinal);
     }
 
     /// <summary>

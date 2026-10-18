@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using PhotoGallery.App.Sharing;
 using PhotoGallery.Application.UseCases.Albums;
 using PhotoGallery.Application.UseCases.Duplicates;
 using PhotoGallery.Application.UseCases.Faces;
@@ -12,11 +13,10 @@ using PhotoGallery.Application.UseCases.Refresh;
 using PhotoGallery.Application.UseCases.Scanning;
 using PhotoGallery.Application.UseCases.Search;
 using PhotoGallery.Application.UseCases.Sharing;
-using PhotoGallery.Application.UseCases.Updates;
 using PhotoGallery.Application.UseCases.Sources;
 using PhotoGallery.Application.UseCases.Thumbnails;
+using PhotoGallery.Application.UseCases.Updates;
 using PhotoGallery.Application.UseCases.Videos;
-using PhotoGallery.App.Sharing;
 
 namespace PhotoGallery.App;
 
@@ -65,6 +65,7 @@ public static class AppServiceCollectionExtensions
             .AddScoped<PublishDecisionsHandler>()
             .AddScoped<MergeDecisionsHandler>()
             .AddScoped<SetSharedFolderHandler>()
+            .AddScoped<SyncFolderProbe>()
             .AddScoped<GetSharingHandler>()
             .AddScoped<CheckForSharedUpdatesHandler>()
             .AddScoped<CheckForNewVersionHandler>()

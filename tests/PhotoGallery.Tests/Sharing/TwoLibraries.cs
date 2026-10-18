@@ -178,10 +178,10 @@ internal sealed class Library : IDisposable
 
     /// <summary>What the Sharing screen opens showing.</summary>
     public GetSharingHandler Overview =>
-        field ??= new GetSharingHandler(Index, Decisions, Exchange);
+        field ??= new GetSharingHandler(Index, Decisions, Exchange, Probe);
 
     /// <summary>Its one button: take everybody's answers, then give yours back.</summary>
-    public ShareNowHandler Sharing => field ??= new ShareNowHandler(Merging, Publishing);
+    public ShareNowHandler Sharing => field ??= new ShareNowHandler(Merging, Publishing, Probe);
 
     /// <summary>Whether there is anything to take, asked without taking it.</summary>
     public CheckForSharedUpdatesHandler Looking =>
@@ -201,12 +201,18 @@ internal sealed class Library : IDisposable
     public SharedFolderPool Pool => field ??= new SharedFolderPool(Index, Working);
 
     /// <summary>
+    /// Whether the sync folder is there, asked under the deadline every
+    /// question to it keeps.
+    /// </summary>
+    public SyncFolderProbe Probe => field ??= new SyncFolderProbe(Index, Pool);
+
+    /// <summary>
     /// The two scan phases at the sync folder: taking everybody's pictures, and
     /// leaving this library's.
     /// </summary>
     public ShareRenditionsHandler Pooling =>
         field ??= new ShareRenditionsHandler(
-            Index, Decisions, Writing, Pool, Thumbnails, Waiting, Models, Exchange);
+            Index, Decisions, Writing, Pool, Thumbnails, Waiting, Models, Exchange, Probe);
 
     /// <summary>
     /// Which models this library is running, as far as the fingerprint check is

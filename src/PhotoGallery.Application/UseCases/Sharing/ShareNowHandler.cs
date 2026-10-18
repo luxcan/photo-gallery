@@ -17,22 +17,43 @@ namespace PhotoGallery.Application.UseCases.Sharing;
 /// what it has just been told as well as what it decided itself, so a laptop
 /// that only ever reads this one still receives everybody's answers. Publishing
 /// first would write a set that is one merge out of date, every time.</para>
+///
+/// <para><strong>The folder is asked first, under the deadline the scan
+/// keeps.</strong> The merge's own question has none, and a folder that went
+/// away after the Sync screen opened - or after the notice offering its answers
+/// was put up - held a press for as long as the operating system took to give
+/// up on it. See <see cref="SyncFolderProbe"/>.</para>
 /// </remarks>
 public sealed class ShareNowHandler
 {
     private readonly MergeDecisionsHandler _merge;
     private readonly PublishDecisionsHandler _publish;
+    private readonly SyncFolderProbe _folder;
 
-    public ShareNowHandler(MergeDecisionsHandler merge, PublishDecisionsHandler publish)
+    public ShareNowHandler(
+        MergeDecisionsHandler merge, PublishDecisionsHandler publish, SyncFolderProbe folder)
     {
         _merge = merge;
         _publish = publish;
+        _folder = folder;
     }
 
     public async Task<ShareResult> HandleAsync(
         IProgress<MergeProgress>? progress = null,
         CancellationToken cancellationToken = default)
     {
+        SyncFolderAnswer answer =
+            await _folder.AskAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
+
+        // A folder not chosen is left to the merge, which already says so in the
+        // screen's own words. One chosen and out of reach stops here, and is
+        // reported once rather than for each half.
+        if (answer.IsOutOfReach)
+        {
+            return new ShareResult(
+                MergeResult.CouldNot(answer.Problem), PublishResult.CouldNot(answer.Problem));
+        }
+
         MergeResult merged = await _merge
             .HandleAsync(progress, cancellationToken)
             .ConfigureAwait(false);

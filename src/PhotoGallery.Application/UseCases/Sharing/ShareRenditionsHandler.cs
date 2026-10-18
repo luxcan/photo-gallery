@@ -1,7 +1,6 @@
 using System.Diagnostics;
 using PhotoGallery.Application.Ports;
 using PhotoGallery.Domain.Assets;
-using PhotoGallery.Domain.Library;
 using PhotoGallery.Domain.Sharing;
 
 namespace PhotoGallery.Application.UseCases.Sharing;
@@ -42,9 +41,6 @@ namespace PhotoGallery.Application.UseCases.Sharing;
 /// </remarks>
 public sealed class ShareRenditionsHandler
 {
-    /// <summary>What the overlay says while the folder is asked whether it is there.</summary>
-    private const string Looking = "Looking in the sync folder";
-
     private readonly ILibraryIndex _index;
     private readonly IDecisionReader _decisions;
     private readonly IDecisionRepository _repository;
@@ -53,6 +49,7 @@ public sealed class ShareRenditionsHandler
     private readonly ApplyHeldDecisionsHandler _waiting;
     private readonly IModelStore _models;
     private readonly IDecisionExchange _exchange;
+    private readonly SyncFolderProbe _folder;
 
     public ShareRenditionsHandler(
         ILibraryIndex index,
@@ -62,7 +59,8 @@ public sealed class ShareRenditionsHandler
         IThumbnailStore thumbnails,
         ApplyHeldDecisionsHandler waiting,
         IModelStore models,
-        IDecisionExchange exchange)
+        IDecisionExchange exchange,
+        SyncFolderProbe folder)
     {
         _index = index;
         _decisions = decisions;
@@ -72,20 +70,8 @@ public sealed class ShareRenditionsHandler
         _waiting = waiting;
         _models = models;
         _exchange = exchange;
+        _folder = folder;
     }
-
-    /// <summary>
-    /// How long the folder has to answer before a phase goes on without it.
-    /// </summary>
-    /// <remarks>
-    /// Asking is <c>Directory.Exists</c> underneath, which cannot be cancelled
-    /// and blocks until the operating system gives up on an address nothing is
-    /// answering - twenty-one seconds, measured on this network. Long enough for
-    /// a sleeping drive to wake, which is the ordinary case of a folder that is
-    /// there; short enough that a laptop out of the house loses a quarter of a
-    /// minute and no more. Settable so that a test need not wait it out.
-    /// </remarks>
-    public TimeSpan Patience { get; init; } = TimeSpan.FromSeconds(15);
 
     /// <summary>
     /// Takes the pictures and faces the other machines have left, before this
@@ -266,6 +252,10 @@ public sealed class ShareRenditionsHandler
     /// Why the folder cannot be used this time, or null when it can - asked
     /// against a deadline rather than waited on.
     /// </summary>
+    /// <remarks>
+    /// The same question, under the same deadline, that the Sync screen and its
+    /// button ask: see <see cref="SyncFolderProbe"/>.
+    /// </remarks>
     /// <param name="progress">
     /// Told the phase has begun once there is a folder to ask, and not before. A
     /// library nobody shares has nothing to do here, and a phase with nothing to
@@ -274,40 +264,10 @@ public sealed class ShareRenditionsHandler
     private async Task<string?> UnusableAsync(
         IProgress<MergeProgress>? progress, CancellationToken cancellationToken)
     {
-        LibrarySettings settings =
-            await _index.GetSettingsAsync(cancellationToken).ConfigureAwait(false);
+        SyncFolderAnswer answer =
+            await _folder.AskAsync(progress, cancellationToken).ConfigureAwait(false);
 
-        if (string.IsNullOrWhiteSpace(settings.SharedFolder))
-        {
-            return "no sync folder is chosen";
-        }
-
-        // Named before the wait rather than after it, so that a folder slow to
-        // answer is not waited on under the name of the phase before.
-        progress?.Report(new MergeProgress(Looking, 0, 0));
-
-        // Raced rather than awaited, and asked uncancelled: the question cannot
-        // be cancelled underneath anyway, and one left behind finishes on its
-        // own long before anybody asks again.
-        Task<ExchangeReadiness> asking = _pool.ReadinessAsync(CancellationToken.None);
-
-        Task answered = await Task
-            .WhenAny(asking, Task.Delay(Patience, cancellationToken))
-            .ConfigureAwait(false);
-
-        cancellationToken.ThrowIfCancellationRequested();
-
-        if (answered != asking)
-        {
-            return $"the sync folder did not answer within {Patience.TotalSeconds:N0} seconds: "
-                 + settings.SharedFolder;
-        }
-
-        ExchangeReadiness readiness = await asking.ConfigureAwait(false);
-
-        return readiness.CanExchange
-            ? null
-            : $"the sync folder cannot be reached: {settings.SharedFolder}";
+        return answer.Reason;
     }
 
     /// <summary>

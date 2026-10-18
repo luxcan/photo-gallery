@@ -157,6 +157,20 @@ public sealed partial class SharingViewModel : ObservableObject
     [NotifyCanExecuteChangedFor(nameof(ShareCommand))]
     private bool _isBusy;
 
+    /// <summary>
+    /// Whether the folder is being asked if it is there.
+    /// </summary>
+    /// <remarks>
+    /// Said on screen, and Sync now is off for as long as it lasts - which is the
+    /// whole of the deadline when the folder is asleep or out of reach. The
+    /// screen used to say nothing for those seconds, with the button live
+    /// underneath, so a press went into a folder that was not there and waited
+    /// the same again.
+    /// </remarks>
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(ShareCommand))]
+    private bool _isChecking;
+
     public SharingViewModel(IServiceScopeFactory scopeFactory, IActivityLog log)
     {
         _scopeFactory = scopeFactory;
@@ -186,8 +200,23 @@ public sealed partial class SharingViewModel : ObservableObject
 
     public bool IsIdle => !IsBusy;
 
+    /// <summary>
+    /// Whether a folder is chosen and was there the last time it was asked.
+    /// </summary>
+    /// <remarks>
+    /// What anything on the window's thread goes by, rather than asking the
+    /// folder again: asking holds whoever asks for as long as the operating
+    /// system takes to give up on a folder that is not answering.
+    ///
+    /// <para>Only as fresh as the last look, though, which can be hours old on a
+    /// screen left open. It is enough to say no; whatever is about to hand the
+    /// folder to something that would wait on it asks again first, as Sync now
+    /// and <see cref="FolderToBrowseFromAsync"/> do.</para>
+    /// </remarks>
+    public bool FolderWasThere => HasFolder && !HasProblem && !IsChecking;
+
     /// <summary>Whether there is anywhere to share, so the button can be pressed.</summary>
-    public bool CanShare => IsIdle && HasFolder && !HasProblem;
+    public bool CanShare => IsIdle && FolderWasThere;
 
     /// <summary>
     /// The one group somebody can do something about: the photographs are on one
@@ -489,6 +518,59 @@ public sealed partial class SharingViewModel : ObservableObject
     }
 
     /// <summary>
+    /// Where the folder picker opens: at the sync folder where a look made just
+    /// now finds it there, and nowhere in particular otherwise.
+    /// </summary>
+    /// <remarks>
+    /// <strong>Asked again, not remembered.</strong> The picker refuses to open,
+    /// silently, at a folder that is not there; handed an address on a network
+    /// that has gone, it holds the window's thread while the shell gives up on
+    /// it, and can then throw. What the screen's last look found can be hours
+    /// old - the drive switched off, or the laptop asleep and woken out of the
+    /// house, with the screen open throughout - and the picker going by it was
+    /// handed exactly that address. So a folder last found there is asked again
+    /// first, by the screen's own read: off the window's thread, under the
+    /// deadline everything else that asks it keeps, and saying on screen that it
+    /// is checking.
+    ///
+    /// <para>"Change..." is off while it asks, so a second press cannot put a
+    /// second picker over the first once the folder answers. A folder the last
+    /// look found gone, or is still asking, is not asked again: the picker opens
+    /// at once, which is what somebody choosing a different folder wants. Nor is
+    /// one somebody else is asking or writing to at that moment - the picker does
+    /// not wait behind them, and does not go by an answer it has not heard.</para>
+    /// </remarks>
+    public async Task<string> FolderToBrowseFromAsync()
+    {
+        if (!FolderWasThere || !await _gate.WaitAsync(0).ConfigureAwait(true))
+        {
+            return string.Empty;
+        }
+
+        IsBusy = true;
+
+        try
+        {
+            await ReadAsync().ConfigureAwait(true);
+        }
+        catch (Exception ex) when (LibraryFailure.IsExpected(ex))
+        {
+            // The picker opens all the same, since choosing a folder is what was
+            // asked for; only where it opens could not be found out.
+            _log.Append($"could not look in the sync folder before choosing another: {ex.Message}");
+
+            return string.Empty;
+        }
+        finally
+        {
+            IsBusy = false;
+            _gate.Release();
+        }
+
+        return FolderWasThere ? Folder : string.Empty;
+    }
+
+    /// <summary>
     /// Takes everybody's answers, then gives this library's back.
     /// </summary>
     /// <remarks>
@@ -505,6 +587,22 @@ public sealed partial class SharingViewModel : ObservableObject
 
         try
         {
+            // Asked again first, by the screen's own read and under the same
+            // deadline. The folder that answered when the screen opened may
+            // have gone since; found gone here, it is said in red and keeps the
+            // button off until a later look finds it, rather than being
+            // reported once in a line about a share that never started.
+            await ReadAsync().ConfigureAwait(true);
+
+            if (!FolderWasThere)
+            {
+                // Written down all the same, as it was when the share itself
+                // found the folder gone: the red line goes at the next look, and
+                // the log is then the only trace that the press was made.
+                Record(Problem);
+                return;
+            }
+
             ShareResult result = await Task.Run(async () =>
             {
                 using IServiceScope scope = _scopeFactory.CreateScope();
@@ -515,13 +613,7 @@ public sealed partial class SharingViewModel : ObservableObject
             }).ConfigureAwait(true);
 
             Status = result.Summary;
-
-            // The folder first, and on its own line, because the failure this
-            // records is two machines each sharing faultlessly through a folder
-            // the other cannot see. Two logs side by side name it in a second;
-            // without them both laptops only ever said everything was fine.
-            _log.Append($"syncing through {Folder}");
-            _log.Append($"  {result.Summary}");
+            Record(result.Summary);
 
             Offers =
             [
@@ -555,6 +647,22 @@ public sealed partial class SharingViewModel : ObservableObject
             IsBusy = false;
             _gate.Release();
         }
+    }
+
+    /// <summary>
+    /// Writes down which folder a press of Sync now went through, and what came
+    /// of it.
+    /// </summary>
+    /// <remarks>
+    /// The folder first, and on its own line, because the failure this records
+    /// is two machines each sharing faultlessly through a folder the other cannot
+    /// see. Two logs side by side name it in a second; without them both laptops
+    /// only ever said everything was fine.
+    /// </remarks>
+    private void Record(string outcome)
+    {
+        _log.Append($"syncing through {Folder}");
+        _log.Append($"  {outcome}");
     }
 
     /// <summary>
@@ -609,16 +717,29 @@ public sealed partial class SharingViewModel : ObservableObject
     }
 
     /// <summary>The read itself, without the gate, so callers holding it can use it.</summary>
+    /// <remarks>
+    /// In two steps. The folder's name comes from this library and is there at
+    /// once, so the screen names the folder it is checking and says it is
+    /// checking; then the folder is asked, which takes as long as the deadline
+    /// when nothing answers. What the last look said is put away meanwhile,
+    /// because a red line beside "checking" would be two answers at once.
+    /// </remarks>
     private async Task ReadAsync()
     {
-        SharingStatus status = await Task.Run(async () =>
+        Folder = await ReadingAsync(sharing => sharing.FolderAsync()).ConfigureAwait(true);
+        Problem = string.Empty;
+        IsChecking = HasFolder;
+
+        SharingStatus status;
+
+        try
         {
-            using IServiceScope scope = _scopeFactory.CreateScope();
-            return await scope.ServiceProvider
-                .GetRequiredService<GetSharingHandler>()
-                .HandleAsync()
-                .ConfigureAwait(false);
-        }).ConfigureAwait(true);
+            status = await ReadingAsync(sharing => sharing.HandleAsync()).ConfigureAwait(true);
+        }
+        finally
+        {
+            IsChecking = false;
+        }
 
         DateTime now = DateTime.UtcNow;
 
@@ -636,4 +757,16 @@ public sealed partial class SharingViewModel : ObservableObject
                 machine.Name, machine.Recency(now), !machine.Merged)),
         ];
     }
+
+    /// <summary>
+    /// One question of what the screen shows, off the window's thread and in a
+    /// scope of its own.
+    /// </summary>
+    private Task<T> ReadingAsync<T>(Func<GetSharingHandler, Task<T>> read) =>
+        Task.Run(async () =>
+        {
+            using IServiceScope scope = _scopeFactory.CreateScope();
+            return await read(scope.ServiceProvider.GetRequiredService<GetSharingHandler>())
+                .ConfigureAwait(false);
+        });
 }

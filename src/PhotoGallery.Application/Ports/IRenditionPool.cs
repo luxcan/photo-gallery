@@ -27,9 +27,11 @@ public interface IRenditionPool
     /// <remarks>
     /// <strong>Must not block its caller.</strong> The pool is a folder on
     /// another machine, and asking after one that is not answering holds the
-    /// thread for as long as the operating system takes to give up. A scan races
-    /// this against a deadline and goes on without the pool, which it can only
-    /// do if the answer is still to come when the call returns.
+    /// thread for as long as the operating system takes to give up. Everything
+    /// that asks whether the sync folder is there - a scan, the Sync screen, Sync
+    /// now - races this against one deadline and goes on without the folder,
+    /// which it can only do if the answer is still to come when the call returns.
+    /// See <c>SyncFolderProbe</c>.
     /// </remarks>
     Task<ExchangeReadiness> ReadinessAsync(CancellationToken cancellationToken = default);
 

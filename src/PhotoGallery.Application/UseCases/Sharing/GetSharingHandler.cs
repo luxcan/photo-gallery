@@ -17,21 +17,48 @@ namespace PhotoGallery.Application.UseCases.Sharing;
 /// once whenever anything is held, because a count that could not say <em>why</em>
 /// was a count the screen then described wrongly. A library with nothing held
 /// still costs nothing.</para>
+///
+/// <para><strong>The folder is asked under the deadline the scan keeps.</strong>
+/// It used to be waited on for as long as the operating system took to give up
+/// on it: twenty-three seconds on the family's library with the drive in the
+/// house switched off, with nothing on the screen to say why and Sync now live
+/// throughout. See <see cref="SyncFolderProbe"/>.</para>
 /// </remarks>
 public sealed class GetSharingHandler
 {
     private readonly ILibraryIndex _index;
     private readonly IDecisionReader _decisions;
     private readonly IDecisionExchange _exchange;
+    private readonly SyncFolderProbe _folder;
 
     public GetSharingHandler(
         ILibraryIndex index,
         IDecisionReader decisions,
-        IDecisionExchange exchange)
+        IDecisionExchange exchange,
+        SyncFolderProbe folder)
     {
         _index = index;
         _decisions = decisions;
         _exchange = exchange;
+        _folder = folder;
+    }
+
+    /// <summary>
+    /// The folder this library syncs through, from the library alone - before
+    /// anything asks the folder itself.
+    /// </summary>
+    /// <remarks>
+    /// So that the screen can name the folder it is checking while it checks.
+    /// Read only as part of <see cref="HandleAsync"/>, the folder's box said "No
+    /// folder chosen yet" for as long as the folder took to answer, about a
+    /// folder that was chosen.
+    /// </remarks>
+    public async Task<string> FolderAsync(CancellationToken cancellationToken = default)
+    {
+        LibrarySettings settings =
+            await _index.GetSettingsAsync(cancellationToken).ConfigureAwait(false);
+
+        return settings.SharedFolder ?? string.Empty;
     }
 
     public async Task<SharingStatus> HandleAsync(CancellationToken cancellationToken = default)
@@ -39,29 +66,24 @@ public sealed class GetSharingHandler
         LibrarySettings settings =
             await _index.GetSettingsAsync(cancellationToken).ConfigureAwait(false);
 
-        ExchangeReadiness readiness =
-            await _exchange.ReadinessAsync(cancellationToken).ConfigureAwait(false);
+        // No folder yet is the ordinary first state, and the answer calls it no
+        // problem: the screen is about to ask for one.
+        SyncFolderAnswer answer =
+            await _folder.AskAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
 
         string folder = settings.SharedFolder ?? string.Empty;
-
-        // No folder yet is the ordinary first state, not a problem to report: the
-        // screen is about to ask for one, and saying "choose a folder" beside the
-        // button that chooses it is telling somebody what they can already see.
-        string problem = folder.Length > 0 && !readiness.CanExchange
-            ? readiness.Problem
-            : string.Empty;
 
         IReadOnlyList<KnownMachine> known =
             await _decisions.KnownMachinesAsync(cancellationToken).ConfigureAwait(false);
 
-        IReadOnlyList<PublishedAnswers> published = folder.Length > 0 && readiness.CanExchange
+        IReadOnlyList<PublishedAnswers> published = answer.CanExchange
             ? await _exchange.StandingAsync(cancellationToken).ConfigureAwait(false)
             : [];
 
         HeldStanding held =
             await _decisions.HeldStandingAsync(cancellationToken).ConfigureAwait(false);
 
-        return new SharingStatus(folder, problem, Standing(known, published, settings), held);
+        return new SharingStatus(folder, answer.Problem, Standing(known, published, settings), held);
     }
 
     /// <summary>

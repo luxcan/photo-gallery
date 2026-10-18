@@ -1,12 +1,12 @@
-﻿using System.ComponentModel;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
-using System.Windows.Navigation;
 using System.Windows.Media.Animation;
+using System.Windows.Navigation;
 using Microsoft.Win32;
 using PhotoGallery.App.Albums;
 using PhotoGallery.App.Duplicates;
@@ -979,16 +979,18 @@ public partial class MainWindow : Window
     /// </remarks>
     private async void OnChooseSharedFolderClicked(object sender, RoutedEventArgs e)
     {
+        // A folder that is not there any more makes the picker refuse to open,
+        // and it refuses silently - which looks exactly like a button that does
+        // nothing. Where it opens is the screen's to say, because the screen
+        // asks the folder off this thread: asked here, the folder held it, and
+        // froze the window, for as long as the operating system took to give up
+        // on a folder out of reach.
+        string start = await _viewModel.Sharing.FolderToBrowseFromAsync();
+
         var dialog = new OpenFolderDialog
         {
             Title = "Choose a folder every computer in the house can reach",
-
-            // A folder that is not there any more makes the picker refuse to
-            // open, and it refuses silently - which looks exactly like a button
-            // that does nothing.
-            InitialDirectory = Directory.Exists(_viewModel.Sharing.Folder)
-                ? _viewModel.Sharing.Folder
-                : string.Empty,
+            InitialDirectory = start,
         };
 
         if (dialog.ShowDialog(this) == true)

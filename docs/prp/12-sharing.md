@@ -172,6 +172,19 @@ payload, and reading it is a directory listing. Without it a decision set
 written six months ago by a laptop now in a drawer merges exactly like one
 written an hour ago, and the user has no way to tell.
 
+> **From 18 October 2026 the screen asks the folder under the scan's deadline.**
+> With the drive in the house switched off, the Sync screen took twenty-three
+> seconds to say the folder could not be reached — its question had no deadline,
+> while a scan asking the same folder gave up after fifteen — and Sync now could
+> be pressed for all of them. Opening the screen, pressing Sync now, pressing
+> "Change..." and taking the answers a notice offers now ask the folder through
+> the scan's own question, under its one fifteen-second deadline. While it is
+> asked the screen names the folder and says it is checking; Sync now stays off
+> until a look finds the folder there, and a folder that does not answer in time
+> is said to have not answered. "Change..." opens the picker at the folder only
+> when that fresh look finds it, because a screen left open can be hours past
+> its last look. Nothing written to the folder changed.
+
 ### Finding each other directly
 
 For the machine with no folder in common. Answering the question properly even
