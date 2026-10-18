@@ -11,8 +11,8 @@ using PhotoGallery.App.Duplicates;
 using PhotoGallery.App.Gallery;
 using PhotoGallery.App.Imaging;
 using PhotoGallery.App.Models;
-using PhotoGallery.App.Sharing;
 using PhotoGallery.App.People;
+using PhotoGallery.App.Sharing;
 using PhotoGallery.App.Shell;
 using PhotoGallery.App.Theme;
 using PhotoGallery.Application;
@@ -21,12 +21,12 @@ using PhotoGallery.Application.UseCases.Albums;
 using PhotoGallery.Application.UseCases.Gallery;
 using PhotoGallery.Application.UseCases.OpenLibrary;
 using PhotoGallery.Application.UseCases.People;
-using PhotoGallery.Application.UseCases.Sharing;
-using PhotoGallery.Application.UseCases.Updates;
 using PhotoGallery.Application.UseCases.Preferences;
 using PhotoGallery.Application.UseCases.Refresh;
 using PhotoGallery.Application.UseCases.Scanning;
+using PhotoGallery.Application.UseCases.Sharing;
 using PhotoGallery.Application.UseCases.Sources;
+using PhotoGallery.Application.UseCases.Updates;
 using PhotoGallery.Domain.Library;
 using PhotoGallery.Infrastructure.Models;
 
@@ -1982,147 +1982,7 @@ public sealed partial class MainViewModel : ObservableObject
         {
             // Reported on the UI thread by Progress<T>, which captures the
             // context it was created on.
-            var progress = new Progress<RefreshProgress>(p =>
-            {
-                OverlayIsIndeterminate = p.IsIndeterminate;
-                OverlayPercent = p.Fraction * 100;
-
-                if (p.Phase == RefreshPhase.Indexing)
-                {
-                    OverlayTitle = "Indexing";
-
-                    // The folder, on the line that names what is being worked
-                    // on - the same line the other phases use. A crawl has no
-                    // total to fill a bar with, so watching the folder change is
-                    // the only way to tell it apart from a crawl that has hung.
-                    OverlayTarget = p.Target;
-                    OverlayStatus = $"{p.Done:N0} files seen";
-                }
-                else if (p.Phase == RefreshPhase.PreparingVideos)
-                {
-                    // The phase that used to be a button. Named in the user's
-                    // terms rather than as "keyframes", and given the estimate
-                    // as soon as there is one, because this is the one measured
-                    // in hours and the Stop underneath it is only a real choice
-                    // if the screen says how much is left.
-                    OverlayTitle = "Taking pictures out of your videos";
-                    OverlayTarget = "so they show up like photographs do";
-
-                    string failed = p.Failed > 0
-                        ? $", {p.Failed:N0} would not open"
-                        : string.Empty;
-
-                    OverlayStatus = p.Remaining is TimeSpan togo
-                        ? $"{p.Done:N0} of {p.Total:N0} videos{failed}, "
-                          + $"about {togo.TotalMinutes:N0} min left"
-                        : $"{p.Done:N0} of {p.Total:N0} videos{failed}";
-                }
-                else if (p.Phase == RefreshPhase.Collecting)
-                {
-                    // Its own arm, and not optional: the chain below ends in the
-                    // generating branch, so a phase without one would paint
-                    // "Preparing pictures" and set off a gallery reload on every
-                    // report - thousands of tiles rebuilt by a phase that
-                    // changed none of them.
-                    OverlayTitle = "Grouping your photos into albums";
-                    OverlayTarget = "so a weekend away opens as one thing";
-                    OverlayStatus = p.Total == 0
-                        ? "reading the dates..."
-                        : $"{p.Done:N0} of {p.Total:N0} groups";
-                }
-                else if (p.Phase == RefreshPhase.FindingFaces)
-                {
-                    OverlayTitle = "Finding faces";
-                    OverlayTarget = "in everything that now has a picture";
-                    OverlayStatus = $"{p.Done:N0} of {p.Total:N0} pictures"
-                                  + (p.Failed > 0 ? $", {p.Failed:N0} could not be read"
-                                                  : string.Empty);
-                }
-                else if (p.Phase == RefreshPhase.ApplyingAnswers)
-                {
-                    // Its own arm for the reason Collecting has one, and for a
-                    // second reason that cost a whole evening. Without it this
-                    // phase fell through to the branch at the end of the chain,
-                    // which paints "Preparing pictures" and asks the grid to
-                    // reload on every report - and before its first report
-                    // arrives the overlay simply went on saying "Finding faces",
-                    // which is the phase before it. So a crash in here was
-                    // reported, in good faith, as a crash while the app was
-                    // looking for faces, and the hunt for it started in the
-                    // wrong half of the pass.
-                    //
-                    // On a machine that shares with nobody this phase is one
-                    // count and is never seen. On one that does, it is where
-                    // another computer's answers land.
-                    OverlayTitle = "Taking in answers from your other computer";
-                    OverlayTarget = p.Target.Length > 0
-                        ? p.Target
-                        : "names, albums, and what was waiting for these photos";
-                    OverlayStatus = $"{p.Done:N0} of {p.Total:N0}";
-                }
-                else if (p.Phase is RefreshPhase.TakingCopies or RefreshPhase.GivingCopies)
-                {
-                    // Their own arm, for the reason every phase here has one: the
-                    // chain ends in the generating branch, which would paint
-                    // "Preparing pictures" over a phase that is copying, and ask
-                    // the grid to reload on every one of thousands of reports.
-                    //
-                    // The line under the title is the phase's own: asking the
-                    // folder whether it is there, then pictures, then faces -
-                    // and, after taking, the answers that were waiting for them.
-                    bool taking = p.Phase == RefreshPhase.TakingCopies;
-
-                    OverlayTitle = taking
-                        ? "Taking small copies from the sync folder"
-                        : "Leaving small copies in the sync folder";
-                    OverlayTarget = p.Target.Length > 0
-                        ? p.Target
-                        : taking ? "made on your other computers" : "for your other computers";
-                    OverlayStatus = p.Total == 0 ? string.Empty : $"{p.Done:N0} of {p.Total:N0}";
-                }
-                else if (p.Phase == RefreshPhase.Locating)
-                {
-                    OverlayTitle = "Working out where photos were taken";
-                    OverlayTarget = "so you can search for them by place";
-                    OverlayStatus = p.Remaining is TimeSpan away
-                        ? $"{p.Done:N0} of {p.Total:N0} photos, "
-                          + $"about {away.TotalMinutes:N0} min left"
-                        : $"{p.Done:N0} of {p.Total:N0} photos";
-                }
-                else if (p.Phase == RefreshPhase.Describing)
-                {
-                    // Named for what it is rather than folded into preparing.
-                    // After the first run this only touches the pictures the
-                    // scan just brought in, so it usually passes in seconds -
-                    // but the first one is the whole library and the user should
-                    // be able to see which phase is taking the time.
-                    OverlayTitle = "Learning what the pictures are of";
-
-                    // Corrected here, because the folder named at the start of a
-                    // refresh is the one being crawled and this phase does not
-                    // go near it. Leaving the share's address up for an hour
-                    // says the network is being hammered when what is actually
-                    // being read is the copies already on this machine.
-                    OverlayTarget = "from the previews on this computer";
-                    OverlayStatus = p.Remaining is TimeSpan left
-                        ? $"{p.Done:N0} of {p.Total:N0} pictures, about {left.TotalMinutes:N0} min left"
-                        : $"{p.Done:N0} of {p.Total:N0} pictures";
-                }
-                else
-                {
-                    OverlayTitle = "Preparing pictures";
-                    OverlayStatus = $"{p.Done:N0} of {p.Total:N0} pictures"
-                                  + (p.Failed > 0 ? $", {p.Failed:N0} skipped" : string.Empty);
-
-                    // Each report also gives the grid a chance to pick up what has
-                    // just been written, so pictures appear while the pass runs
-                    // rather than only when it finishes.
-                    if (_galleryLoaded)
-                    {
-                        _ = Gallery.RefreshMissingPicturesAsync();
-                    }
-                }
-            });
+            var progress = new Progress<RefreshProgress>(ShowRefreshProgress);
 
             using IServiceScope scope = _scopeFactory.CreateScope();
             var handler = scope.ServiceProvider.GetRequiredService<RefreshLibraryHandler>();
@@ -2219,6 +2079,160 @@ public sealed partial class MainViewModel : ObservableObject
             ClearOverlay();
             _refreshCancellation.Dispose();
             _refreshCancellation = null;
+        }
+    }
+
+    /// <summary>
+    /// Puts one report of a scan on the overlay: what the phase is called, the
+    /// line under it, and how far it has got.
+    /// </summary>
+    internal void ShowRefreshProgress(RefreshProgress p)
+    {
+        OverlayIsIndeterminate = p.IsIndeterminate;
+        OverlayPercent = p.Fraction * 100;
+
+        if (p.Phase == RefreshPhase.Indexing)
+        {
+            OverlayTitle = "Indexing";
+
+            // The folder, on the line that names what is being worked
+            // on - the same line the other phases use. A crawl has no
+            // total to fill a bar with, so watching the folder change is
+            // the only way to tell it apart from a crawl that has hung.
+            OverlayTarget = p.Target;
+            OverlayStatus = $"{p.Done:N0} files seen";
+        }
+        else if (p.Phase == RefreshPhase.PreparingVideos)
+        {
+            // The phase that used to be a button. Named in the user's
+            // terms rather than as "keyframes", and given the estimate
+            // as soon as there is one, because this is the one measured
+            // in hours and the Stop underneath it is only a real choice
+            // if the screen says how much is left.
+            OverlayTitle = "Taking pictures out of your videos";
+            OverlayTarget = "so they show up like photographs do";
+
+            string failed = p.Failed > 0
+                ? $", {p.Failed:N0} would not open"
+                : string.Empty;
+
+            OverlayStatus = p.Remaining is TimeSpan togo
+                ? $"{p.Done:N0} of {p.Total:N0} videos{failed}, "
+                  + $"about {togo.TotalMinutes:N0} min left"
+                : $"{p.Done:N0} of {p.Total:N0} videos{failed}";
+        }
+        else if (p.Phase == RefreshPhase.Collecting)
+        {
+            // Its own arm, and not optional: the chain below ends in the
+            // generating branch, so a phase without one would paint
+            // "Preparing pictures" and set off a gallery reload on every
+            // report - thousands of tiles rebuilt by a phase that
+            // changed none of them.
+            OverlayTitle = "Grouping your photos into albums";
+            OverlayTarget = "so a weekend away opens as one thing";
+            OverlayStatus = p.Total == 0
+                ? "reading the dates..."
+                : $"{p.Done:N0} of {p.Total:N0} groups";
+        }
+        else if (p.Phase == RefreshPhase.FindingFaces)
+        {
+            OverlayTitle = "Finding faces";
+            OverlayTarget = "in everything that now has a picture";
+            OverlayStatus = $"{p.Done:N0} of {p.Total:N0} pictures"
+                          + (p.Failed > 0 ? $", {p.Failed:N0} could not be read"
+                                          : string.Empty);
+        }
+        else if (p.Phase == RefreshPhase.ApplyingAnswers)
+        {
+            // Its own arm for the reason Collecting has one, and for a
+            // second reason that cost a whole evening. Without it this
+            // phase fell through to the branch at the end of the chain,
+            // which paints "Preparing pictures" and asks the grid to
+            // reload on every report - and before its first report
+            // arrives the overlay simply went on saying "Finding faces",
+            // which is the phase before it. So a crash in here was
+            // reported, in good faith, as a crash while the app was
+            // looking for faces, and the hunt for it started in the
+            // wrong half of the pass.
+            //
+            // On a machine that shares with nobody this phase is one
+            // count and is never seen. On one that does, it is where
+            // another computer's answers land.
+            OverlayTitle = "Taking in answers from your other computer";
+            OverlayTarget = p.Target.Length > 0
+                ? p.Target
+                : "names, albums, and what was waiting for these photos";
+            OverlayStatus = $"{p.Done:N0} of {p.Total:N0}";
+        }
+        else if (p.Phase is RefreshPhase.TakingCopies or RefreshPhase.GivingCopies)
+        {
+            // Their own arm, for the reason every phase here has one: the
+            // chain ends in the generating branch, which would paint
+            // "Preparing pictures" over a phase that is copying, and ask
+            // the grid to reload on every one of thousands of reports.
+            //
+            // The line under the title is the phase's own: asking the
+            // folder whether it is there, then pictures, then faces -
+            // and, after taking, the answers that were waiting for them.
+            bool taking = p.Phase == RefreshPhase.TakingCopies;
+
+            OverlayTitle = taking
+                ? "Taking small copies from the sync folder"
+                : "Leaving small copies in the sync folder";
+            OverlayTarget = p.Target.Length > 0
+                ? p.Target
+                : taking ? "made on your other computers" : "for your other computers";
+            OverlayStatus = p.Total == 0 ? string.Empty : $"{p.Done:N0} of {p.Total:N0}";
+        }
+        else if (p.Phase == RefreshPhase.Locating)
+        {
+            OverlayTitle = "Working out where photos were taken";
+            OverlayTarget = "so you can search for them by place";
+            OverlayStatus = p.Remaining is TimeSpan away
+                ? $"{p.Done:N0} of {p.Total:N0} photos, "
+                  + $"about {away.TotalMinutes:N0} min left"
+                : $"{p.Done:N0} of {p.Total:N0} photos";
+        }
+        else if (p.Phase == RefreshPhase.Describing)
+        {
+            // Named for what it is rather than folded into preparing.
+            // After the first run this only touches the pictures the
+            // scan just brought in, so it usually passes in seconds -
+            // but the first one is the whole library and the user should
+            // be able to see which phase is taking the time.
+            OverlayTitle = "Learning what the pictures are of";
+
+            // Corrected here, because the folder named at the start of a
+            // refresh is the one being crawled and this phase does not
+            // go near it. Leaving the share's address up for an hour
+            // says the network is being hammered when what is actually
+            // being read is the copies already on this machine.
+            OverlayTarget = "from the previews on this computer";
+            OverlayStatus = p.Remaining is TimeSpan left
+                ? $"{p.Done:N0} of {p.Total:N0} pictures, about {left.TotalMinutes:N0} min left"
+                : $"{p.Done:N0} of {p.Total:N0} pictures";
+        }
+        else
+        {
+            OverlayTitle = "Preparing pictures";
+
+            // Its own line, for the reason every arm above writes one: a line
+            // left alone keeps whatever the phase before said. That was the
+            // crawl's folder until taking from the sync folder came between
+            // them, and then this phase - which reads the originals and never
+            // goes near that folder - said "Looking in the sync folder" for
+            // the whole of its run.
+            OverlayTarget = "from the originals in your folders";
+            OverlayStatus = $"{p.Done:N0} of {p.Total:N0} pictures"
+                          + (p.Failed > 0 ? $", {p.Failed:N0} skipped" : string.Empty);
+
+            // Each report also gives the grid a chance to pick up what has
+            // just been written, so pictures appear while the pass runs
+            // rather than only when it finishes.
+            if (_galleryLoaded)
+            {
+                _ = Gallery.RefreshMissingPicturesAsync();
+            }
         }
     }
 
