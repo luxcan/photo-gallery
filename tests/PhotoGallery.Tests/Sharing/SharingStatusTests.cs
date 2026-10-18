@@ -56,7 +56,10 @@ public sealed class SharingStatusTests : IDisposable
         MachineStanding waiting = Assert.Single(status.Machines);
         Assert.False(waiting.Merged);
         Assert.NotNull(waiting.SharedUtc);
-        Assert.Contains("not taken answers from", waiting.Name);
+
+        // Described where a name would go, so it reads as a name does at the
+        // start of its row: with a capital letter.
+        Assert.Equal("A computer this library has not taken answers from yet", waiting.Name);
     }
 
     [Fact]

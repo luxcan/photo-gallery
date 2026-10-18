@@ -1,10 +1,9 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.DependencyInjection;
+using PhotoGallery.App.Shell;
 using PhotoGallery.Application.Ports;
 using PhotoGallery.Application.UseCases.Sharing;
-
-using PhotoGallery.App.Shell;
 
 namespace PhotoGallery.App.Sharing;
 
@@ -358,7 +357,7 @@ public sealed partial class SharingViewModel : ObservableObject
 
             _newest = update.Newest;
 
-            return Asking(update.Machines);
+            return Asking(update);
         }
         catch (Exception ex) when (LibraryFailure.IsExpected(ex))
         {
@@ -387,14 +386,39 @@ public sealed partial class SharingViewModel : ObservableObject
     /// </summary>
     /// <remarks>
     /// Named where this library has taken from them before, because a name is
-    /// what makes a person press the button - and described where it has not,
-    /// because the name lives inside a file this check deliberately does not
-    /// open.
+    /// what makes a person press the button - and called another computer where
+    /// it has not, because the name lives inside a file this check deliberately
+    /// does not open.
+    ///
+    /// <para>A sentence in every arrangement, beginning with a capital letter.
+    /// The description used to stand where a name would, so a computer never
+    /// taken from began the notice in lower case and said "computer" twice
+    /// before it got to the point. With no name in the sentence, "this one" is
+    /// enough to say which computer is meant.</para>
     /// </remarks>
-    private static string Asking(IReadOnlyList<string> machines) =>
-        machines.Count == 1
-            ? $"{machines[0]} has answers this computer has not taken yet."
-            : $"{string.Join(" and ", machines)} have answers this computer has not taken yet.";
+    internal static string Asking(SharedUpdate update)
+    {
+        ArgumentNullException.ThrowIfNull(update);
+
+        if (update.Machines.Count == 0)
+        {
+            return update.Unnamed == 1
+                ? "Another computer has answers this one has not taken yet."
+                : "Other computers have answers this one has not taken yet.";
+        }
+
+        List<string> who = [.. update.Machines];
+
+        if (update.Unnamed > 0)
+        {
+            who.Add(update.Unnamed == 1 ? "another computer" : "other computers");
+        }
+
+        return who.Count == 1
+            ? $"{who[0]} has answers this computer has not taken yet."
+            : $"{string.Join(", ", who[..^1])} and {who[^1]} have answers this computer has not "
+              + "taken yet.";
+    }
 
     /// <summary>Reads the folder, who has shared, and what is waiting.</summary>
     /// <remarks>

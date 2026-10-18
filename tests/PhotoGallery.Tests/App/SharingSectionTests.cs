@@ -1,4 +1,6 @@
 using System.Text.RegularExpressions;
+using PhotoGallery.App.Sharing;
+using PhotoGallery.Application.UseCases.Sharing;
 
 namespace PhotoGallery.Tests.App;
 
@@ -279,11 +281,40 @@ public sealed class SharingSectionTests
             }
         }
 
-        // The sentence itself is built in the view model, and pinned by what it
-        // says rather than by what it does not. A negative test over C# source
-        // is the weaker instrument anyway: it reads every doc-comment and every
+        // The sentence itself is built in the view model, so it is asked for
+        // there, in every arrangement of computers it can be about, and read as
+        // the sentence somebody will see. A negative test over the C# source
+        // would be the weaker instrument: it reads every doc-comment and every
         // identifier as though they were copy, and cries wolf on both.
-        Assert.Contains("this computer has not taken yet", s_viewModel, StringComparison.Ordinal);
+        foreach (string sentence in EveryNotice())
+        {
+            Assert.Contains("has not taken yet.", sentence, StringComparison.Ordinal);
+            Assert.True(char.IsUpper(sentence[0]), $"the notice begins in lower case: {sentence}");
+
+            foreach (string banned in Banned)
+            {
+                Assert.DoesNotContain(banned, sentence, StringComparison.OrdinalIgnoreCase);
+            }
+        }
+    }
+
+    /// <summary>
+    /// The sentence about answers waiting, in every arrangement of computers it
+    /// can be about: named, never taken from, and both, one and several.
+    /// </summary>
+    private static IEnumerable<string> EveryNotice()
+    {
+        DateTime now = DateTime.UtcNow;
+
+        return
+        [
+            SharingViewModel.Asking(new SharedUpdate(["Mum's laptop"], 0, now)),
+            SharingViewModel.Asking(new SharedUpdate([], 1, now)),
+            SharingViewModel.Asking(new SharedUpdate(["Dad's laptop", "Mum's laptop"], 0, now)),
+            SharingViewModel.Asking(new SharedUpdate(["Mum's laptop"], 1, now)),
+            SharingViewModel.Asking(new SharedUpdate(["Mum's laptop"], 2, now)),
+            SharingViewModel.Asking(new SharedUpdate([], 2, now)),
+        ];
     }
 
     /// <summary>The words this feature never uses for the machines in a house.</summary>

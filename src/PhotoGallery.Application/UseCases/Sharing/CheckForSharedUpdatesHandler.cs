@@ -82,6 +82,7 @@ public sealed class CheckForSharedUpdatesHandler
         }
 
         List<string> names = [];
+        int unnamed = 0;
         DateTime newest = DateTime.MinValue;
 
         foreach (PublishedAnswers answers in published)
@@ -112,9 +113,11 @@ public sealed class CheckForSharedUpdatesHandler
             {
                 // A machine that has published and never been taken from. Its
                 // name lives inside its file, which this deliberately does not
-                // open, so it is described rather than named - the same words
-                // the Sharing screen uses for the same machine.
-                names.Add("a computer this library has not taken answers from yet");
+                // open, so it is counted rather than named. It used to be
+                // described in a name's place, which began the notice with a
+                // lower-case "a computer this library has not taken answers from
+                // yet", and folded two such machines into one.
+                unnamed++;
             }
 
             if (answers.WrittenUtc > newest)
@@ -123,8 +126,11 @@ public sealed class CheckForSharedUpdatesHandler
             }
         }
 
-        return names.Count == 0
+        return names.Count == 0 && unnamed == 0
             ? SharedUpdate.Nothing
-            : new SharedUpdate([.. names.Distinct(StringComparer.CurrentCultureIgnoreCase).Order()], newest);
+            : new SharedUpdate(
+                [.. names.Distinct(StringComparer.CurrentCultureIgnoreCase).Order()],
+                unnamed,
+                newest);
     }
 }

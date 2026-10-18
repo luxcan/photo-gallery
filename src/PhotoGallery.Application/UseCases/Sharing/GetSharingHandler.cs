@@ -104,10 +104,12 @@ public sealed class GetSharingHandler
 
         foreach (Guid machine in names.Keys.Union(shared.Keys))
         {
+            // Described where its name would go, at the start of its own row in
+            // the list, so it begins as a name does: with a capital letter.
             standing.Add(new MachineStanding(
                 names.TryGetValue(machine, out string? name)
                     ? name
-                    : "a computer this library has not taken answers from yet",
+                    : "A computer this library has not taken answers from yet",
                 shared.TryGetValue(machine, out DateTime when) ? when : null,
                 names.ContainsKey(machine)));
         }

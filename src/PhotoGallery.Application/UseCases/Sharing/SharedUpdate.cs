@@ -18,17 +18,24 @@ namespace PhotoGallery.Application.UseCases.Sharing;
 /// against.</para>
 /// </remarks>
 /// <param name="Machines">
-/// The computers with something newer, by the name this library knows them by,
-/// and described rather than named where it has never taken from them.
+/// The computers with something newer that this library has taken from before,
+/// by the name it knows them by.
+/// </param>
+/// <param name="Unnamed">
+/// How many more have something newer and have never been taken from. Counted
+/// rather than named, because the name is inside a file this check deliberately
+/// does not open - and counted rather than described, because a description in
+/// the place of a name began the notice in lower case, and two computers
+/// described alike were folded into one.
 /// </param>
 /// <param name="Newest">
 /// When the newest of those files was written. What somebody who says "not now"
 /// is saying it about: anything written after this is a new question.
 /// </param>
-public sealed record SharedUpdate(IReadOnlyList<string> Machines, DateTime Newest)
+public sealed record SharedUpdate(IReadOnlyList<string> Machines, int Unnamed, DateTime Newest)
 {
     /// <summary>Nothing to take, which is the ordinary answer.</summary>
-    public static SharedUpdate Nothing { get; } = new([], DateTime.MinValue);
+    public static SharedUpdate Nothing { get; } = new([], 0, DateTime.MinValue);
 
-    public bool Any => Machines.Count > 0;
+    public bool Any => Machines.Count > 0 || Unnamed > 0;
 }

@@ -1,7 +1,7 @@
+using Microsoft.EntityFrameworkCore;
 using PhotoGallery.Application.UseCases.Sharing;
 using PhotoGallery.Domain.Faces;
 using PhotoGallery.Domain.People;
-using Microsoft.EntityFrameworkCore;
 
 namespace PhotoGallery.Tests.Sharing;
 
@@ -46,10 +46,33 @@ public sealed class LookingForUpdatesTests : IDisposable
 
         Assert.True(update.Any);
 
-        // Described rather than named: the name is inside the file, and the
+        // Counted rather than named: the name is inside the file, and the
         // whole point of this check is that it does not open one.
-        Assert.Contains("not taken answers from", Assert.Single(update.Machines));
+        Assert.Empty(update.Machines);
+        Assert.Equal(1, update.Unnamed);
         Assert.NotEqual(DateTime.MinValue, update.Newest);
+    }
+
+    /// <summary>
+    /// Two computers this library has never taken from are two, not one.
+    /// </summary>
+    /// <remarks>
+    /// Each used to be described in the place of a name, alike, and the names
+    /// were made distinct - so the notice spoke of one computer where there
+    /// were two.
+    /// </remarks>
+    [Fact]
+    public async Task TwoItHasNeverTakenFromAreCountedRatherThanFoldedIntoOne()
+    {
+        Both(@"2019\a.jpg");
+        await Mum.Publishing.HandleAsync();
+        await _house.Add("Gran's laptop").Publishing.HandleAsync();
+
+        SharedUpdate update = await Dad.Looking.HandleAsync();
+
+        Assert.True(update.Any);
+        Assert.Empty(update.Machines);
+        Assert.Equal(2, update.Unnamed);
     }
 
     [Fact]
