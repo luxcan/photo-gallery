@@ -1,4 +1,5 @@
 using System.IO.Compression;
+using System.Security.Cryptography;
 using System.Text.Json;
 using PhotoGallery.Application.Ports;
 using PhotoGallery.Domain.Assets;
@@ -36,6 +37,18 @@ public sealed class SharedFolderPool : IRenditionPool
     /// <summary>What a machine's vectors are called.</summary>
     public const string VectorsExtension = ".faces.json.gz";
 
+    /// <summary>
+    /// Where this library remembers the faces it last left in the folder, in its
+    /// own working folder.
+    /// </summary>
+    /// <remarks>
+    /// A note of what was written, not a fact about the library, and safe to
+    /// lose: without it the next scan writes the faces once more and writes the
+    /// note again. So it sits beside the index as a file rather than in it as a
+    /// column, and nothing in the shared folder changes to keep it.
+    /// </remarks>
+    public const string GivenFacesFile = "faces-given.json";
+
     private const string TempExtension = ".tmp";
     private const string PreviewSuffix = "-p";
     private const int ShardLength = 2;
@@ -43,8 +56,13 @@ public sealed class SharedFolderPool : IRenditionPool
     private static readonly JsonSerializerOptions s_json = DecisionSetFile.Shape;
 
     private readonly ILibraryIndex _index;
+    private readonly IWorkingFolder _working;
 
-    public SharedFolderPool(ILibraryIndex index) => _index = index;
+    public SharedFolderPool(ILibraryIndex index, IWorkingFolder working)
+    {
+        _index = index;
+        _working = working;
+    }
 
     public async Task<ExchangeReadiness> ReadinessAsync(
         CancellationToken cancellationToken = default)
@@ -52,16 +70,26 @@ public sealed class SharedFolderPool : IRenditionPool
         LibrarySettings settings =
             await _index.GetSettingsAsync(cancellationToken).ConfigureAwait(false);
 
-        if (string.IsNullOrWhiteSpace(settings.SharedFolder))
+        string? folder = settings.SharedFolder;
+
+        if (string.IsNullOrWhiteSpace(folder))
         {
             return ExchangeReadiness.Not(
                 "Choose a folder that every computer in the house can reach.");
         }
 
-        return Directory.Exists(settings.SharedFolder)
+        // Off the caller's thread, because this is the call that blocks: an
+        // address nothing answers holds Directory.Exists for as long as the
+        // operating system takes to give up on it, and a scan asking has to be
+        // able to stop waiting before then.
+        bool there = await Task
+            .Run(() => Directory.Exists(folder), CancellationToken.None)
+            .ConfigureAwait(false);
+
+        return there
             ? ExchangeReadiness.Ready
             : ExchangeReadiness.Not(
-                $"That folder cannot be reached at the moment: {settings.SharedFolder}");
+                $"That folder cannot be reached at the moment: {folder}");
     }
 
     public async Task PublishAsync(
@@ -145,7 +173,15 @@ public sealed class SharedFolderPool : IRenditionPool
         return sets;
     }
 
-    public async Task PublishFacesAsync(
+    /// <inheritdoc/>
+    /// <remarks>
+    /// Whether they changed is judged on a digest of everything in the file but
+    /// the moment it was written, against the digest noted beside the index the
+    /// last time it was written - and only while that file is still where it was
+    /// written. A folder chosen afresh, or a file somebody deleted, is written
+    /// again whatever the note says.
+    /// </remarks>
+    public async Task<bool> PublishFacesAsync(
         FaceSet mine, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(mine);
@@ -153,9 +189,19 @@ public sealed class SharedFolderPool : IRenditionPool
         string vectors = Path.Combine(
             await RootAsync(cancellationToken).ConfigureAwait(false), VectorsFolder);
 
+        string final = Path.Combine(vectors, $"{mine.Machine.Id:D}{VectorsExtension}");
+        string digest = await DigestAsync(mine, cancellationToken).ConfigureAwait(false);
+
+        if (Remembered() is { } last
+            && string.Equals(last.File, final, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(last.Digest, digest, StringComparison.Ordinal)
+            && File.Exists(final))
+        {
+            return false;
+        }
+
         Directory.CreateDirectory(vectors);
 
-        string final = Path.Combine(vectors, $"{mine.Machine.Id:D}{VectorsExtension}");
         string temporary = final + TempExtension;
 
         await using (var file = new FileStream(
@@ -168,7 +214,71 @@ public sealed class SharedFolderPool : IRenditionPool
         }
 
         File.Move(temporary, final, overwrite: true);
+        Remember(new GivenFaces(final, digest));
+
+        return true;
     }
+
+    /// <summary>
+    /// The faces as they would be written, less the moment of writing, reduced
+    /// to one digest.
+    /// </summary>
+    /// <remarks>
+    /// Hashed as it is serialised rather than serialised and then hashed, so the
+    /// tens of megabytes of text never exist at once. The moment is left out
+    /// because it changes on every write and says nothing about the faces.
+    /// </remarks>
+    private static async Task<string> DigestAsync(
+        FaceSet mine, CancellationToken cancellationToken)
+    {
+        using var sha = SHA256.Create();
+
+        await using (var hashing = new CryptoStream(Stream.Null, sha, CryptoStreamMode.Write))
+        {
+            await JsonSerializer
+                .SerializeAsync(hashing, mine with { WrittenUtc = default }, s_json, cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        return Convert.ToHexString(sha.Hash!);
+    }
+
+    private string GivenFacesPath => Path.Combine(_working.Root, GivenFacesFile);
+
+    /// <summary>The note left by the last write, or null where there is none to read.</summary>
+    private GivenFaces? Remembered()
+    {
+        try
+        {
+            return JsonSerializer.Deserialize<GivenFaces>(File.ReadAllText(GivenFacesPath));
+        }
+        catch (Exception ex) when (ex is IOException
+                                      or UnauthorizedAccessException
+                                      or JsonException)
+        {
+            // No note, or one half written: the faces are written again, which
+            // is what happened on every scan before the note existed.
+            return null;
+        }
+    }
+
+    /// <summary>Notes what was just written, so the next scan can leave it alone.</summary>
+    private void Remember(GivenFaces given)
+    {
+        try
+        {
+            File.WriteAllText(GivenFacesPath, JsonSerializer.Serialize(given));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // The faces are in the folder, which is what this phase is for. A
+            // note that could not be kept costs the next scan one more write of
+            // the same file, and failing the phase over it would cost the file.
+        }
+    }
+
+    /// <summary>Which faces file this library last wrote, and what was in it.</summary>
+    private sealed record GivenFaces(string File, string Digest);
 
     public async Task<IReadOnlyList<FaceSet>> FetchFacesAsync(
         CancellationToken cancellationToken = default)
@@ -233,12 +343,18 @@ public sealed class SharedFolderPool : IRenditionPool
             return new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         }
 
-        HashSet<string> names = new(StringComparer.OrdinalIgnoreCase);
+        List<string> tiles = [];
+        HashSet<string> previews = new(StringComparer.OrdinalIgnoreCase);
 
         // Only the tiles are counted, and only where the preview is beside them.
         // A name whose pair is half copied is a name nobody should be told the
         // pool has - the fetch would take the tile and find no preview, which is
         // the file the viewer opens.
+        //
+        // Both halves from the one listing, because every scan asks this now.
+        // Asking the folder about each tile's preview in turn was twenty
+        // thousand more round trips to a drive across the network, to learn
+        // what the listing had already said.
         foreach (string path in Directory.EnumerateFiles(
             thumbs, "*.jpg", SearchOption.AllDirectories))
         {
@@ -246,15 +362,23 @@ public sealed class SharedFolderPool : IRenditionPool
 
             string name = Path.GetFileName(path);
 
-            if (!RenditionName.IsSafeFileName(name)
-                || name.Contains(PreviewSuffix, StringComparison.Ordinal))
+            if (name.Contains(PreviewSuffix, StringComparison.Ordinal))
             {
-                continue;
+                previews.Add(path);
             }
-
-            if (File.Exists(PreviewBeside(path)))
+            else if (RenditionName.IsSafeFileName(name))
             {
-                names.Add(name);
+                tiles.Add(path);
+            }
+        }
+
+        HashSet<string> names = new(StringComparer.OrdinalIgnoreCase);
+
+        foreach (string tile in tiles)
+        {
+            if (previews.Contains(PreviewBeside(tile)))
+            {
+                names.Add(Path.GetFileName(tile));
             }
         }
 

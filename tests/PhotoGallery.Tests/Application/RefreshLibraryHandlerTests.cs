@@ -10,14 +10,16 @@ using PhotoGallery.Application.UseCases.Sharing;
 using PhotoGallery.Application.UseCases.Sources;
 using PhotoGallery.Application.UseCases.Thumbnails;
 using PhotoGallery.Application.UseCases.Videos;
-using PhotoGallery.Domain.Assets;
 using PhotoGallery.Domain.Albums;
+using PhotoGallery.Domain.Assets;
 using PhotoGallery.Domain.Library;
 using PhotoGallery.Domain.Search;
 using PhotoGallery.Domain.Sharing;
 using PhotoGallery.Infrastructure.Models;
 using PhotoGallery.Infrastructure.Persistence;
+using PhotoGallery.Infrastructure.Sharing;
 using PhotoGallery.Infrastructure.Storage;
+using PhotoGallery.Tests.Sharing;
 
 namespace PhotoGallery.Tests.Application;
 
@@ -650,6 +652,277 @@ public sealed class RefreshLibraryHandlerTests : IDisposable
         Assert.Empty(_db.AlbumMembers);
     }
 
+    /// <summary>
+    /// A scan leaves this library's small copies in the sync folder.
+    /// </summary>
+    /// <remarks>
+    /// They used to go only when somebody pressed a button that showed only on
+    /// a laptop with photographs still to prepare, and was worded as taking -
+    /// so a laptop with everything prepared never gave, the folder never held a
+    /// picture, and no face ever travelled.
+    /// </remarks>
+    [Fact]
+    public async Task Refresh_LeavesItsSmallCopiesInTheSyncFolder()
+    {
+        WriteMedia("a.jpg");
+        PhotoSource source = await AddSourceAsync();
+        await SyncThroughAsync();
+
+        await NewHandler().HandleAsync([source.Id]);
+
+        string made = Assert.Single(_store.ListStoredNames());
+        Assert.Contains(made, await new SharedFolderPool(_index, _workingFolder).NamesAsync());
+    }
+
+    /// <summary>
+    /// A scan takes the small copies another computer has made before it makes
+    /// any itself.
+    /// </summary>
+    /// <remarks>
+    /// Taking them after the generating phase would be no use at all: by then
+    /// this laptop has spent the hour reading every original to make copies of
+    /// its own.
+    /// </remarks>
+    [Fact]
+    public async Task Refresh_TakesTheSmallCopiesAnotherComputerMadeRatherThanMakingThem()
+    {
+        WriteMedia("a.jpg");
+        PhotoSource source = await AddSourceAsync();
+        string shared = await SyncThroughAsync();
+
+        using var mum = new Library(
+            Path.Combine(_tempRoot, "mum"), "Mum's laptop", source.SharedId);
+        mum.SharesThrough(shared);
+        await PreparedOnAsync(mum, "a.jpg", "aa11.jpg");
+
+        RefreshResult result = await NewHandler().HandleAsync([source.Id]);
+
+        Assert.Equal(0, result.Built);
+        Assert.Equal(0, _generator.Generated);
+        Assert.True(_store.Exists("aa11.jpg"));
+        Assert.Equal("aa11.jpg", (await _db.Assets.AsNoTracking().SingleAsync()).ThumbnailName);
+    }
+
+    /// <summary>
+    /// A scan still makes the small copy of a photograph another computer could
+    /// not decode.
+    /// </summary>
+    /// <remarks>
+    /// Taking comes before generating, so a row taken as "this never decoded"
+    /// was one this laptop never tried - generating skips a failed row - and
+    /// nothing tried it again until the file changed. The other laptop may
+    /// simply lack a codec this one has.
+    /// </remarks>
+    [Fact]
+    public async Task Refresh_MakesTheSmallCopyAnotherComputerCouldNotDecode()
+    {
+        WriteMedia("a.jpg");
+        PhotoSource source = await AddSourceAsync();
+        string shared = await SyncThroughAsync();
+
+        using var mum = new Library(
+            Path.Combine(_tempRoot, "mum"), "Mum's laptop", source.SharedId);
+        mum.SharesThrough(shared);
+
+        var file = new FileInfo(Path.Combine(_photosRoot, "a.jpg"));
+        Asset hers = mum.Photo("a.jpg");
+        hers.Length = file.Length;
+        hers.ModifiedUtc = file.LastWriteTimeUtc;
+        hers.Status = AssetStatus.Failed;
+        mum.Db.SaveChanges();
+        mum.Db.ChangeTracker.Clear();
+        await mum.Pooling.GiveAsync();
+
+        RefreshResult result = await NewHandler().HandleAsync([source.Id]);
+
+        Assert.Equal(1, result.Built);
+        Assert.Equal(1, _generator.Generated);
+
+        Asset mine = await _db.Assets.AsNoTracking().SingleAsync();
+        Assert.Equal(AssetStatus.Ready, mine.Status);
+        Assert.NotNull(mine.ThumbnailName);
+    }
+
+    /// <summary>
+    /// With a sync folder, the scan takes straight after the crawl and gives
+    /// last of all.
+    /// </summary>
+    /// <remarks>
+    /// Taking before generating is the whole of its value, and giving last is
+    /// what makes a stop in it - the first time, gigabytes - cost nothing else.
+    /// Without a folder neither phase reports at all, which the test above
+    /// pins: a phase with nothing to do says nothing.
+    /// </remarks>
+    [Fact]
+    public async Task Refresh_WithASyncFolderTakesFirstAndGivesLast()
+    {
+        _extractor.Decodes = true;
+        WriteMedia("a.jpg");
+        WriteMedia("holiday.mp4");
+        PhotoSource source = await AddSourceAsync();
+        await SyncThroughAsync();
+
+        var watching = new PhasesSeen();
+        await NewHandler().HandleAsync([source.Id], watching);
+
+        Assert.Equal(
+            [
+                RefreshPhase.Indexing,
+                RefreshPhase.TakingCopies,
+                RefreshPhase.Generating,
+                RefreshPhase.Locating,
+                RefreshPhase.PreparingVideos,
+                RefreshPhase.FindingFaces,
+                RefreshPhase.Collecting,
+                RefreshPhase.GivingCopies,
+            ],
+            watching.InOrder);
+    }
+
+    /// <summary>
+    /// The next scan gives only what the folder does not have.
+    /// </summary>
+    /// <remarks>
+    /// Every scan gives now, so a scan that copied the whole library again each
+    /// time would make the app's main action gigabytes long for ever. The pool
+    /// is listed once and only the names it lacks are copied.
+    /// </remarks>
+    [Fact]
+    public async Task Refresh_GivesOnlyWhatIsNewOnTheNextScan()
+    {
+        WriteMedia("a.jpg");
+        PhotoSource source = await AddSourceAsync();
+        await SyncThroughAsync();
+
+        RefreshResult first = await NewHandler().HandleAsync([source.Id]);
+
+        WriteMedia("b.jpg");
+        RefreshResult second = await NewHandler().HandleAsync([source.Id]);
+
+        Assert.Equal(1, first.PicturesGiven);
+        Assert.Equal(1, second.PicturesGiven);
+        Assert.Equal(2, (await new SharedFolderPool(_index, _workingFolder).NamesAsync()).Count);
+    }
+
+    /// <summary>
+    /// A sync folder that cannot be reached costs the scan one line and nothing
+    /// else.
+    /// </summary>
+    /// <remarks>
+    /// A laptop out of the house, or a drive that is off: the scan is the app's
+    /// main action, and it must finish and make its own pictures exactly as it
+    /// would with no folder at all.
+    /// </remarks>
+    [Fact]
+    public async Task Refresh_WithTheSyncFolderOutOfReachStillFinishes()
+    {
+        WriteMedia("a.jpg");
+        PhotoSource source = await AddSourceAsync();
+        string shared = await SyncThroughAsync();
+        Directory.Delete(shared);
+
+        RefreshResult result = await NewHandler().HandleAsync([source.Id]);
+
+        Assert.False(result.WasCancelled);
+        Assert.Equal(1, result.Built);
+        Assert.False(result.Taken!.Ran);
+        Assert.Null(result.Given);
+        Assert.Single(
+            result.Timings,
+            line => line.Contains("cannot be reached", StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// A sync folder that does not answer is not waited on past the deadline.
+    /// </summary>
+    /// <remarks>
+    /// The question underneath cannot be cancelled and an address nothing answers
+    /// holds it for as long as the operating system likes. A folder that never
+    /// answers here stands for that: the scan goes on without it and finishes.
+    /// </remarks>
+    [Fact]
+    public async Task Refresh_WithTheSyncFolderSlowToAnswerGoesOnWithoutIt()
+    {
+        WriteMedia("a.jpg");
+        PhotoSource source = await AddSourceAsync();
+        await SyncThroughAsync();
+
+        RefreshResult result = await NewHandler(pool: new NeverAnswers())
+            .HandleAsync([source.Id])
+            .WaitAsync(TimeSpan.FromSeconds(30));
+
+        Assert.False(result.WasCancelled);
+        Assert.Equal(1, result.Built);
+        Assert.Contains("did not answer", result.Taken!.Summary, StringComparison.Ordinal);
+        Assert.Null(result.Given);
+    }
+
+    /// <summary>
+    /// A stop as either phase at the sync folder begins is answered, not thrown.
+    /// </summary>
+    [Theory]
+    [InlineData(RefreshPhase.TakingCopies)]
+    [InlineData(RefreshPhase.GivingCopies)]
+    public async Task Refresh_StoppedAsTheSmallCopiesBeginAnswersRatherThanThrowing(
+        RefreshPhase phase)
+    {
+        WriteMedia("a.jpg");
+        PhotoSource source = await AddSourceAsync();
+        await SyncThroughAsync();
+
+        using var cancellation = new CancellationTokenSource();
+        var stopWhenItStarts = new StopsAt(phase, cancellation);
+
+        RefreshResult result = await NewHandler()
+            .HandleAsync([source.Id], stopWhenItStarts, cancellation.Token);
+
+        Assert.True(result.WasCancelled);
+        Assert.True(stopWhenItStarts.Fired, $"the refresh never reached {phase}");
+    }
+
+    /// <summary>
+    /// A sync folder that is chosen and never answers, as an address on a
+    /// network that has gone does.
+    /// </summary>
+    private sealed class NeverAnswers : IRenditionPool
+    {
+        public Task<ExchangeReadiness> ReadinessAsync(CancellationToken cancellationToken = default) =>
+            new TaskCompletionSource<ExchangeReadiness>().Task;
+
+        public Task PublishAsync(PreparedSet mine, CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException("The scan wrote to a folder that never answered.");
+
+        public Task<IReadOnlyList<PreparedSet>> FetchAsync(
+            CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException("The scan read a folder that never answered.");
+
+        public Task<bool> PublishFacesAsync(
+            FaceSet mine, CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException("The scan wrote to a folder that never answered.");
+
+        public Task<IReadOnlyList<FaceSet>> FetchFacesAsync(
+            CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException("The scan read a folder that never answered.");
+
+        public Task<IReadOnlyCollection<string>> NamesAsync(
+            CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException("The scan listed a folder that never answered.");
+
+        public Task<bool> PushAsync(
+            string thumbnailName,
+            string tilePath,
+            string previewPath,
+            CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException("The scan wrote to a folder that never answered.");
+
+        public Task<bool> PullAsync(
+            string thumbnailName,
+            string tilePath,
+            string previewPath,
+            CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException("The scan read a folder that never answered.");
+    }
+
     /// <summary>Any unit vector; what it points at is beside the point here.</summary>
     private static ContentEmbedding SomeVector()
     {
@@ -658,7 +931,12 @@ public sealed class RefreshLibraryHandlerTests : IDisposable
         return new ContentEmbedding(values);
     }
 
-    private RefreshLibraryHandler NewHandler(IModelStore? models = null) =>
+    /// <param name="pool">
+    /// The sync folder as the scan sees it: the real one unless a test needs a
+    /// folder that will not answer.
+    /// </param>
+    private RefreshLibraryHandler NewHandler(
+        IModelStore? models = null, IRenditionPool? pool = null) =>
         new(new ScanPhotoSourceHandler(
                 _index,
                 _assets,
@@ -686,7 +964,19 @@ public sealed class RefreshLibraryHandlerTests : IDisposable
                 models ?? new NoModels()),
             Waiting(),
             new BuildAlbumsHandler(
-                new SqliteAlbumRepository(_db), new SqliteAlbumFactsReader(_db)));
+                new SqliteAlbumRepository(_db), new SqliteAlbumFactsReader(_db)),
+            new ShareRenditionsHandler(
+                _index,
+                new SqliteDecisionReader(_db),
+                new SqliteDecisionRepository(_db),
+                pool ?? new SharedFolderPool(_index, _workingFolder),
+                _store,
+                Waiting(),
+                models ?? new NoModels(),
+                new SharedFolderExchange(_index))
+            {
+                Patience = TimeSpan.FromMilliseconds(200),
+            });
 
     /// <summary>
     /// The real sweep over held answers, not a stub.
@@ -851,6 +1141,37 @@ public sealed class RefreshLibraryHandlerTests : IDisposable
 
     private Task<PhotoSource> AddSourceAsync() =>
         new AddPhotoSourceHandler(_index, _workingFolder).HandleAsync(_photosRoot);
+
+    /// <summary>Nominates a sync folder for this library, as the Sync screen does.</summary>
+    private async Task<string> SyncThroughAsync()
+    {
+        string shared = Path.Combine(_tempRoot, "shared");
+        Directory.CreateDirectory(shared);
+
+        LibrarySettings settings = await _index.GetSettingsAsync();
+        settings.SharedFolder = shared;
+        await _index.SaveSettingsAsync(settings);
+
+        return shared;
+    }
+
+    /// <summary>
+    /// Another computer that has prepared the same file this library's crawl
+    /// will find, and left its small copy in the sync folder.
+    /// </summary>
+    private async Task PreparedOnAsync(Library other, string relativePath, string thumbnailName)
+    {
+        var file = new FileInfo(Path.Combine(_photosRoot, relativePath));
+
+        other.Prepared(relativePath, thumbnailName);
+        Asset theirs = other.Db.Assets.Single();
+        theirs.Length = file.Length;
+        theirs.ModifiedUtc = file.LastWriteTimeUtc;
+        other.Db.SaveChanges();
+        other.Db.ChangeTracker.Clear();
+
+        await other.Pooling.GiveAsync();
+    }
 
     /// <summary>Writes a file the crawl will index; its extension decides the kind.</summary>
     private void WriteMedia(string relativePath) =>

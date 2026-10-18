@@ -51,11 +51,12 @@ public enum RefreshPhase
     /// thing.
     /// </summary>
     /// <remarks>
-    /// Last, and the cheapest of the six: it reads what every earlier phase
-    /// wrote - capture dates from generating, places from locating, the people
-    /// from faces - and decodes nothing. Appended rather than inserted, because
-    /// these members are numbered and a number that moves is a number stored in
-    /// somebody's library that now means a different phase.
+    /// Last of the library's own work, with only giving to the sync folder after
+    /// it, and the cheapest: it reads what every earlier phase wrote - capture
+    /// dates from generating, places from locating, the people from faces - and
+    /// decodes nothing. Appended rather than inserted, because these members are
+    /// numbered and a number that moves is a number stored in somebody's library
+    /// that now means a different phase.
     /// </remarks>
     Collecting = 6,
 
@@ -76,6 +77,30 @@ public enum RefreshPhase
     /// about.</para>
     /// </remarks>
     ApplyingAnswers = 7,
+
+    /// <summary>
+    /// Taking the small copies and faces another computer has left in the sync
+    /// folder.
+    /// </summary>
+    /// <remarks>
+    /// <strong>Runs straight after indexing, whatever its number says</strong>,
+    /// for the reason given above. That place is the whole of its value: a
+    /// picture taken here is one generating does not make and a face taken here
+    /// is one the face phase does not look for, and after either of them it
+    /// would arrive only to be thrown away.
+    /// </remarks>
+    TakingCopies = 8,
+
+    /// <summary>
+    /// Leaving this library's small copies, what it learned making them, and its
+    /// faces in the sync folder for the other computers.
+    /// </summary>
+    /// <remarks>
+    /// <strong>Runs last of all.</strong> It gives what every phase before it
+    /// made, and the first time it is gigabytes - so it is the phase somebody
+    /// stops, and by the time it starts there is nothing else a stop could cost.
+    /// </remarks>
+    GivingCopies = 9,
 }
 
 /// <summary>Progress of a refresh, reported as it goes.</summary>
@@ -102,12 +127,18 @@ public readonly record struct RefreshProgress(
     /// reports anything while that runs. A bar sitting at zero through it would
     /// say the pass had stalled. Deliberately not widened to every phase with no
     /// total - generating is left as it is rather than changed in passing.
+    ///
+    /// <para>The two phases at the sync folder open the same way: asking whether
+    /// it is there, which on a drive that is waking takes seconds, and reading
+    /// what the other computers left before there is anything to count.</para>
     /// </remarks>
     public bool IsIndeterminate =>
         Phase == RefreshPhase.Indexing
         || (Total == 0 && Phase is RefreshPhase.PreparingVideos
                               or RefreshPhase.FindingFaces
-                              or RefreshPhase.Locating);
+                              or RefreshPhase.Locating
+                              or RefreshPhase.TakingCopies
+                              or RefreshPhase.GivingCopies);
 
     public double Fraction => Total == 0 ? 0d : (double)Done / Total;
 }

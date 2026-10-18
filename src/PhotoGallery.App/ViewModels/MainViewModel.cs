@@ -2060,6 +2060,26 @@ public sealed partial class MainViewModel : ObservableObject
                         : "names, albums, and what was waiting for these photos";
                     OverlayStatus = $"{p.Done:N0} of {p.Total:N0}";
                 }
+                else if (p.Phase is RefreshPhase.TakingCopies or RefreshPhase.GivingCopies)
+                {
+                    // Their own arm, for the reason every phase here has one: the
+                    // chain ends in the generating branch, which would paint
+                    // "Preparing pictures" over a phase that is copying, and ask
+                    // the grid to reload on every one of thousands of reports.
+                    //
+                    // The line under the title is the phase's own: asking the
+                    // folder whether it is there, then pictures, then faces -
+                    // and, after taking, the answers that were waiting for them.
+                    bool taking = p.Phase == RefreshPhase.TakingCopies;
+
+                    OverlayTitle = taking
+                        ? "Taking small copies from the sync folder"
+                        : "Leaving small copies in the sync folder";
+                    OverlayTarget = p.Target.Length > 0
+                        ? p.Target
+                        : taking ? "made on your other computers" : "for your other computers";
+                    OverlayStatus = p.Total == 0 ? string.Empty : $"{p.Done:N0} of {p.Total:N0}";
+                }
                 else if (p.Phase == RefreshPhase.Locating)
                 {
                     OverlayTitle = "Working out where photos were taken";
@@ -2149,11 +2169,14 @@ public sealed partial class MainViewModel : ObservableObject
             if (result.Faces is { } faces)
             {
                 People.Status = faces.Summary;
+            }
 
-                if (faces.FacesFound > 0)
-                {
-                    await People.RefreshAfterDetectionAsync().ConfigureAwait(true);
-                }
+            // Faces another computer found change People as much as faces found
+            // here do, and arrive even in a scan stopped before its own face
+            // phase.
+            if (result.FacesFound > 0 || result.FacesTaken > 0)
+            {
+                await People.RefreshAfterDetectionAsync().ConfigureAwait(true);
             }
 
             if (_galleryLoaded && result.ChangedAnything)

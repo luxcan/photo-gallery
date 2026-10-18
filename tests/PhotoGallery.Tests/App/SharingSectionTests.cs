@@ -49,9 +49,6 @@ public sealed class SharingSectionTests
     [InlineData("Sharing.ShareCommand")]
     [InlineData("Sharing.Offers")]
     [InlineData("Sharing.HasOffers")]
-    [InlineData("Sharing.HasUnprepared")]
-    [InlineData("Sharing.PicturesLabel")]
-    [InlineData("Sharing.TakePicturesCommand")]
     public void EverythingBoundOnTheScreenExists(string path)
     {
         // Bound in the window, and a member of the view model behind it. The
@@ -66,7 +63,6 @@ public sealed class SharingSectionTests
         string expected = member switch
         {
             "ShareCommand" => "ShareAsync",
-            "TakePicturesCommand" => "TakePicturesAsync",
             _ => member,
         };
         Assert.Contains(expected, s_viewModel);
@@ -189,23 +185,45 @@ public sealed class SharingSectionTests
         Assert.Contains("PairAsync", s_viewModel);
     }
 
+    /// <summary>
+    /// The small copies have no button of their own: a scan takes and leaves
+    /// them.
+    /// </summary>
+    /// <remarks>
+    /// The button showed only on a laptop that still had photographs to prepare,
+    /// and said "take" - so a laptop with everything prepared never gave, and
+    /// the folder never held a picture. A button that has to be remembered after
+    /// every scan is the procedure this app does not ask anybody to follow.
+    /// </remarks>
     [Fact]
-    public void ThePicturesAreOfferedWithTheirPriceAndOnTheirOwnButton()
+    public void TheSmallCopiesHaveNoButtonOfTheirOwn()
     {
-        // The first copy is gigabytes and minutes. That is exactly the kind of
-        // thing this app says before the click rather than after - and it is a
-        // separate press, so a machine can take the answers and decline the
-        // gigabytes by simply not making it.
         string section = Section();
 
-        Assert.Contains("Take the small copies", section);
-        Assert.Contains("Sharing.PicturesLabel", section);
+        Assert.DoesNotContain("TakePicturesCommand", section, StringComparison.Ordinal);
+        Assert.DoesNotContain("Sharing.HasUnprepared", section, StringComparison.Ordinal);
+        Assert.DoesNotContain("Take the small copies", section, StringComparison.Ordinal);
+        Assert.DoesNotContain("TakePicturesAsync", s_viewModel, StringComparison.Ordinal);
+    }
 
-        int share = section.IndexOf("Sharing.ShareCommand", StringComparison.Ordinal);
-        int pictures = section.IndexOf("Sharing.TakePicturesCommand", StringComparison.Ordinal);
+    /// <summary>
+    /// The screen says where the small copies come from and go to now, and what
+    /// they cost the folder chosen above.
+    /// </summary>
+    /// <remarks>
+    /// A folder a cloud service keeps in step is one of the two kinds this
+    /// screen suggests, and a scan puts gigabytes in it. That is said before
+    /// anybody scans rather than discovered in a bill.
+    /// </remarks>
+    [Fact]
+    public void TheScreenSaysAScanTakesAndLeavesTheSmallCopiesAndWhatThatCosts()
+    {
+        string section = Section();
 
-        Assert.True(share > 0 && pictures > 0, "one of the two actions is missing");
-        Assert.True(share < pictures, "the pictures are offered before the answers are shared");
+        Assert.Contains("Each scan takes the small copies", section, StringComparison.Ordinal);
+        Assert.Contains("leaves its own there", section, StringComparison.Ordinal);
+        Assert.Contains("a few gigabytes the first time", section, StringComparison.Ordinal);
+        Assert.Contains("never copied", section, StringComparison.Ordinal);
     }
 
     [Fact]

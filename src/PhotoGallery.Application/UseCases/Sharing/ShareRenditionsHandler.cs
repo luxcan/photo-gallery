@@ -1,5 +1,7 @@
+using System.Diagnostics;
 using PhotoGallery.Application.Ports;
 using PhotoGallery.Domain.Assets;
+using PhotoGallery.Domain.Library;
 using PhotoGallery.Domain.Sharing;
 
 namespace PhotoGallery.Application.UseCases.Sharing;
@@ -22,9 +24,27 @@ namespace PhotoGallery.Application.UseCases.Sharing;
 /// pass. Copying is "take the names I do not have", so running it twice copies
 /// nothing the second time and a run stopped halfway leaves every file it
 /// finished usable.</para>
+///
+/// <para><strong>Two phases of the scan, not a button.</strong> It was a
+/// button, shown only on a laptop that still had photographs to prepare and
+/// worded as a take - so a laptop with everything prepared never gave, the
+/// folder never held a picture, and no face ever travelled. Now a scan takes
+/// before it makes anything, so that it does not spend an hour making what
+/// another laptop has already made, and gives at its very end, once it has made
+/// and found everything it is going to. Nobody has to remember either.</para>
+///
+/// <para><strong>The folder must never cost a scan.</strong> It is a drive that
+/// sleeps, a laptop that has left the house, or nothing chosen at all - and a
+/// scan is the app's main action. So each phase asks the folder first, against
+/// a deadline, and goes on without it when it does not answer; a folder that
+/// goes away part way ends the phase rather than the scan; and every outcome is
+/// a result that says so, never an exception.</para>
 /// </remarks>
 public sealed class ShareRenditionsHandler
 {
+    /// <summary>What the overlay says while the folder is asked whether it is there.</summary>
+    private const string Looking = "Looking in the sync folder";
+
     private readonly ILibraryIndex _index;
     private readonly IDecisionReader _decisions;
     private readonly IDecisionRepository _repository;
@@ -32,6 +52,7 @@ public sealed class ShareRenditionsHandler
     private readonly IThumbnailStore _thumbnails;
     private readonly ApplyHeldDecisionsHandler _waiting;
     private readonly IModelStore _models;
+    private readonly IDecisionExchange _exchange;
 
     public ShareRenditionsHandler(
         ILibraryIndex index,
@@ -40,7 +61,8 @@ public sealed class ShareRenditionsHandler
         IRenditionPool pool,
         IThumbnailStore thumbnails,
         ApplyHeldDecisionsHandler waiting,
-        IModelStore models)
+        IModelStore models,
+        IDecisionExchange exchange)
     {
         _index = index;
         _decisions = decisions;
@@ -49,27 +71,120 @@ public sealed class ShareRenditionsHandler
         _thumbnails = thumbnails;
         _waiting = waiting;
         _models = models;
+        _exchange = exchange;
     }
 
-    public async Task<PoolResult> HandleAsync(
+    /// <summary>
+    /// How long the folder has to answer before a phase goes on without it.
+    /// </summary>
+    /// <remarks>
+    /// Asking is <c>Directory.Exists</c> underneath, which cannot be cancelled
+    /// and blocks until the operating system gives up on an address nothing is
+    /// answering - twenty-one seconds, measured on this network. Long enough for
+    /// a sleeping drive to wake, which is the ordinary case of a folder that is
+    /// there; short enough that a laptop out of the house loses a quarter of a
+    /// minute and no more. Settable so that a test need not wait it out.
+    /// </remarks>
+    public TimeSpan Patience { get; init; } = TimeSpan.FromSeconds(15);
+
+    /// <summary>
+    /// Takes the pictures and faces the other machines have left, before this
+    /// one makes any of its own.
+    /// </summary>
+    /// <remarks>
+    /// A scan's phase, run straight after the crawl: what is taken here is a
+    /// picture the generating phase does not make and a face the face phase
+    /// does not look for. Run after them, it would only ever arrive in time to
+    /// be thrown away.
+    /// </remarks>
+    public Task<PoolResult> TakeAsync(
         IProgress<MergeProgress>? progress = null,
-        CancellationToken cancellationToken = default)
-    {
-        // Asked uncancelled: this is one small query, and a token that is
-        // already cancelled should yield a stopped result rather than throwing
-        // out of the handler before it can report anything at all.
-        ExchangeReadiness readiness =
-            await _pool.ReadinessAsync(CancellationToken.None).ConfigureAwait(false);
-
-        if (!readiness.CanExchange)
+        CancellationToken cancellationToken = default) =>
+        TimedAsync(async () =>
         {
-            return PoolResult.CouldNot(readiness.Problem);
-        }
+            if (await UnusableAsync(progress, cancellationToken).ConfigureAwait(false)
+                is string problem)
+            {
+                return PoolResult.CouldNot($"Skipped, because {problem}.");
+            }
 
-        int offered = 0;
+            // Read once, for both halves: the pictures are taken from these, and
+            // they are also what says which picture each machine's faces were
+            // drawn on.
+            IReadOnlyList<PreparedSet> theirs =
+                await _pool.FetchAsync(cancellationToken).ConfigureAwait(false);
 
-        try
+            (int filled, int fetched, int mismatched, string? gone) =
+                await TakePicturesAsync(theirs, progress, cancellationToken).ConfigureAwait(false);
+
+            if (gone is not null)
+            {
+                return PoolResult.CouldNot(PartWay(gone)) with
+                {
+                    Filled = filled,
+                    Fetched = fetched,
+                    Mismatched = mismatched,
+                };
+            }
+
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return PoolResult.Stopped with
+                {
+                    Filled = filled,
+                    Fetched = fetched,
+                    Mismatched = mismatched,
+                };
+            }
+
+            (int faces, IReadOnlyList<ModelMismatch> refused) =
+                await TakeFacesAsync(theirs, progress, cancellationToken).ConfigureAwait(false);
+
+            // A turn merged before its picture arrived was held rather than
+            // dropped, and this is the moment the picture arrives. The scan's own
+            // sweep is hours away behind the long phases, and a stop before it
+            // would leave a photograph the user straightened sitting sideways
+            // until the next one - so this run, the one that knows a picture
+            // landed, lands what was waiting for it.
+            //
+            // And a name merged before its face was found, for the same reason:
+            // a laptop that already had every picture takes only faces, and the
+            // names waiting on them are the whole of what those faces are for.
+            HeldResult? swept = fetched > 0 || faces > 0
+                ? await _waiting.HandleAsync(progress, cancellationToken).ConfigureAwait(false)
+                : null;
+
+            return new PoolResult(
+                true, string.Empty, filled, fetched, 0, mismatched,
+                cancellationToken.IsCancellationRequested, faces, refused)
+            {
+                Swept = swept,
+            };
+        });
+
+    /// <summary>
+    /// Leaves this library's pictures, what its decode learned and its faces,
+    /// for the machines that follow.
+    /// </summary>
+    /// <remarks>
+    /// A scan's last phase, after everything it gives has been made: the
+    /// pictures by generating and the videos, the faces by the face phase, and
+    /// the turns that decide which of them may be given by the answers that
+    /// land after that. Last also because the first time it runs it is
+    /// gigabytes, and this is the phase somebody stops - by then a stop costs
+    /// nothing else.
+    /// </remarks>
+    public Task<PoolResult> GiveAsync(
+        IProgress<MergeProgress>? progress = null,
+        CancellationToken cancellationToken = default) =>
+        TimedAsync(async () =>
         {
+            if (await UnusableAsync(progress, cancellationToken).ConfigureAwait(false)
+                is string problem)
+            {
+                return PoolResult.CouldNot($"Skipped, because {problem}.");
+            }
+
             MachineIdentity machine = await PublishDecisionsHandler
                 .ThisMachineAsync(_index, cancellationToken)
                 .ConfigureAwait(false);
@@ -83,66 +198,152 @@ public sealed class ShareRenditionsHandler
 
             await _pool.PublishAsync(mine, cancellationToken).ConfigureAwait(false);
 
-            IReadOnlyCollection<string> pooled =
-                await _pool.NamesAsync(cancellationToken).ConfigureAwait(false);
+            (int offered, string? gone) =
+                await OfferAsync(progress, cancellationToken).ConfigureAwait(false);
 
-            offered = await OfferAsync(pooled, progress, cancellationToken).ConfigureAwait(false);
+            if (gone is not null)
+            {
+                return PoolResult.CouldNot(PartWay(gone)) with { Offered = offered };
+            }
 
             if (cancellationToken.IsCancellationRequested)
             {
-                return new PoolResult(true, string.Empty, 0, 0, offered, 0, WasCancelled: true);
+                return PoolResult.Stopped with { Offered = offered };
             }
 
-            (int filled, int fetched, int mismatched, bool stopped) =
-                await TakeAsync(pooled, progress, cancellationToken).ConfigureAwait(false);
+            (bool left, IReadOnlyList<string> behind) =
+                await GiveFacesAsync(machine, progress, cancellationToken).ConfigureAwait(false);
 
-            (int faces, IReadOnlyList<ModelMismatch> refused) =
-                await VectorsAsync(machine, progress, cancellationToken).ConfigureAwait(false);
-
-            // A turn merged before its picture arrived was held rather than
-            // dropped, and this is the moment the picture arrives. Waiting for
-            // the next scan would leave a photograph the user straightened
-            // sitting sideways for however long that took - and this run is the
-            // one that knows a picture landed.
-            if (fetched > 0 && !stopped)
+            return PoolResult.Nothing with
             {
-                await _waiting
-                    .HandleAsync(progress, cancellationToken)
-                    .ConfigureAwait(false);
-            }
+                Offered = offered,
+                FacesLeft = left,
+                FacesWaitFor = behind,
+            };
+        });
 
-            return new PoolResult(
-                true, string.Empty, filled, fetched, offered, mismatched, stopped,
-                faces, refused);
+    /// <summary>
+    /// Runs one phase, timed, and answers for every way it can end.
+    /// </summary>
+    /// <remarks>
+    /// A stop is reported as a stop rather than thrown at the caller. Every file
+    /// that finished copying is a file this machine keeps, and the next run
+    /// picks up from there - the same bargain every other long pass in this app
+    /// offers.
+    ///
+    /// <para>And a folder that fails part way is reported rather than raised. The
+    /// folder is somewhere else, on a network that comes and goes, and a scan
+    /// that had been running for an hour must not end in an error over a copy
+    /// it could simply make again next time.</para>
+    /// </remarks>
+    private static async Task<PoolResult> TimedAsync(Func<Task<PoolResult>> phase)
+    {
+        var stopwatch = Stopwatch.StartNew();
+        PoolResult result;
+
+        try
+        {
+            result = await phase().ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
-            // Stopped, and reported as a stop rather than thrown at the caller.
-            // Every file that finished copying is a file this machine keeps, and
-            // the next run picks up from there - the same bargain every other
-            // long pass in this app offers.
-            return new PoolResult(true, string.Empty, 0, 0, offered, 0, WasCancelled: true);
+            result = PoolResult.Stopped;
         }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            result = PoolResult.CouldNot(
+                PartWay($"the sync folder could not be used: {ex.Message.TrimEnd('.')}"));
+        }
+
+        return result with { Elapsed = stopwatch.Elapsed };
     }
+
+    /// <summary>What a phase that lost its folder part way says about it.</summary>
+    private static string PartWay(string problem) =>
+        $"Stopped part way, because {problem}. What was copied is kept.";
+
+    /// <summary>
+    /// Why the folder cannot be used this time, or null when it can - asked
+    /// against a deadline rather than waited on.
+    /// </summary>
+    /// <param name="progress">
+    /// Told the phase has begun once there is a folder to ask, and not before. A
+    /// library nobody shares has nothing to do here, and a phase with nothing to
+    /// do says nothing - as describing says nothing without its models.
+    /// </param>
+    private async Task<string?> UnusableAsync(
+        IProgress<MergeProgress>? progress, CancellationToken cancellationToken)
+    {
+        LibrarySettings settings =
+            await _index.GetSettingsAsync(cancellationToken).ConfigureAwait(false);
+
+        if (string.IsNullOrWhiteSpace(settings.SharedFolder))
+        {
+            return "no sync folder is chosen";
+        }
+
+        // Named before the wait rather than after it, so that a folder slow to
+        // answer is not waited on under the name of the phase before.
+        progress?.Report(new MergeProgress(Looking, 0, 0));
+
+        // Raced rather than awaited, and asked uncancelled: the question cannot
+        // be cancelled underneath anyway, and one left behind finishes on its
+        // own long before anybody asks again.
+        Task<ExchangeReadiness> asking = _pool.ReadinessAsync(CancellationToken.None);
+
+        Task answered = await Task
+            .WhenAny(asking, Task.Delay(Patience, cancellationToken))
+            .ConfigureAwait(false);
+
+        cancellationToken.ThrowIfCancellationRequested();
+
+        if (answered != asking)
+        {
+            return $"the sync folder did not answer within {Patience.TotalSeconds:N0} seconds: "
+                 + settings.SharedFolder;
+        }
+
+        ExchangeReadiness readiness = await asking.ConfigureAwait(false);
+
+        return readiness.CanExchange
+            ? null
+            : $"the sync folder cannot be reached: {settings.SharedFolder}";
+    }
+
+    /// <summary>
+    /// Whether a copy that failed failed because the folder has gone, rather
+    /// than over the one file.
+    /// </summary>
+    /// <remarks>
+    /// One file failing is ordinary - another machine writing the same name at
+    /// the same moment, a picture whose file is missing here - and the run
+    /// carries on past it. A folder that has gone is not, and carrying on would
+    /// spend tens of seconds failing on each of twenty thousand names: a scan
+    /// that never ends, which is worse than one that stops.
+    /// </remarks>
+    private Task<string?> GoneAsync(CancellationToken cancellationToken) =>
+        UnusableAsync(progress: null, cancellationToken);
 
     /// <summary>
     /// Copies this library's pictures into the pool, for the machines that have
     /// not made them yet.
     /// </summary>
-    private async Task<int> OfferAsync(
-        IReadOnlyCollection<string> pooled,
+    /// <remarks>
+    /// Only the names the pool lacks, worked out from one listing of it before a
+    /// byte moves - which is what makes every scan after the first copy only
+    /// what is new.
+    /// </remarks>
+    private async Task<(int Offered, string? Gone)> OfferAsync(
         IProgress<MergeProgress>? progress,
         CancellationToken cancellationToken)
     {
+        IReadOnlyCollection<string> pooled =
+            await _pool.NamesAsync(cancellationToken).ConfigureAwait(false);
+
         IReadOnlyList<PooledRendition> mine =
             await _decisions.RenditionsAsync(cancellationToken).ConfigureAwait(false);
 
         IReadOnlyCollection<string> offerable = RenditionMatching.Offerable(mine, pooled);
-
-        if (offerable.Count == 0)
-        {
-            return 0;
-        }
 
         int done = 0;
         int offered = 0;
@@ -154,7 +355,8 @@ public sealed class ShareRenditionsHandler
                 break;
             }
 
-            progress?.Report(new MergeProgress("Syncing pictures", done++, offerable.Count));
+            progress?.Report(new MergeProgress(
+                "Pictures for your other computers", done++, offerable.Count));
 
             if (await _pool
                     .PushAsync(
@@ -166,9 +368,13 @@ public sealed class ShareRenditionsHandler
             {
                 offered++;
             }
+            else if (await GoneAsync(cancellationToken).ConfigureAwait(false) is string gone)
+            {
+                return (offered, gone);
+            }
         }
 
-        return offered;
+        return (offered, null);
     }
 
     /// <summary>
@@ -181,27 +387,31 @@ public sealed class ShareRenditionsHandler
     /// draw, and one claiming a rendition that has not arrived is a tile it
     /// cannot.
     /// </remarks>
-    private async Task<(int Filled, int Fetched, int Mismatched, bool Stopped)> TakeAsync(
-        IReadOnlyCollection<string> pooled,
+    private async Task<(int Filled, int Fetched, int Mismatched, string? Gone)> TakePicturesAsync(
+        IReadOnlyList<PreparedSet> theirs,
         IProgress<MergeProgress>? progress,
         CancellationToken cancellationToken)
     {
-        IReadOnlyList<PreparedSet> theirs =
-            await _pool.FetchAsync(cancellationToken).ConfigureAwait(false);
-
         if (theirs.Count == 0)
         {
-            return (0, 0, 0, false);
+            return (0, 0, 0, null);
         }
 
         IReadOnlyList<Unprepared> here =
             await _decisions.UnpreparedAsync(cancellationToken).ConfigureAwait(false);
 
-        PoolPlan plan = RenditionMatching.Match(here, theirs, Held(pooled));
+        // What this library already has is asked of the disk rather than of the
+        // index, and only once there is something it could save. A row can name
+        // a rendition whose file is gone - a working folder copied without its
+        // thumbnails, a tidy-up - and believing the row would skip exactly the
+        // fetch that would fix it.
+        PoolPlan plan = here.Count == 0
+            ? PoolPlan.Nothing
+            : RenditionMatching.Match(here, theirs, _thumbnails.ListStoredNames());
 
         if (plan.FillIn.Count == 0)
         {
-            return (0, 0, plan.Mismatched, false);
+            return (0, 0, plan.Mismatched, null);
         }
 
         // A video's frame names are worked out here rather than looked up. The
@@ -223,6 +433,7 @@ public sealed class ShareRenditionsHandler
         }
 
         HashSet<string> landed = new(StringComparer.OrdinalIgnoreCase);
+        string? gone = null;
         int done = 0;
 
         foreach (string name in wanted)
@@ -232,7 +443,8 @@ public sealed class ShareRenditionsHandler
                 break;
             }
 
-            progress?.Report(new MergeProgress("Taking pictures", done++, wanted.Count));
+            progress?.Report(new MergeProgress(
+                "Pictures made on your other computers", done++, wanted.Count));
 
             if (await _pool
                     .PullAsync(
@@ -243,6 +455,11 @@ public sealed class ShareRenditionsHandler
                     .ConfigureAwait(false))
             {
                 landed.Add(name);
+            }
+            else if (await GoneAsync(cancellationToken).ConfigureAwait(false) is string away)
+            {
+                gone = away;
+                break;
             }
         }
 
@@ -262,7 +479,7 @@ public sealed class ShareRenditionsHandler
             .FillInAsync(ready, cancellationToken)
             .ConfigureAwait(false);
 
-        return (filled, landed.Count, plan.Mismatched, cancellationToken.IsCancellationRequested);
+        return (filled, landed.Count, plan.Mismatched, gone);
     }
 
     /// <summary>
@@ -276,26 +493,19 @@ public sealed class ShareRenditionsHandler
     /// not fail: it returns a confident answer about the wrong person, which
     /// looks exactly like a right one and would spread through a family's
     /// library as fast as the sharing that carried it.
+    ///
+    /// <para>Read after the pictures have landed, so that a photograph whose
+    /// picture just arrived can take the faces drawn on it in the same run.</para>
     /// </remarks>
-    private async Task<(int Faces, IReadOnlyList<ModelMismatch> Refused)> VectorsAsync(
-        MachineIdentity machine,
+    /// <param name="drawnOn">
+    /// The other machines' facts, which say which picture each of their faces
+    /// was drawn on.
+    /// </param>
+    private async Task<(int Faces, IReadOnlyList<ModelMismatch> Refused)> TakeFacesAsync(
+        IReadOnlyList<PreparedSet> drawnOn,
         IProgress<MergeProgress>? progress,
         CancellationToken cancellationToken)
     {
-        IReadOnlyDictionary<string, string> mine = Fingerprints();
-
-        // Published even by a machine that has found no faces yet, because the
-        // file is what says which models it is running.
-        await _pool
-            .PublishFacesAsync(
-                new FaceSet(
-                    machine,
-                    DateTime.UtcNow,
-                    mine,
-                    await _decisions.FacesAsync(cancellationToken).ConfigureAwait(false)),
-                cancellationToken)
-            .ConfigureAwait(false);
-
         IReadOnlyList<FaceSet> theirs =
             await _pool.FetchFacesAsync(cancellationToken).ConfigureAwait(false);
 
@@ -305,7 +515,7 @@ public sealed class ShareRenditionsHandler
         }
 
         (IReadOnlyList<FaceSet> accepted, IReadOnlyList<ModelMismatch> refused) =
-            VectorAcceptance.Sift(mine, theirs);
+            VectorAcceptance.Sift(Fingerprints(), theirs);
 
         if (accepted.Count == 0)
         {
@@ -315,20 +525,123 @@ public sealed class ShareRenditionsHandler
         LibraryContents here =
             await _decisions.ContentsAsync(cancellationToken).ConfigureAwait(false);
 
-        IReadOnlyList<SharedFace> landing = VectorAcceptance.Landing(accepted, here);
+        IReadOnlyList<SharedFace> landing =
+            VectorAcceptance.Landing(accepted, OnThisDisk(here, accepted), drawnOn);
 
         if (landing.Count == 0)
         {
             return (0, refused);
         }
 
-        progress?.Report(new MergeProgress("Taking faces", 0, landing.Count));
+        progress?.Report(new MergeProgress(
+            "Faces found on your other computers", 0, landing.Count));
 
         int added = await _repository
             .AddFacesAsync(landing, cancellationToken)
             .ConfigureAwait(false);
 
         return (added, refused);
+    }
+
+    /// <summary>
+    /// The contents, with only the pictures that are actually on this disk.
+    /// </summary>
+    /// <remarks>
+    /// Asked of the disk rather than believed from the row, as the pictures are:
+    /// a row can name a picture whose files are gone, and the generating phase
+    /// makes it again a moment later. The face pass then reads a preview newer
+    /// than the faces taken now and replaces every one of them - after the names
+    /// waiting for them had already been landed and let go.
+    ///
+    /// <para>Only the photographs some face is arriving for, so the cost is a
+    /// stat for each of those rather than for the whole library.</para>
+    /// </remarks>
+    private LibraryContents OnThisDisk(LibraryContents here, IReadOnlyList<FaceSet> arriving)
+    {
+        HashSet<AssetKey> wanted =
+            [.. arriving.SelectMany(set => set.Faces).Select(face => face.Face.Photo)];
+
+        Dictionary<AssetKey, string> pictured = [];
+
+        foreach ((AssetKey photo, string name) in here.Renditions)
+        {
+            if (wanted.Contains(photo) && _thumbnails.Exists(name))
+            {
+                pictured[photo] = name;
+            }
+        }
+
+        return here with { Renditions = pictured };
+    }
+
+    /// <summary>
+    /// Leaves this library's faces in the folder, once no other machine there
+    /// would add them a second time.
+    /// </summary>
+    /// <remarks>
+    /// <strong>Left even by a machine that has found no faces yet</strong>,
+    /// because the file is what says which models it is running.
+    ///
+    /// <para><strong>Held back while any other machine is on the build
+    /// before.</strong> That build lands a face as new unless its box matches one
+    /// of its own to the pixel, and the detector runs on the graphics card, so
+    /// the boxes two machines draw round one face differ by a pixel. Given these
+    /// faces it would put a second face on nearly every face both machines
+    /// found, silently. The pictures and the facts are given regardless - they
+    /// do not depend on it - and a file already in the folder is left exactly as
+    /// it is, because taking it away would not take back what was landed from
+    /// it.</para>
+    /// </remarks>
+    private async Task<(bool Left, IReadOnlyList<string> Behind)> GiveFacesAsync(
+        MachineIdentity machine,
+        IProgress<MergeProgress>? progress,
+        CancellationToken cancellationToken)
+    {
+        IReadOnlyList<string> behind = await BehindAsync(cancellationToken).ConfigureAwait(false);
+
+        if (behind.Count > 0)
+        {
+            return (false, behind);
+        }
+
+        progress?.Report(new MergeProgress("Faces for your other computers", 0, 0));
+
+        FaceSet mine = new(
+            machine,
+            DateTime.UtcNow,
+            Fingerprints(),
+            await _decisions.FacesAsync(cancellationToken).ConfigureAwait(false));
+
+        bool left = await _pool.PublishFacesAsync(mine, cancellationToken).ConfigureAwait(false);
+
+        return (left, []);
+    }
+
+    /// <summary>
+    /// The other machines that have not said they land faces by overlap, by the
+    /// names they go by.
+    /// </summary>
+    /// <remarks>
+    /// Read from the answers each one last left in the folder, because that is
+    /// the only thing every build writes. A file that cannot be read this time
+    /// cannot say it either, and counts against: holding the faces back for one
+    /// more scan costs nothing, and the duplicates it would risk cannot be
+    /// taken back.
+    /// </remarks>
+    private async Task<IReadOnlyList<string>> BehindAsync(CancellationToken cancellationToken)
+    {
+        FetchedDecisions published =
+            await _exchange.FetchAsync(cancellationToken).ConfigureAwait(false);
+
+        return
+        [
+            .. published.Sets
+                .Where(set => !set.LandsFacesByOverlap)
+                .Select(set => set.Machine.Name)
+                .Distinct(StringComparer.CurrentCultureIgnoreCase)
+                .Order(StringComparer.CurrentCultureIgnoreCase),
+            .. published.Unreadable.Select(_ => "a computer whose answers could not be read"),
+        ];
     }
 
     /// <summary>
@@ -372,16 +685,4 @@ public sealed class ShareRenditionsHandler
                 fact.Photo.RelativePath, fact.Length, fact.ModifiedUtc, still.Ordinal));
         }
     }
-
-    /// <summary>
-    /// The names this library already has, so that nothing is fetched twice.
-    /// </summary>
-    /// <remarks>
-    /// Asked of the disk rather than of the index. A row can name a rendition
-    /// whose file is gone - a working folder copied without its thumbnails, a
-    /// tidy-up - and believing the row would skip exactly the fetch that would
-    /// fix it.
-    /// </remarks>
-    private IReadOnlyCollection<string> Held(IReadOnlyCollection<string> pooled) =>
-        pooled.Count == 0 ? [] : _thumbnails.ListStoredNames();
 }

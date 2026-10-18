@@ -2588,26 +2588,21 @@
                                           Converter={StaticResource BoolToVisibility}}" />
                 </StackPanel>
 
-                <!-- Its own action, and deliberately not part of Share now. The
-                     answers are a small file and seconds; the pictures are
-                     gigabytes and minutes, and the first is worth doing every
-                     day while the second is worth doing once. A machine that
-                     wants the answers and not the gigabytes gets exactly that by
-                     not pressing this. -->
+                <!-- No button. The small copies had one of their own, shown only
+                     on a laptop with photographs still to prepare and worded as
+                     a take - so a laptop with everything prepared never gave,
+                     and no face ever travelled. A scan takes them now, before it
+                     makes any of its own, and leaves this computer's at its end.
+                     This only says so, and says what it costs, because the
+                     folder somebody chooses above is where the gigabytes go. -->
                 <StackPanel Margin="0,24,0,0"
-                            Visibility="{Binding Sharing.HasUnprepared,
+                            Visibility="{Binding Sharing.HasFolder,
                                          Converter={StaticResource BoolToVisibility}}">
                   <TextBlock Style="{DynamicResource FieldLabel}"
                              Text="Small copies of your photos" />
-                  <TextBlock Style="{DynamicResource HintText}" Margin="0,0,0,8"
+                  <TextBlock Style="{DynamicResource HintText}"
                              TextWrapping="Wrap"
-                             Text="{Binding Sharing.PicturesLabel}" />
-
-                  <Button Style="{DynamicResource SecondaryButton}" MinWidth="200"
-                          HorizontalAlignment="Left"
-                          Content="Take the small copies"
-                          ToolTip="Copy the small versions another computer has already made, instead of making them again here"
-                          Command="{Binding Sharing.TakePicturesCommand}" />
+                             Text="Each scan takes the small copies and faces another computer has already left in this folder, so this one need not make or find them again, and leaves its own there for the others - a few gigabytes the first time, and only what is new after that. Your photographs themselves are never copied." />
                 </StackPanel>
 
                 <TextBlock Style="{DynamicResource FieldLabel}" Margin="0,24,0,0"

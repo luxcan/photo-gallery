@@ -1,6 +1,8 @@
 using Microsoft.EntityFrameworkCore;
+using PhotoGallery.Application.Ports;
 using PhotoGallery.Application.UseCases.Sharing;
 using PhotoGallery.Domain.Assets;
+using PhotoGallery.Domain.Sharing;
 using PhotoGallery.Infrastructure.Sharing;
 
 namespace PhotoGallery.Tests.Sharing;
@@ -30,8 +32,8 @@ public sealed class RenditionPoolTests : IDisposable
         Mum.Prepared(@"2019\a.jpg", "aa11.jpg");
         Dad.Photo(@"2019\a.jpg");
 
-        await Mum.Pooling.HandleAsync();
-        PoolResult taken = await Dad.Pooling.HandleAsync();
+        await Mum.Pooling.GiveAsync();
+        PoolResult taken = await Dad.Pooling.TakeAsync();
 
         Assert.True(taken.Ran);
         Assert.Equal(1, taken.Filled);
@@ -52,8 +54,8 @@ public sealed class RenditionPoolTests : IDisposable
         Mum.Prepared(@"2019\a.jpg", "aa11.jpg");
         Dad.Photo(@"2019\a.jpg");
 
-        await Mum.Pooling.HandleAsync();
-        await Dad.Pooling.HandleAsync();
+        await Mum.Pooling.GiveAsync();
+        await Dad.Pooling.TakeAsync();
 
         Asset filled = Dad.Db.Assets.AsNoTracking().Single();
         Assert.Equal(new DateTime(2019, 7, 4, 10, 0, 0, DateTimeKind.Utc), filled.TakenUtc);
@@ -72,8 +74,8 @@ public sealed class RenditionPoolTests : IDisposable
         Mum.Prepared(@"2019\a.jpg", "aa11.jpg");
         Dad.Photo(@"2019\a.jpg");
 
-        await Mum.Pooling.HandleAsync();
-        await Dad.Pooling.HandleAsync();
+        await Mum.Pooling.GiveAsync();
+        await Dad.Pooling.TakeAsync();
 
         Assert.Empty(await Dad.Decisions.UnpreparedAsync());
     }
@@ -84,7 +86,7 @@ public sealed class RenditionPoolTests : IDisposable
         // Asserted against the folder itself: whatever else is in there, it is
         // the two renditions this app made and a manifest.
         Mum.Prepared(@"2019\a.jpg", "aa11.jpg");
-        await Mum.Pooling.HandleAsync();
+        await Mum.Pooling.GiveAsync();
 
         string[] everything = Directory.GetFiles(
             _house.SharedFolder, "*", SearchOption.AllDirectories);
@@ -105,10 +107,10 @@ public sealed class RenditionPoolTests : IDisposable
         Mum.Prepared(@"2019\a.jpg", "aa11.jpg");
         Dad.Photo(@"2019\a.jpg");
 
-        await Mum.Pooling.HandleAsync();
-        await Dad.Pooling.HandleAsync();
+        await Mum.Pooling.GiveAsync();
+        await Dad.Pooling.TakeAsync();
 
-        PoolResult again = await Dad.Pooling.HandleAsync();
+        PoolResult again = await Dad.Pooling.TakeAsync();
 
         Assert.Equal(0, again.Fetched);
         Assert.Equal(0, again.Filled);
@@ -127,8 +129,8 @@ public sealed class RenditionPoolTests : IDisposable
         Dad.Db.SaveChanges();
         Dad.Db.ChangeTracker.Clear();
 
-        await Mum.Pooling.HandleAsync();
-        PoolResult taken = await Dad.Pooling.HandleAsync();
+        await Mum.Pooling.GiveAsync();
+        PoolResult taken = await Dad.Pooling.TakeAsync();
 
         Assert.Equal(0, taken.Filled);
         Assert.Equal(1, taken.Mismatched);
@@ -146,8 +148,8 @@ public sealed class RenditionPoolTests : IDisposable
         // screen has to learn about it.
         Mum.Prepared(@"2026 Phone Dump\b.jpg", "bb22.jpg");
 
-        await Mum.Pooling.HandleAsync();
-        PoolResult taken = await Dad.Pooling.HandleAsync();
+        await Mum.Pooling.GiveAsync();
+        PoolResult taken = await Dad.Pooling.TakeAsync();
 
         Assert.Equal(0, taken.Filled);
         Assert.Empty(Dad.Db.Assets);
@@ -162,35 +164,43 @@ public sealed class RenditionPoolTests : IDisposable
         Mum.Prepared(@"2019\a.jpg", "aa11.jpg", rotation: 90);
         Dad.Photo(@"2019\a.jpg");
 
-        PoolResult offered = await Mum.Pooling.HandleAsync();
-        PoolResult taken = await Dad.Pooling.HandleAsync();
+        PoolResult offered = await Mum.Pooling.GiveAsync();
+        PoolResult taken = await Dad.Pooling.TakeAsync();
 
         Assert.Equal(0, offered.Offered);
         Assert.Equal(0, taken.Filled);
         Assert.False(Dad.Holds("aa11.jpg"));
     }
 
+    /// <summary>
+    /// A file one machine could not decode is still tried on the next.
+    /// </summary>
+    /// <remarks>
+    /// Taken before the next machine made anything, "this never decoded" was
+    /// the next machine's answer too, for good: its generating phase skips a
+    /// failed row, and nothing tries it again until the file itself changes. A
+    /// file that will not decode on one laptop is very often one that laptop
+    /// has no codec for, so the news is not given and not taken.
+    /// </remarks>
     [Fact]
-    public async Task AFileThatWillNeverDecodeIsNotReadAgainOnTheNextMachine()
+    public async Task AFileOneMachineCouldNotDecodeIsStillTriedOnTheNext()
     {
         Asset broken = Mum.Photo(@"2019\broken.jpg");
         broken.Status = AssetStatus.Failed;
         Mum.Db.SaveChanges();
         Mum.Db.ChangeTracker.Clear();
 
-        Dad.Photo(@"2019\broken.jpg");
+        Asset his = Dad.Photo(@"2019\broken.jpg");
+        his.Status = AssetStatus.Pending;
+        Dad.Db.SaveChanges();
+        Dad.Db.ChangeTracker.Clear();
 
-        await Mum.Pooling.HandleAsync();
-        await Dad.Pooling.HandleAsync();
+        await Mum.Pooling.GiveAsync();
+        PoolResult taken = await Dad.Pooling.TakeAsync();
 
-        Assert.Equal(AssetStatus.Failed, Dad.Db.Assets.AsNoTracking().Single().Status);
-
-        // And taking it again is not work. The row still has no picture, so the
-        // pool keeps offering the news in case another machine ever succeeds -
-        // but landing the same answer twice changes nothing and is not counted
-        // as though it had.
-        PoolResult again = await Dad.Pooling.HandleAsync();
-        Assert.Equal(0, again.Filled);
+        Assert.Equal(0, taken.Filled);
+        Assert.Equal(AssetStatus.Pending, Dad.Db.Assets.AsNoTracking().Single().Status);
+        Assert.Empty(Assert.Single(await Dad.Pool.FetchAsync()).Facts);
     }
 
     [Fact]
@@ -201,7 +211,7 @@ public sealed class RenditionPoolTests : IDisposable
         // with no preview - which is the file the viewer opens and the face
         // detector reads.
         Mum.Prepared(@"2019\a.jpg", "aa11.jpg");
-        await Mum.Pooling.HandleAsync();
+        await Mum.Pooling.GiveAsync();
 
         string tile = Path.Combine(
             _house.SharedFolder, SharedFolderPool.ThumbsFolder, "aa", "aa11.jpg");
@@ -222,7 +232,7 @@ public sealed class RenditionPoolTests : IDisposable
         // and a third must never read half a JPEG. A name whose preview has not
         // landed is a name the pool does not admit to having.
         Mum.Prepared(@"2019\a.jpg", "aa11.jpg");
-        await Mum.Pooling.HandleAsync();
+        await Mum.Pooling.GiveAsync();
 
         File.Delete(Path.Combine(
             _house.SharedFolder, SharedFolderPool.ThumbsFolder, "aa", "aa11-p.jpg"));
@@ -250,10 +260,12 @@ public sealed class RenditionPoolTests : IDisposable
     {
         using var alone = new TwoLibraries();
 
-        PoolResult taken = await alone.Mum.Pooling.HandleAsync();
+        PoolResult taken = await alone.Mum.Pooling.TakeAsync();
+        PoolResult given = await alone.Mum.Pooling.GiveAsync();
 
         Assert.False(taken.Ran);
-        Assert.Contains("Choose a folder", taken.Summary);
+        Assert.False(given.Ran);
+        Assert.Contains("no sync folder is chosen", taken.Summary, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -261,12 +273,196 @@ public sealed class RenditionPoolTests : IDisposable
     {
         Mum.Prepared(@"2019\a.jpg", "aa11.jpg");
 
-        PoolResult first = await Mum.Pooling.HandleAsync();
-        PoolResult second = await Mum.Pooling.HandleAsync();
+        PoolResult first = await Mum.Pooling.GiveAsync();
+        PoolResult taken = await Mum.Pooling.TakeAsync();
+        PoolResult second = await Mum.Pooling.GiveAsync();
 
         Assert.Equal(1, first.Offered);
+        Assert.Equal(0, taken.Filled);
         Assert.Equal(0, second.Offered);
-        Assert.Equal(0, second.Filled);
+    }
+
+    /// <summary>
+    /// Two computers giving the same copy at the same moment never leave half a
+    /// picture, and whatever the race cost, the next scan puts right.
+    /// </summary>
+    /// <remarks>
+    /// Every scan gives now, so two laptops finishing a scan together is an
+    /// ordinary evening. Each file goes in under a temporary name and is renamed
+    /// into place, so nobody can read half a picture under its real name. The
+    /// two can both lose the race - one clearing away the temporary file the
+    /// other was about to rename - and then the copy is simply not there yet:
+    /// the folder is listed afresh on every give, so the next one copies it.
+    /// </remarks>
+    [Fact]
+    public async Task TwoComputersGivingTheSameCopyAtOnceNeverLeaveHalfACopy()
+    {
+        Mum.Prepared(@"2019\a.jpg", "aa11.jpg");
+        Dad.Prepared(@"2019\a.jpg", "aa11.jpg");
+
+        PoolResult[] given = await Task.WhenAll(
+            Task.Run(() => Mum.Pooling.GiveAsync()),
+            Task.Run(() => Dad.Pooling.GiveAsync()));
+
+        Assert.All(given, result => Assert.True(result.Ran, result.Summary));
+
+        string shard = Path.Combine(_house.SharedFolder, SharedFolderPool.ThumbsFolder, "aa");
+        AssertWholeIfThere(Path.Combine(shard, "aa11.jpg"), "tile of aa11.jpg");
+        AssertWholeIfThere(Path.Combine(shard, "aa11-p.jpg"), "preview of aa11.jpg");
+
+        await Mum.Pooling.GiveAsync();
+
+        Assert.Contains("aa11.jpg", await Mum.Pool.NamesAsync());
+        Assert.Equal("tile of aa11.jpg", await File.ReadAllTextAsync(Path.Combine(shard, "aa11.jpg")));
+        Assert.Equal(
+            "preview of aa11.jpg", await File.ReadAllTextAsync(Path.Combine(shard, "aa11-p.jpg")));
+
+        static void AssertWholeIfThere(string path, string whole)
+        {
+            if (File.Exists(path))
+            {
+                Assert.Equal(whole, File.ReadAllText(path));
+            }
+        }
+    }
+
+    /// <summary>
+    /// A folder that goes away part way ends the phase, not the scan, and is not
+    /// tried again for every picture left.
+    /// </summary>
+    /// <remarks>
+    /// A laptop carried out of the house mid-scan. Each copy to a folder that is
+    /// not there fails only after the operating system gives up on it, and there
+    /// are twenty thousand of them - so the first failure asks whether the folder
+    /// is still there, and on hearing it is not, the phase stops and says why.
+    /// </remarks>
+    [Fact]
+    public async Task AFolderThatGoesAwayPartWayEndsThePhaseAndSaysWhy()
+    {
+        Mum.Prepared(@"2019\a.jpg", "aa11.jpg");
+        Mum.Prepared(@"2019\b.jpg", "bb22.jpg");
+        Mum.Prepared(@"2019\c.jpg", "cc33.jpg");
+
+        var away = new GoesAway(Mum.Pool, everyCopyFails: true);
+
+        PoolResult given = await Through(away).GiveAsync();
+
+        Assert.False(given.Ran);
+        Assert.Contains("Stopped part way", given.Summary, StringComparison.Ordinal);
+        Assert.Equal(1, away.Copies);
+    }
+
+    /// <summary>And one copy failing, with the folder still there, stops nothing.</summary>
+    [Fact]
+    public async Task OneCopyThatFailsDoesNotStopTheRest()
+    {
+        Mum.Prepared(@"2019\a.jpg", "aa11.jpg");
+        Mum.Prepared(@"2019\b.jpg", "bb22.jpg");
+        Mum.Prepared(@"2019\c.jpg", "cc33.jpg");
+
+        var once = new GoesAway(Mum.Pool, everyCopyFails: false);
+
+        PoolResult given = await Through(once).GiveAsync();
+
+        Assert.True(given.Ran);
+        Assert.Equal(2, given.Offered);
+        Assert.Equal(3, once.Copies);
+    }
+
+    /// <summary>
+    /// A folder that fails outright part way is said to have, and does not fail
+    /// the scan it is a phase of.
+    /// </summary>
+    [Fact]
+    public async Task AFolderThatFailsPartWayIsReportedRatherThanThrown()
+    {
+        Mum.Prepared(@"2019\a.jpg", "aa11.jpg");
+
+        var failing = new GoesAway(
+            Mum.Pool, everyCopyFails: false,
+            listing: new IOException("The network path was not found."));
+
+        PoolResult given = await Through(failing).GiveAsync();
+
+        Assert.False(given.Ran);
+        Assert.Equal(
+            "Stopped part way, because the sync folder could not be used: The network path "
+            + "was not found. What was copied is kept.",
+            given.Summary);
+    }
+
+    /// <summary>Mum's two scan phases, giving through a folder a test controls.</summary>
+    private ShareRenditionsHandler Through(IRenditionPool pool) =>
+        new(Mum.Index, Mum.Decisions, Mum.Writing, pool, Mum.Thumbnails, Mum.Waiting,
+            Mum.Models, Mum.Exchange);
+
+    /// <summary>
+    /// The real folder, except that copying into it fails - every time, after
+    /// which it says it is not there any more, or once only, while it stays -
+    /// and listing it may fail outright.
+    /// </summary>
+    private sealed class GoesAway : IRenditionPool
+    {
+        private readonly IRenditionPool _real;
+        private readonly bool _everyCopyFails;
+        private readonly IOException? _listing;
+        private bool _gone;
+
+        public GoesAway(IRenditionPool real, bool everyCopyFails, IOException? listing = null) =>
+            (_real, _everyCopyFails, _listing) = (real, everyCopyFails, listing);
+
+        /// <summary>How many copies were attempted.</summary>
+        public int Copies { get; private set; }
+
+        public Task<ExchangeReadiness> ReadinessAsync(CancellationToken cancellationToken = default) =>
+            _gone
+                ? Task.FromResult(ExchangeReadiness.Not("That folder cannot be reached."))
+                : _real.ReadinessAsync(cancellationToken);
+
+        public Task PublishAsync(PreparedSet mine, CancellationToken cancellationToken = default) =>
+            _real.PublishAsync(mine, cancellationToken);
+
+        public Task<IReadOnlyList<PreparedSet>> FetchAsync(
+            CancellationToken cancellationToken = default) =>
+            _real.FetchAsync(cancellationToken);
+
+        public Task<bool> PublishFacesAsync(
+            FaceSet mine, CancellationToken cancellationToken = default) =>
+            _real.PublishFacesAsync(mine, cancellationToken);
+
+        public Task<IReadOnlyList<FaceSet>> FetchFacesAsync(
+            CancellationToken cancellationToken = default) =>
+            _real.FetchFacesAsync(cancellationToken);
+
+        public Task<IReadOnlyCollection<string>> NamesAsync(
+            CancellationToken cancellationToken = default) =>
+            _listing is null ? _real.NamesAsync(cancellationToken) : throw _listing;
+
+        public Task<bool> PushAsync(
+            string thumbnailName,
+            string tilePath,
+            string previewPath,
+            CancellationToken cancellationToken = default)
+        {
+            Copies++;
+
+            if (_everyCopyFails)
+            {
+                _gone = true;
+                return Task.FromResult(false);
+            }
+
+            return Copies == 1
+                ? Task.FromResult(false)
+                : _real.PushAsync(thumbnailName, tilePath, previewPath, cancellationToken);
+        }
+
+        public Task<bool> PullAsync(
+            string thumbnailName,
+            string tilePath,
+            string previewPath,
+            CancellationToken cancellationToken = default) =>
+            _real.PullAsync(thumbnailName, tilePath, previewPath, cancellationToken);
     }
 
     public void Dispose() => _house.Dispose();

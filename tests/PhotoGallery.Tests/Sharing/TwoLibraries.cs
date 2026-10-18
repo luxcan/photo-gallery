@@ -2,8 +2,8 @@ using Microsoft.EntityFrameworkCore;
 using PhotoGallery.Application.Ports;
 using PhotoGallery.Application.UseCases.Scanning;
 using PhotoGallery.Application.UseCases.Sharing;
-using PhotoGallery.Domain.Assets;
 using PhotoGallery.Domain.Albums;
+using PhotoGallery.Domain.Assets;
 using PhotoGallery.Domain.Faces;
 using PhotoGallery.Domain.Library;
 using PhotoGallery.Domain.People;
@@ -191,16 +191,22 @@ internal sealed class Library : IDisposable
     public ConfirmPairingHandler Pairing =>
         field ??= new ConfirmPairingHandler(Index, Decisions, Writing);
 
+    /// <summary>This library's own working folder, on a real disk.</summary>
+    public WorkingFolder Working => field ??= CreateWorking();
+
     /// <summary>This library's own cached pictures, on a real disk.</summary>
-    public FileSystemThumbnailStore Thumbnails => field ??= Store();
+    public FileSystemThumbnailStore Thumbnails => field ??= new FileSystemThumbnailStore(Working);
 
     /// <summary>The pooled pictures, in the folder both machines share.</summary>
-    public SharedFolderPool Pool => field ??= new SharedFolderPool(Index);
+    public SharedFolderPool Pool => field ??= new SharedFolderPool(Index, Working);
 
-    /// <summary>Taking everybody's pictures, and leaving this library's.</summary>
+    /// <summary>
+    /// The two scan phases at the sync folder: taking everybody's pictures, and
+    /// leaving this library's.
+    /// </summary>
     public ShareRenditionsHandler Pooling =>
         field ??= new ShareRenditionsHandler(
-            Index, Decisions, Writing, Pool, Thumbnails, Waiting, Models);
+            Index, Decisions, Writing, Pool, Thumbnails, Waiting, Models, Exchange);
 
     /// <summary>
     /// Which models this library is running, as far as the fingerprint check is
@@ -253,11 +259,11 @@ internal sealed class Library : IDisposable
         File.Exists(Thumbnails.ResolveTilePath(thumbnailName))
         && File.Exists(Thumbnails.ResolvePreviewPath(thumbnailName));
 
-    private FileSystemThumbnailStore Store()
+    private WorkingFolder CreateWorking()
     {
         var working = new WorkingFolder(Path.Combine(Root, "working"));
         working.EnsureCreated();
-        return new FileSystemThumbnailStore(working);
+        return working;
     }
 
     /// <summary>
@@ -409,6 +415,12 @@ internal sealed class Library : IDisposable
     }
 
     /// <summary>Records a detected face, as the face pass would.</summary>
+    /// <remarks>
+    /// Marking the photograph looked at, as the face pass does. A face on a
+    /// photograph that is not marked is one the crawl found out of date, waiting
+    /// for the face pass to replace it - which is a state a test sets up on
+    /// purpose, not one every face should be in.
+    /// </remarks>
     public Face Face(Asset asset, FaceBounds bounds, double degrees = 0d)
     {
         ArgumentNullException.ThrowIfNull(asset);
@@ -423,6 +435,12 @@ internal sealed class Library : IDisposable
 
         Db.Faces.Add(face);
         Db.SaveChanges();
+
+        Db.Assets
+            .Where(row => row.Id == asset.Id)
+            .ExecuteUpdate(setters => setters.SetProperty(
+                row => row.FacesDetectedUtc, DateTime.UtcNow));
+
         return face;
     }
 

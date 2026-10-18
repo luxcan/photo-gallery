@@ -74,8 +74,7 @@ public static class RenditionMatching
             // A manifest is an untrusted boundary. A rendition is a file name,
             // never a path; rejecting it here also prevents the unsafe fact from
             // being written into this library's index after the copy is refused.
-            if (fact.ThumbnailName is string unsafeName
-                && !RenditionName.IsSafeFileName(unsafeName))
+            if (fact.ThumbnailName is not string name || !RenditionName.IsSafeFileName(name))
             {
                 mismatched++;
                 continue;
@@ -83,10 +82,7 @@ public static class RenditionMatching
 
             fillIn.Add(fact);
 
-            // A file that never decoded brings its status and nothing else,
-            // which is the point: twelve files that will never decode should not
-            // be read again on four more machines.
-            if (fact.ThumbnailName is string name && !already.Contains(name))
+            if (!already.Contains(name))
             {
                 wanted.Add(name);
             }
@@ -148,7 +144,7 @@ public static class RenditionMatching
     }
 
     /// <summary>
-    /// The latest fact about each photograph, across every machine.
+    /// The latest picture of each photograph, across every machine.
     /// </summary>
     /// <remarks>
     /// Two machines can have prepared the same photograph, and where their
@@ -156,6 +152,14 @@ public static class RenditionMatching
     /// wins for the same reason a later decision does - and the byte check
     /// afterwards means a wrong guess here costs a local prepare rather than a
     /// wrong picture.
+    ///
+    /// <para><strong>Only a fact with a picture is offered.</strong> The build
+    /// before also wrote "this never decoded", and taking it was meant to spare
+    /// the next machine the read. But taking happens before this machine makes
+    /// anything, so a row taken as failed is one it never tries - and a file one
+    /// laptop cannot decode is very often one that laptop has no codec for.
+    /// Whichever laptop scanned a new file first would decide for everybody, and
+    /// a later "failed" would hide an earlier machine's picture.</para>
     /// </remarks>
     private static Dictionary<AssetKey, PreparedFact> Offered(IReadOnlyList<PreparedSet> theirs)
     {
@@ -164,7 +168,7 @@ public static class RenditionMatching
 
         foreach (PreparedSet them in theirs)
         {
-            foreach (PreparedFact fact in them.Facts)
+            foreach (PreparedFact fact in them.Facts.Where(fact => fact.HasPicture))
             {
                 if (!when.TryGetValue(fact.Photo, out DateTime standing)
                     || them.WrittenUtc > standing)

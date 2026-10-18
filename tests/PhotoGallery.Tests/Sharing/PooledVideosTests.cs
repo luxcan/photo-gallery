@@ -33,8 +33,8 @@ public sealed class PooledVideosTests : IDisposable
         Asset clip = Clip(Mum, @"2019\holiday.mp4");
         Dad.Photo(@"2019\holiday.mp4");
 
-        await Mum.Pooling.HandleAsync();
-        PoolResult taken = await Dad.Pooling.HandleAsync();
+        await Mum.Pooling.GiveAsync();
+        PoolResult taken = await Dad.Pooling.TakeAsync();
 
         Assert.Equal(1, taken.Filled);
 
@@ -52,8 +52,8 @@ public sealed class PooledVideosTests : IDisposable
         Clip(Mum, @"2019\holiday.mp4");
         Dad.Photo(@"2019\holiday.mp4");
 
-        await Mum.Pooling.HandleAsync();
-        await Dad.Pooling.HandleAsync();
+        await Mum.Pooling.GiveAsync();
+        await Dad.Pooling.TakeAsync();
 
         Asset his = Dad.Db.Assets.AsNoTracking().Single();
         Assert.Equal(TimeSpan.FromMinutes(3), his.Duration);
@@ -74,7 +74,7 @@ public sealed class PooledVideosTests : IDisposable
         // Asserted against the manifest itself: it says where each frame came
         // from and never what it is called.
         Clip(Mum, @"2019\holiday.mp4");
-        await Mum.Pooling.HandleAsync();
+        await Mum.Pooling.GiveAsync();
 
         IReadOnlyList<PreparedSet> manifests = await Dad.Pool.FetchAsync();
         PreparedFact fact = Assert.Single(manifests.SelectMany(set => set.Facts));
@@ -98,8 +98,8 @@ public sealed class PooledVideosTests : IDisposable
         Asset clip = Clip(Mum, @"2019\holiday.mp4");
         Dad.Photo(@"2019\holiday.mp4");
 
-        await Mum.Pooling.HandleAsync();
-        PoolResult taken = await Dad.Pooling.HandleAsync();
+        await Mum.Pooling.GiveAsync();
+        PoolResult taken = await Dad.Pooling.TakeAsync();
 
         Assert.Equal(3, taken.Fetched);
 
@@ -138,9 +138,9 @@ public sealed class PooledVideosTests : IDisposable
         // in the pool. Dad fetches it, and the turn he was holding lands.
         Library ana = _house.Add("Ana's laptop");
         ana.Prepared(@"2019\a.jpg", "aa11.jpg");
-        await ana.Pooling.HandleAsync();
+        await ana.Pooling.GiveAsync();
 
-        await Dad.Pooling.HandleAsync();
+        await Dad.Pooling.TakeAsync();
 
         Assert.True(Dad.Holds("aa11.jpg"));
         Assert.Equal(90, Dad.Db.Assets.AsNoTracking().Single().Rotation);

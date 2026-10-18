@@ -4,6 +4,7 @@ using PhotoGallery.Application.UseCases.Places;
 using PhotoGallery.Application.UseCases.Refresh;
 using PhotoGallery.Application.UseCases.Scanning;
 using PhotoGallery.Application.UseCases.Search;
+using PhotoGallery.Application.UseCases.Sharing;
 using PhotoGallery.Application.UseCases.Thumbnails;
 using PhotoGallery.Application.UseCases.Videos;
 
@@ -32,6 +33,8 @@ public sealed class RefreshTimingsTests
         IReadOnlyList<string> lines = Finished().Timings;
 
         Assert.Contains(lines, line => line.StartsWith("crawl", StringComparison.Ordinal));
+        Assert.Contains(lines, line => line.StartsWith("taking", StringComparison.Ordinal));
+        Assert.Contains(lines, line => line.StartsWith("giving", StringComparison.Ordinal));
         Assert.Contains(lines, line => line.StartsWith("pictures", StringComparison.Ordinal));
         Assert.Contains(lines, line => line.StartsWith("places", StringComparison.Ordinal));
         Assert.Contains(lines, line => line.StartsWith("describing", StringComparison.Ordinal));
@@ -67,10 +70,36 @@ public sealed class RefreshTimingsTests
         Assert.Contains(result.Timings, line => line.StartsWith("other", StringComparison.Ordinal));
     }
 
+    /// <summary>
+    /// A sync folder that could not be used is one line of the log, not two.
+    /// </summary>
+    /// <remarks>
+    /// Not chosen, asleep or out of the house, it is said where the scan's time
+    /// is accounted for - the only place it is said at all - and said once: the
+    /// giving phase does not ask again what the taking phase has just been told.
+    /// </remarks>
+    [Fact]
+    public void ASyncFolderThatCouldNotBeUsedIsSaidOnce()
+    {
+        RefreshResult alone = Finished() with
+        {
+            Taken = PoolResult.CouldNot("Skipped, because no sync folder is chosen."),
+            Given = null,
+        };
+
+        Assert.Single(
+            alone.Timings,
+            line => line.Contains("no sync folder is chosen", StringComparison.Ordinal));
+        Assert.DoesNotContain(
+            alone.Timings,
+            line => line.StartsWith("giving", StringComparison.Ordinal));
+        Assert.False(alone.WasCancelled);
+    }
+
     [Fact]
     public void ARunWithNothingUnaccountedForDoesNotInventARemainder()
     {
-        RefreshResult tight = Finished() with { Elapsed = TimeSpan.FromSeconds(66) };
+        RefreshResult tight = Finished() with { Elapsed = TimeSpan.FromSeconds(71) };
 
         Assert.DoesNotContain(
             tight.Timings,
@@ -85,7 +114,7 @@ public sealed class RefreshTimingsTests
         Assert.StartsWith("total", Finished().Timings[^1], StringComparison.Ordinal);
     }
 
-    /// <summary>A run in which every phase did something, adding up to 66 seconds.</summary>
+    /// <summary>A run in which every phase did something, adding up to 71 seconds.</summary>
     private static RefreshResult Finished() =>
         new(
             Scans: [new ScanResult(1, "C:\\photos", 10, 1, 0, 0, TimeSpan.FromSeconds(6), false)],
@@ -96,6 +125,8 @@ public sealed class RefreshTimingsTests
             Faces: new FaceDetectionResult(10, 10, 6, 0, TimeSpan.FromSeconds(7), false, false),
             Answers: null,
             Collected: new AlbumsResult(0, 0, 0, TimeSpan.FromSeconds(1), false),
-            Elapsed: TimeSpan.FromSeconds(66),
+            Taken: PoolResult.Nothing with { Filled = 3, Elapsed = TimeSpan.FromSeconds(2) },
+            Given: PoolResult.Nothing with { Offered = 7, Elapsed = TimeSpan.FromSeconds(3) },
+            Elapsed: TimeSpan.FromSeconds(71),
             WasCancelled: false);
 }

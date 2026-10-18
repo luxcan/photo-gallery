@@ -107,20 +107,54 @@ public sealed class RenditionMatchingTests
         Assert.Single(plan.Wanted);
     }
 
+    /// <summary>
+    /// A file another machine could not decode is left for this one to try.
+    /// </summary>
+    /// <remarks>
+    /// Taking is the phase before this machine makes anything, so a row taken as
+    /// failed here is one this machine never tries - and a file that will not
+    /// decode on one laptop is very often one that laptop lacks the codec for.
+    /// Whichever laptop scanned a new file first would decide for everybody.
+    /// </remarks>
     [Fact]
-    public void AFileThatWillNeverDecodeCarriesItsStatusAndNoPicture()
+    public void AFileAnotherMachineCouldNotDecodeIsLeftForThisOneToTry()
     {
-        // The twelve files on this library that fail should not be read again on
-        // four more machines.
         PoolPlan plan = RenditionMatching.Match(
             [Waiting("broken.jpg", 1024, Monday)],
             [Set(Fact("broken.jpg", 1024, Monday, null, AssetStatus.Failed))],
             []);
 
-        PreparedFact filled = Assert.Single(plan.FillIn);
-        Assert.Equal(AssetStatus.Failed, filled.Status);
-        Assert.False(filled.HasPicture);
+        Assert.Empty(plan.FillIn);
         Assert.Empty(plan.Wanted);
+        Assert.Equal(0, plan.Mismatched);
+    }
+
+    /// <summary>
+    /// A later manifest with no picture for a photograph does not hide an
+    /// earlier one that has it.
+    /// </summary>
+    /// <remarks>
+    /// The laptop that failed to decode it wrote last, and the build before
+    /// still writes that it failed. Only a fact that brings a picture is worth
+    /// choosing between.
+    /// </remarks>
+    [Fact]
+    public void ALaterManifestWithNoPictureDoesNotHideAnEarlierOneWithIt()
+    {
+        PoolPlan plan = RenditionMatching.Match(
+            [Waiting("a.jpg", 1024, Monday)],
+            [
+                Set(Fact("a.jpg", 1024, Monday, "aa11")) with { WrittenUtc = Monday },
+                Set(Fact("a.jpg", 1024, Monday, null, AssetStatus.Failed)) with
+                {
+                    WrittenUtc = Monday.AddHours(1),
+                },
+            ],
+            []);
+
+        PreparedFact filled = Assert.Single(plan.FillIn);
+        Assert.Equal("aa11.jpg", filled.ThumbnailName);
+        Assert.Contains("aa11.jpg", plan.Wanted);
     }
 
     [Fact]

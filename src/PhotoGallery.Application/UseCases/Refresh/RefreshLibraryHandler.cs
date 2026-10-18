@@ -13,9 +13,11 @@ namespace PhotoGallery.Application.UseCases.Refresh;
 
 /// <summary>
 /// Everything importing means, in one action: crawl the folders and reconcile
-/// them against the index, make the renditions that are missing, work out where
-/// the photographs were taken, describe what they are of, take a picture out of
-/// each video, and find the faces in all of it.
+/// them against the index, take what the other computers have already made,
+/// make the renditions that are still missing, work out where the photographs
+/// were taken, describe what they are of, take a picture out of each video, find
+/// the faces in all of it, and leave what this library made for the other
+/// computers.
 /// </summary>
 /// <remarks>
 /// Six phases rather than six buttons. Each of these was once its own button,
@@ -25,6 +27,13 @@ namespace PhotoGallery.Application.UseCases.Refresh;
 /// them, photographs with no faces boxed, no places to search by - with nothing
 /// on screen to say which step had been missed. None of these phases leaves the
 /// library in a state anyone wants on its own, so none of them is a choice.
+///
+/// <para>The small copies in the sync folder were the last of those buttons, and
+/// the worst: it showed only on a laptop with photographs still to prepare and
+/// said "take", so a laptop with everything prepared never gave and no face ever
+/// travelled. Taking is now the phase after the crawl and giving the last phase
+/// of all, and a library with no sync folder, or one that does not answer, says
+/// so in a line of the log and scans exactly as it did before.</para>
 ///
 /// <para><strong>Expense is not a reason to split the job.</strong> The video
 /// and face phases are the long ones, and each was defended as its own button on
@@ -82,6 +91,7 @@ public sealed class RefreshLibraryHandler
     private readonly DetectFacesHandler _faces;
     private readonly ApplyHeldDecisionsHandler _waiting;
     private readonly BuildAlbumsHandler _collect;
+    private readonly ShareRenditionsHandler _copies;
 
     public RefreshLibraryHandler(
         ScanPhotoSourceHandler scan,
@@ -91,7 +101,8 @@ public sealed class RefreshLibraryHandler
         BuildVideoKeyframesHandler videos,
         DetectFacesHandler faces,
         ApplyHeldDecisionsHandler waiting,
-        BuildAlbumsHandler collect)
+        BuildAlbumsHandler collect,
+        ShareRenditionsHandler copies)
     {
         _scan = scan;
         _generate = generate;
@@ -101,6 +112,7 @@ public sealed class RefreshLibraryHandler
         _faces = faces;
         _waiting = waiting;
         _collect = collect;
+        _copies = copies;
     }
 
     public async Task<RefreshResult> HandleAsync(
@@ -157,6 +169,43 @@ public sealed class RefreshLibraryHandler
                 Faces: null,
                 Answers: null,
                 Collected: null,
+                Taken: null,
+                Given: null,
+                stopwatch.Elapsed,
+                WasCancelled: true);
+        }
+
+        // What another computer has already made, taken before anything is made
+        // here - which is the only moment taking it is worth anything. A picture
+        // taken now is one the next phase does not make, and a face taken now is
+        // one the face phase does not look for; taken after them, both would
+        // arrive in time to be thrown away.
+        //
+        // A sync folder not chosen, asleep or out of reach is answered rather
+        // than raised, inside a deadline: the photographs may be on the same
+        // drive, but the scan must finish whatever the folder does.
+        var taking = new PhaseProgress<MergeProgress>(
+            p => new RefreshProgress(RefreshPhase.TakingCopies, p.What, p.Done, p.Total, 0),
+            progress);
+
+        PoolResult taken = await _copies
+            .TakeAsync(taking, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (taken.WasCancelled || cancellationToken.IsCancellationRequested)
+        {
+            stopwatch.Stop();
+            return new RefreshResult(
+                scans,
+                Generated: null,
+                Described: null,
+                Located: null,
+                Videos: null,
+                Faces: null,
+                Answers: null,
+                Collected: null,
+                taken,
+                Given: null,
                 stopwatch.Elapsed,
                 WasCancelled: true);
         }
@@ -183,6 +232,8 @@ public sealed class RefreshLibraryHandler
                 Faces: null,
                 Answers: null,
                 Collected: null,
+                taken,
+                Given: null,
                 stopwatch.Elapsed,
                 WasCancelled: true);
         }
@@ -233,6 +284,8 @@ public sealed class RefreshLibraryHandler
                 Faces: null,
                 Answers: null,
                 Collected: null,
+                taken,
+                Given: null,
                 stopwatch.Elapsed,
                 WasCancelled: true);
         }
@@ -269,6 +322,8 @@ public sealed class RefreshLibraryHandler
                 Faces: null,
                 Answers: null,
                 Collected: null,
+                taken,
+                Given: null,
                 stopwatch.Elapsed,
                 WasCancelled: true);
         }
@@ -315,6 +370,8 @@ public sealed class RefreshLibraryHandler
                 Faces: null,
                 Answers: null,
                 Collected: null,
+                taken,
+                Given: null,
                 stopwatch.Elapsed,
                 WasCancelled: true);
         }
@@ -351,6 +408,8 @@ public sealed class RefreshLibraryHandler
                 faces,
                 Answers: null,
                 Collected: null,
+                taken,
+                Given: null,
                 stopwatch.Elapsed,
                 WasCancelled: true);
         }
@@ -385,12 +444,15 @@ public sealed class RefreshLibraryHandler
                 faces,
                 answers,
                 Collected: null,
+                taken,
+                Given: null,
                 stopwatch.Elapsed,
                 WasCancelled: true);
         }
 
-        // Grouping into occasions last of all, because it reads what every
-        // phase before it wrote and decodes nothing itself: capture dates from
+        // Grouping into occasions last of the library's own work - only giving
+        // to the sync folder follows it - because it reads what every phase
+        // before it wrote and decodes nothing itself: capture dates from
         // generating, places from locating, and the names on faces from the
         // phase above. Dependency-last rather than cost-last - one sorted pass
         // over dates the index already holds is the cheapest thing in the run.
@@ -405,6 +467,47 @@ public sealed class RefreshLibraryHandler
             .HandleAsync(progress: collecting, cancellationToken: cancellationToken)
             .ConfigureAwait(false);
 
+        if (collected.WasCancelled || cancellationToken.IsCancellationRequested)
+        {
+            stopwatch.Stop();
+            return new RefreshResult(
+                scans,
+                generated,
+                described,
+                located,
+                videos,
+                faces,
+                answers,
+                collected,
+                taken,
+                Given: null,
+                stopwatch.Elapsed,
+                WasCancelled: true);
+        }
+
+        // What this library made and found, left for the other computers - last
+        // of all, for both reasons the order has. It gives what every phase
+        // before it wrote: the pictures, what their decode learned, the faces,
+        // and the turns the answers above settled, which decide which of those
+        // may be given at all. And the first time it runs it is gigabytes, so it
+        // is the phase somebody stops, and by now a stop costs nothing else.
+        //
+        // Not asked again when the take found the folder unusable: asking would
+        // cost another wait to say the same thing twice in the log, and the
+        // next scan gives whatever this one would have.
+        PoolResult? given = null;
+
+        if (taken.Ran)
+        {
+            var giving = new PhaseProgress<MergeProgress>(
+                p => new RefreshProgress(RefreshPhase.GivingCopies, p.What, p.Done, p.Total, 0),
+                progress);
+
+            given = await _copies
+                .GiveAsync(giving, cancellationToken)
+                .ConfigureAwait(false);
+        }
+
         stopwatch.Stop();
         return new RefreshResult(
             scans,
@@ -415,8 +518,10 @@ public sealed class RefreshLibraryHandler
             faces,
             answers,
             collected,
+            taken,
+            given,
             stopwatch.Elapsed,
-            collected.WasCancelled || cancellationToken.IsCancellationRequested);
+            given?.WasCancelled == true || cancellationToken.IsCancellationRequested);
     }
 
     /// <summary>

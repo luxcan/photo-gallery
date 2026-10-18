@@ -8,10 +8,9 @@ namespace PhotoGallery.Domain.Sharing;
 /// </summary>
 /// <remarks>
 /// The box rather than an ordinal. Two machines running the same detector over
-/// the same rendition produce the same rectangles - <c>OnnxFaceScanner</c>
-/// appends no execution provider, so every machine runs the same CPU graph over
-/// a preview this app wrote itself - while the order results were collected in
-/// is an artefact of the collecting and is not a fact about anybody's face.
+/// the same rendition produce the same rectangles, or ones a pixel apart, while
+/// the order results were collected in is an artefact of the collecting and is
+/// not a fact about anybody's face.
 ///
 /// <para><strong>Only true after rotations have merged.</strong> Turning a
 /// photograph rewrites every face's bounds, so a box means nothing on its own:
@@ -21,9 +20,11 @@ namespace PhotoGallery.Domain.Sharing;
 /// the same frame, and this plain key matches exactly. An ordering rule instead
 /// of a wider key.</para>
 ///
-/// <para>The day a GPU provider is added the rectangles stop being reproducible
-/// - floating point moves a box by a pixel - and matching degrades quietly to
-/// the overlap fallback. Recorded as a standing risk rather than discovered.</para>
+/// <para>The detector runs on the graphics card wherever there is one, and there
+/// the rectangles are not reproducible - floating point moves a box by a pixel
+/// from one machine to the next. So an answer, and a face taken from another
+/// machine, finds its face here through <see cref="FaceMatching.Find"/>, which
+/// falls back to the overlap.</para>
 /// </remarks>
 public readonly record struct FaceKey(AssetKey Photo, FaceBounds Bounds)
 {

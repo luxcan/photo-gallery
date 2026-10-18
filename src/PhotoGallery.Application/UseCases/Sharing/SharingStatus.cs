@@ -24,20 +24,14 @@ namespace PhotoGallery.Application.UseCases.Sharing;
 /// a folder nobody has added" - and split because only one of the three is
 /// anything the reader can act on. See <see cref="HeldStanding"/>.
 /// </param>
-/// <param name="Unprepared">
-/// Photographs this library has indexed and not yet prepared - what the pictures
-/// half is worth, in the only unit that means anything to somebody deciding
-/// whether to spend five minutes.
-/// </param>
 public sealed record SharingStatus(
     string Folder,
     string Problem,
     IReadOnlyList<MachineStanding> Machines,
-    HeldStanding Held,
-    int Unprepared)
+    HeldStanding Held)
 {
     public static SharingStatus Nothing { get; } =
-        new(string.Empty, string.Empty, [], HeldStanding.Nothing, 0);
+        new(string.Empty, string.Empty, [], HeldStanding.Nothing);
 
     /// <summary>Whether a folder is chosen and reachable.</summary>
     public bool CanShare => Folder.Length > 0 && Problem.Length == 0;

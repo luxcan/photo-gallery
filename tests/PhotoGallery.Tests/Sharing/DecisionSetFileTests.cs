@@ -1,3 +1,6 @@
+using System.IO.Compression;
+using System.Text;
+using System.Text.Json.Nodes;
 using PhotoGallery.Domain.Faces;
 using PhotoGallery.Domain.People;
 using PhotoGallery.Domain.Sharing;
@@ -99,6 +102,48 @@ public sealed class DecisionSetFileTests
             $"gzipped {stream.Length} bytes against {uncompressed} of keys alone");
     }
 
+    /// <summary>
+    /// A file somebody's older copy of the app wrote says nothing about how it
+    /// lands faces, and is read as not landing them by overlap.
+    /// </summary>
+    /// <remarks>
+    /// The absence is the whole signal: the build before has no such property to
+    /// write, and every copy of the app says 1.0.0, so a missing property is the
+    /// only way a laptop on that build can be told apart.
+    /// </remarks>
+    [Fact]
+    public async Task AFileFromTheBuildBeforeSaysNothingAboutHowItLandsFaces()
+    {
+        JsonObject written = await AsJsonAsync(new Machine("Mum").Set());
+        Assert.True(written.Remove(nameof(DecisionSet.LandsFacesByOverlap)));
+
+        DecisionSet read = await ReadJsonAsync(written);
+
+        Assert.False(read.LandsFacesByOverlap);
+    }
+
+    /// <summary>
+    /// And a property a later build adds is skipped rather than refused, which
+    /// is what lets the build before read what this one writes.
+    /// </summary>
+    /// <remarks>
+    /// The previous build reads with these same options, and the property this
+    /// build added is one it has never heard of. Refusing unknown properties -
+    /// one line on the options - would make every laptop not yet brought up to
+    /// date drop this one's answers whole.
+    /// </remarks>
+    [Fact]
+    public async Task APropertyThisBuildHasNeverHeardOfIsSkipped()
+    {
+        JsonObject written = await AsJsonAsync(
+            new Machine("Mum").Turns(Pictures.Photo(@"2019\a.jpg"), 90, Monday).Set());
+        written["SomethingALaterBuildSays"] = true;
+
+        DecisionSet read = await ReadJsonAsync(written);
+
+        Assert.Single(read.Turns);
+    }
+
     [Fact]
     public async Task SomethingThatIsNotADecisionSetIsRefusedRatherThanGuessedAt()
     {
@@ -123,6 +168,31 @@ public sealed class DecisionSetFileTests
     {
         using var stream = new MemoryStream();
         await DecisionSetFile.WriteAsync(stream, before);
+
+        stream.Position = 0;
+        return await DecisionSetFile.ReadAsync(stream);
+    }
+
+    /// <summary>A set as it is written into the folder, opened up to be edited.</summary>
+    private static async Task<JsonObject> AsJsonAsync(DecisionSet set)
+    {
+        using var stream = new MemoryStream();
+        await DecisionSetFile.WriteAsync(stream, set);
+
+        stream.Position = 0;
+        await using var gzip = new GZipStream(stream, CompressionMode.Decompress);
+        return (JsonObject)(await JsonNode.ParseAsync(gzip))!;
+    }
+
+    /// <summary>Edited JSON, packed the way the folder holds it and read back.</summary>
+    private static async Task<DecisionSet> ReadJsonAsync(JsonObject json)
+    {
+        using var stream = new MemoryStream();
+
+        await using (var gzip = new GZipStream(stream, CompressionLevel.Optimal, leaveOpen: true))
+        {
+            await gzip.WriteAsync(Encoding.UTF8.GetBytes(json.ToJsonString()));
+        }
 
         stream.Position = 0;
         return await DecisionSetFile.ReadAsync(stream);

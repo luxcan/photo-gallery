@@ -18,9 +18,12 @@ namespace PhotoGallery.Domain.Sharing;
 /// <para>Measured here: 15,823 rows, 4.20 MB of JSON, 1018 KB gzipped. One
 /// megabyte to skip an hour of reading 24.8 GB.</para>
 ///
-/// <para><see cref="Status"/> rides along so that the twelve files which will
-/// never decode are not read again on four more machines - the same reason it
-/// exists locally.</para>
+/// <para><see cref="Status"/> rides along with the picture. The build before
+/// also wrote a fact with no picture for each file that never decoded, so that
+/// the next machine would not read it again; that news is no longer given or
+/// taken, because taking happens before the next machine has tried, and a file
+/// one laptop cannot decode is very often one that laptop has no codec
+/// for.</para>
 /// </remarks>
 /// <param name="Length">
 /// With <paramref name="ModifiedUtc"/>, the check that decides whether the
@@ -30,8 +33,9 @@ namespace PhotoGallery.Domain.Sharing;
 /// to tell.
 /// </param>
 /// <param name="ThumbnailName">
-/// What the two renditions are called in the pool. Null for a file that never
-/// decoded, which is a fact worth carrying and not a picture to fetch.
+/// What the two renditions are called in the pool. Null only in a fact the
+/// build before wrote for a file that never decoded, which this build reads
+/// past.
 /// </param>
 /// <param name="Keyframes">
 /// For a video, where in the clip each of its stills was taken from - and

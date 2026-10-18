@@ -27,6 +27,11 @@ public interface IDecisionReader
     /// Which photographs this library has indexed and which faces it has found,
     /// which is what decides whether an answer lands or waits.
     /// </summary>
+    /// <remarks>
+    /// With the picture each photograph has, and which of them have faces
+    /// waiting to be found again, for taking another machine's faces - see
+    /// <see cref="LibraryContents.Renditions"/>.
+    /// </remarks>
     Task<LibraryContents> ContentsAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -96,11 +101,23 @@ public interface IDecisionReader
     Task<IReadOnlyList<PooledRendition>> RenditionsAsync(
         CancellationToken cancellationToken = default);
 
-    /// <summary>Every face this library has found, with its vector.</summary>
+    /// <summary>
+    /// Every face this library has found on a photograph nobody has turned, with
+    /// its vector.
+    /// </summary>
     /// <remarks>
     /// 40.5 MB on this library, and the only read in this feature where that is
     /// the point rather than a cost: the two hours of detection it saves are
     /// what the transfer buys.
+    ///
+    /// <para>A turned photograph's faces are left out, as its renditions are. Its
+    /// boxes are in the turned frame and a face travels with no rotation, so the
+    /// machine taking them would put them on the upright picture - and turn them
+    /// a second time when it merged the turn.</para>
+    ///
+    /// <para>So are the faces of a photograph whose file has changed since they
+    /// were found, until the face pass has replaced them: they are boxes on a
+    /// picture that has gone.</para>
     /// </remarks>
     Task<IReadOnlyList<SharedFace>> FacesAsync(CancellationToken cancellationToken = default);
 

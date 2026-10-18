@@ -24,6 +24,13 @@ namespace PhotoGallery.Application.Ports;
 public interface IRenditionPool
 {
     /// <summary>Whether there is a pool to use, and why not when there is not.</summary>
+    /// <remarks>
+    /// <strong>Must not block its caller.</strong> The pool is a folder on
+    /// another machine, and asking after one that is not answering holds the
+    /// thread for as long as the operating system takes to give up. A scan races
+    /// this against a deadline and goes on without the pool, which it can only
+    /// do if the answer is still to come when the call returns.
+    /// </remarks>
     Task<ExchangeReadiness> ReadinessAsync(CancellationToken cancellationToken = default);
 
     /// <summary>Writes this machine's manifest, replacing whatever it wrote last.</summary>
@@ -34,15 +41,21 @@ public interface IRenditionPool
 
     /// <summary>
     /// Writes the faces this machine has found, with the models it found them
-    /// with.
+    /// with - unless the very same faces are already there - and answers
+    /// whether it wrote them.
     /// </summary>
     /// <remarks>
     /// Its own file, not part of the manifest. The facts are a megabyte and are
     /// read on every exchange; the vectors are 40.5 MB and are worth reading
     /// once. A machine that wants the pictures and not the two hours of face
     /// detection simply does not ask for them.
+    ///
+    /// <para>Every scan gives, and most scans find no new face. Writing the
+    /// whole file again each time would be tens of megabytes across the network
+    /// to say nothing new, so a file whose faces have not changed since this
+    /// machine wrote it is left alone.</para>
     /// </remarks>
-    Task PublishFacesAsync(FaceSet mine, CancellationToken cancellationToken = default);
+    Task<bool> PublishFacesAsync(FaceSet mine, CancellationToken cancellationToken = default);
 
     /// <summary>Reads the faces every other machine has found.</summary>
     Task<IReadOnlyList<FaceSet>> FetchFacesAsync(CancellationToken cancellationToken = default);

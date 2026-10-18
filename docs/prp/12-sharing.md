@@ -698,6 +698,13 @@ plus 105 KB for the 4,729 keyframe rows. One megabyte to skip an hour.
 `Status` rides along so the 12 files that will never decode are not read again
 on four more machines, which is the same reason it exists locally.
 
+> **From 18 October 2026 a fact with no picture is neither given nor taken.**
+> Once a scan took before it made anything, "this never decoded" became the
+> next laptop's answer before that laptop had tried — and a file one laptop
+> cannot decode is very often one that laptop has no codec for. The facts file
+> now lists only rows with a picture, and a fact the build before wrote without
+> one is read past, so it can no longer hide another laptop's picture either.
+
 ### What the receiving machine does
 
 For each asset its own crawl has already indexed but not yet prepared, it looks
@@ -766,6 +773,33 @@ The first copy is 2.1 GB and several minutes. That is exactly the kind of thing
 this app says before the click rather than after: the screen names the size and
 the time, one button starts it, and the answer is remembered. Afterwards each
 share carries only what is new.
+
+> **From 18 October 2026 there is no button: a scan takes and gives.** The
+> button showed only on a laptop with photographs still to prepare, and said
+> "take", so a laptop with everything prepared never gave — the folder never
+> held a picture and no face travelled. A scan now takes the small copies and
+> faces other computers left straight after its crawl, before it makes any of
+> its own, and gives its own as its last phase; the vectors file is rewritten
+> only when this library's faces changed. A sync folder that is not chosen, does
+> not answer within fifteen seconds or goes away part way costs the scan one
+> line in its log and nothing else. The price is still said before it is paid,
+> on the Sync screen under the folder: a few gigabytes the first time.
+>
+> **Faces wait for every other computer to land them by overlap.** The build
+> before took a face a pixel off one of its own as a second face, and every copy
+> still says 1.0.0. So each decision set now says `LandsFacesByOverlap`, and a
+> laptop leaves its faces only once every other laptop's set says so — the
+> pictures and facts go regardless, and the scan log names the laptop the faces
+> are waiting on.
+>
+> **A face lands only on the picture it was drawn on.** Taking now happens
+> between the crawl and the face pass, which is exactly when a changed
+> photograph still carries its old faces with its marker cleared. So a face is
+> taken only where this laptop has, on its disk, the same rendition the giving
+> laptop's facts name for that photograph, from a faces file written after that
+> version of the file was; never onto a photograph whose own faces are waiting
+> to be found again; and a laptop gives no face of a photograph in that state.
+> Anything else is left to the face pass, as it was before taking moved.
 
 ---
 

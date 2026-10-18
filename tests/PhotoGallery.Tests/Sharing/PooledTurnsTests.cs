@@ -32,7 +32,7 @@ public sealed class PooledTurnsTests : IDisposable
         // photographs somebody cared enough to straighten falling back to an
         // hour of reading originals.
         Mum.Prepared(@"2019\a.jpg", "aa11.jpg");
-        await Mum.Pooling.HandleAsync();
+        await Mum.Pooling.GiveAsync();
 
         // Dad has indexed the photograph and already knows it needs turning.
         Asset his = Dad.Photo(@"2019\a.jpg");
@@ -40,7 +40,7 @@ public sealed class PooledTurnsTests : IDisposable
         Dad.Db.SaveChanges();
         Dad.Db.ChangeTracker.Clear();
 
-        PoolResult taken = await Dad.Pooling.HandleAsync();
+        PoolResult taken = await Dad.Pooling.TakeAsync();
 
         Assert.Equal(1, taken.Filled);
         Assert.True(Dad.Holds("aa11.jpg"));
@@ -54,14 +54,15 @@ public sealed class PooledTurnsTests : IDisposable
         // Offering it would put a sideways tile under a name that means upright
         // everywhere else.
         Mum.Prepared(@"2019\a.jpg", "aa11.jpg");
-        await Mum.Pooling.HandleAsync();
+        await Mum.Pooling.GiveAsync();
 
         Asset his = Dad.Photo(@"2019\a.jpg");
         his.Rotation = 90;
         Dad.Db.SaveChanges();
         Dad.Db.ChangeTracker.Clear();
 
-        await Dad.Pooling.HandleAsync();
+        await Dad.Pooling.TakeAsync();
+        await Dad.Pooling.GiveAsync();
 
         // A third machine reads the pool and finds Mum's upright picture, not
         // Dad's turned one - there is only ever one file under that name.
@@ -105,18 +106,18 @@ public sealed class PooledTurnsTests : IDisposable
         Dad.Photo(@"2019\a.jpg");
         Dad.Photo(@"2019\b.jpg");
 
-        await Mum.Pooling.HandleAsync();
+        await Mum.Pooling.GiveAsync();
 
         using var stop = new CancellationTokenSource();
         await stop.CancelAsync();
 
-        PoolResult stopped = await Dad.Pooling.HandleAsync(null, stop.Token);
+        PoolResult stopped = await Dad.Pooling.TakeAsync(null, stop.Token);
 
         Assert.True(stopped.WasCancelled || stopped.Filled == 0);
         Assert.Contains("carries on from here", stopped.Summary, StringComparison.OrdinalIgnoreCase);
 
         // And the next run finishes it.
-        PoolResult finished = await Dad.Pooling.HandleAsync();
+        PoolResult finished = await Dad.Pooling.TakeAsync();
 
         Assert.Equal(2, finished.Filled);
         Assert.True(Dad.Holds("aa11.jpg"));
@@ -129,7 +130,7 @@ public sealed class PooledTurnsTests : IDisposable
         // Nothing in the pool is ever overwritten, so "latest" needs no version
         // at all - it is whichever names are there now.
         Mum.Prepared(@"2019\a.jpg", "aa11.jpg");
-        await Mum.Pooling.HandleAsync();
+        await Mum.Pooling.GiveAsync();
 
         // Re-saved in place: new bytes, so a new content hash and a new name.
         Asset again = Mum.Db.Assets.Single();
@@ -140,7 +141,7 @@ public sealed class PooledTurnsTests : IDisposable
         Mum.Db.ChangeTracker.Clear();
         Mum.WritePicture("cc33.jpg");
 
-        await Mum.Pooling.HandleAsync();
+        await Mum.Pooling.GiveAsync();
 
         IReadOnlyCollection<string> pooled = await Mum.Pool.NamesAsync();
 
@@ -154,7 +155,7 @@ public sealed class PooledTurnsTests : IDisposable
         // The path is the same and the picture is not. Taking it would show the
         // old photograph under the new file, silently.
         Mum.Prepared(@"2019\a.jpg", "aa11.jpg");
-        await Mum.Pooling.HandleAsync();
+        await Mum.Pooling.GiveAsync();
 
         Asset his = Dad.Photo(@"2019\a.jpg");
         his.Length += 512;
@@ -162,7 +163,7 @@ public sealed class PooledTurnsTests : IDisposable
         Dad.Db.SaveChanges();
         Dad.Db.ChangeTracker.Clear();
 
-        PoolResult taken = await Dad.Pooling.HandleAsync();
+        PoolResult taken = await Dad.Pooling.TakeAsync();
 
         Assert.Equal(0, taken.Filled);
         Assert.Equal(1, taken.Mismatched);
@@ -176,7 +177,7 @@ public sealed class PooledTurnsTests : IDisposable
         // as photographs and grow the library a second copy of itself on every
         // refresh - so the rule runs in both directions.
         Mum.Prepared(@"2019\a.jpg", "aa11.jpg");
-        await Mum.Pooling.HandleAsync();
+        await Mum.Pooling.GiveAsync();
 
         string thumbs = Path.Combine(_house.SharedFolder, SharedFolderPool.ThumbsFolder);
         Assert.True(Directory.Exists(thumbs), "the pool wrote no pictures to refuse");

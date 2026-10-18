@@ -56,7 +56,11 @@ public sealed class PublishDecisionsHandler
             .ReadAsync(machine, cancellationToken)
             .ConfigureAwait(false);
 
-        DecisionSet published = everything.WithoutProposals();
+        // Said on every set this build writes, because it is true of this build
+        // and of no copy before it - and the machines giving faces read it to
+        // learn that a face a pixel off one of this library's own will be seen
+        // for the same face rather than added as a second one.
+        DecisionSet published = everything.WithoutProposals() with { LandsFacesByOverlap = true };
 
         await _exchange.PublishAsync(published, cancellationToken).ConfigureAwait(false);
 

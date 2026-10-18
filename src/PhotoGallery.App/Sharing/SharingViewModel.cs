@@ -153,22 +153,9 @@ public sealed partial class SharingViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(WaitingElsewhereLabel))]
     private string _elsewhereFolder = string.Empty;
 
-    /// <summary>
-    /// Photographs this library has indexed and not prepared.
-    /// </summary>
-    /// <remarks>
-    /// What the pictures half is worth, in the only unit that means anything to
-    /// somebody deciding whether to spend five minutes: how many photographs
-    /// would otherwise be read one at a time.
-    /// </remarks>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasUnprepared), nameof(PicturesLabel), nameof(CanTakePictures))]
-    [NotifyCanExecuteChangedFor(nameof(TakePicturesCommand))]
-    private int _unprepared;
-
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsIdle), nameof(CanTakePictures))]
-    [NotifyCanExecuteChangedFor(nameof(ShareCommand), nameof(TakePicturesCommand))]
+    [NotifyPropertyChangedFor(nameof(IsIdle))]
+    [NotifyCanExecuteChangedFor(nameof(ShareCommand))]
     private bool _isBusy;
 
     public SharingViewModel(IServiceScopeFactory scopeFactory, IActivityLog log)
@@ -185,12 +172,6 @@ public sealed partial class SharingViewModel : ObservableObject
 
     public bool HasOffers => Offers.Count > 0;
 
-    /// <summary>
-    /// Whether there are photographs here that another machine may already have
-    /// prepared.
-    /// </summary>
-    public bool CanTakePictures => CanShare && Unprepared > 0;
-
     public bool HasStatus => Status.Length > 0;
 
     public bool HasWaiting =>
@@ -204,48 +185,10 @@ public sealed partial class SharingViewModel : ObservableObject
 
     public bool HasWaitingElsewhere => WaitingElsewhere > 0;
 
-    public bool HasUnprepared => Unprepared > 0;
-
     public bool IsIdle => !IsBusy;
 
     /// <summary>Whether there is anywhere to share, so the button can be pressed.</summary>
     public bool CanShare => IsIdle && HasFolder && !HasProblem;
-
-    /// <summary>
-    /// What taking the pictures would save, and what it costs, said before the
-    /// click rather than after.
-    /// </summary>
-    /// <remarks>
-    /// The rate is this library's own measurement: about 24.8 GB read for 15,823
-    /// photographs, at roughly six a second on a network share. Copying the two
-    /// small renditions instead runs at about fifty a second. Rounded hard,
-    /// because it is a decision aid and not a promise.
-    ///
-    /// <para>Rounding that hard means the two costs land on the same words
-    /// whenever there is only a handful outstanding - fourteen photographs is
-    /// two seconds against a quarter of one, and both are "a minute". Said as a
-    /// comparison, that offered a choice and quoted the same figure for either
-    /// answer, which reads as a mistake and hides the one thing the sentence is
-    /// for. So when the two round together it is stated once, as the honest
-    /// answer that it hardly matters.</para>
-    /// </remarks>
-    public string PicturesLabel
-    {
-        get
-        {
-            string making = Roughly(TimeSpan.FromSeconds(Unprepared / 6.0));
-            string copying = Roughly(TimeSpan.FromSeconds(Unprepared / 50.0));
-
-            string cost = making == copying
-                ? "Taking the ones another computer has already made, or making them from "
-                  + $"your own files, is about {making} either way."
-                : $"Making them from your own files takes about {making}; taking the ones "
-                  + $"another computer has already made takes about {copying}.";
-
-            return $"{Unprepared:N0} {(Unprepared == 1 ? "photo has" : "photos have")} no small "
-                 + $"copy here yet. {cost} Your photographs themselves are never copied.";
-        }
-    }
 
     /// <summary>
     /// The one group somebody can do something about: the photographs are on one
@@ -641,58 +584,6 @@ public sealed partial class SharingViewModel : ObservableObject
         }
     }
 
-    /// <summary>
-    /// Takes the small copies another computer has already made, and leaves this
-    /// library's for the ones that follow.
-    /// </summary>
-    /// <remarks>
-    /// Its own button, and deliberately not part of Share now. The answers are a
-    /// small file and seconds; the pictures are gigabytes and minutes, and the
-    /// first is worth doing every day while the second is worth doing once. A
-    /// machine that wants the decisions and not the gigabytes gets exactly that
-    /// by not pressing this.
-    /// </remarks>
-    [RelayCommand(CanExecute = nameof(CanTakePictures))]
-    private async Task TakePicturesAsync()
-    {
-        await _gate.WaitAsync().ConfigureAwait(true);
-        IsBusy = true;
-        Status = string.Empty;
-
-        try
-        {
-            PoolResult result = await Task.Run(async () =>
-            {
-                using IServiceScope scope = _scopeFactory.CreateScope();
-                return await scope.ServiceProvider
-                    .GetRequiredService<ShareRenditionsHandler>()
-                    .HandleAsync()
-                    .ConfigureAwait(false);
-            }).ConfigureAwait(true);
-
-            Status = result.Summary;
-            await ReadAsync().ConfigureAwait(true);
-        }
-        catch (Exception ex) when (LibraryFailure.IsExpected(ex))
-        {
-            Status = $"The pictures could not be copied: {ex.Message}";
-        }
-        finally
-        {
-            IsBusy = false;
-            _gate.Release();
-        }
-    }
-
-    /// <summary>A duration as somebody deciding whether to wait would say it.</summary>
-    private static string Roughly(TimeSpan span) => span switch
-    {
-        { TotalSeconds: < 90 } => "a minute",
-        { TotalMinutes: < 90 } => $"{Math.Round(span.TotalMinutes):N0} minutes",
-        { TotalHours: < 2 } => "an hour",
-        _ => $"{Math.Round(span.TotalHours):N0} hours",
-    };
-
     /// <summary>The read itself, without the gate, so callers holding it can use it.</summary>
     private async Task ReadAsync()
     {
@@ -715,7 +606,6 @@ public sealed partial class SharingViewModel : ObservableObject
         WaitingElsewhere = status.Held.Elsewhere.Answers;
         WaitingElsewherePhotos = status.Held.Elsewhere.Photos;
         ElsewhereFolder = status.Held.Folder;
-        Unprepared = status.Unprepared;
         Machines =
         [
             .. status.Machines.Select(machine => new MachineRow(

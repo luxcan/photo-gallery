@@ -1,7 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using PhotoGallery.Application.Ports;
-using PhotoGallery.Domain.Assets;
 using PhotoGallery.Domain.Albums;
+using PhotoGallery.Domain.Assets;
 using PhotoGallery.Domain.Faces;
 using PhotoGallery.Domain.Library;
 using PhotoGallery.Domain.People;
@@ -89,12 +89,58 @@ public sealed class SqliteDecisionReader : IDecisionReader
             ((List<FaceBounds>)boxes).Add(face.Bounds);
         }
 
+        var rows = await _db.Assets
+            .Select(asset => new
+            {
+                asset.Id,
+                asset.Rotation,
+                asset.ThumbnailName,
+                Unlooked = asset.FacesDetectedUtc == null,
+            })
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        HashSet<AssetKey> turned = [];
+        HashSet<AssetKey> outdated = [];
+        Dictionary<AssetKey, string> renditions = [];
+
+        foreach (var row in rows)
+        {
+            if (!photographs.TryGetValue(row.Id, out AssetKey photo))
+            {
+                continue;
+            }
+
+            if (row.Rotation != 0)
+            {
+                turned.Add(photo);
+            }
+
+            if (row.ThumbnailName is string name)
+            {
+                renditions[photo] = name;
+            }
+
+            // Faces still on a row whose marker the crawl cleared: they belong
+            // to the picture that was there before, and the face pass has yet
+            // to replace them.
+            if (row.Unlooked && faces.ContainsKey(photo))
+            {
+                outdated.Add(photo);
+            }
+        }
+
         return new LibraryContents(
             new HashSet<Guid>(
                 (await SourcesAsync(cancellationToken).ConfigureAwait(false))
                     .Select(source => source.SharedId)),
             new HashSet<AssetKey>(photographs.Values),
-            faces);
+            faces)
+        {
+            Turned = turned,
+            Renditions = renditions,
+            Outdated = outdated,
+        };
     }
 
     public async Task<IReadOnlyList<TurnTarget>> TurnTargetsAsync(
@@ -597,12 +643,12 @@ public sealed class SqliteDecisionReader : IDecisionReader
 
         var rows = await _db.Assets
             .AsNoTracking()
-            // What another machine can actually use: a picture to fetch, or the
-            // news that this one will never decode. A row still waiting to be
-            // prepared has neither and is nobody else's business.
-            .Where(asset => asset.ThumbnailName != null
-                         || asset.Status == AssetStatus.Failed
-                         || asset.Status == AssetStatus.Skipped)
+            // What another machine can actually use, which is a picture to
+            // fetch. Not the news that this one never decoded: the next machine
+            // takes before it has tried, and a file one laptop cannot decode is
+            // very often one that laptop has no codec for. A row still waiting
+            // to be prepared has nothing at all and is nobody else's business.
+            .Where(asset => asset.ThumbnailName != null)
             .Select(asset => new
             {
                 asset.Id,
@@ -641,7 +687,7 @@ public sealed class SqliteDecisionReader : IDecisionReader
             // Nor can its facts be offered without it: a fact with no picture
             // tells the other machine the row is settled, and would stop it
             // preparing the very photograph the pool has nothing for.
-            if (row.Rotation != 0 && row.ThumbnailName is not null)
+            if (row.Rotation != 0)
             {
                 continue;
             }
@@ -685,7 +731,10 @@ public sealed class SqliteDecisionReader : IDecisionReader
             .Where(asset => asset.ThumbnailName == null && asset.QuarantinedUtc == null)
             .Select(asset => new
             {
-                asset.PhotoSourceId, asset.RelativePath, asset.Length, asset.ModifiedUtc,
+                asset.PhotoSourceId,
+                asset.RelativePath,
+                asset.Length,
+                asset.ModifiedUtc,
             })
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
@@ -753,9 +802,22 @@ public sealed class SqliteDecisionReader : IDecisionReader
 
         var rows = await _db.Faces
             .AsNoTracking()
+            // Upright pictures only, as PreparedAsync offers only upright
+            // renditions: a turned photograph's boxes are in a frame the face
+            // does not say it is in.
+            //
+            // And only faces on a picture that is still there. The crawl clears
+            // the marker when it finds the file changed and leaves the faces for
+            // the face pass to replace; until it has, they are boxes on a picture
+            // that has gone, while the facts given beside them already name the
+            // new one - so another machine would take them as boxes on it.
+            .Where(face => face.Asset!.Rotation == 0 && face.Asset.FacesDetectedUtc != null)
             .Select(face => new
             {
-                face.AssetId, face.Bounds, face.DetectScore, face.Embedding,
+                face.AssetId,
+                face.Bounds,
+                face.DetectScore,
+                face.Embedding,
             })
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);

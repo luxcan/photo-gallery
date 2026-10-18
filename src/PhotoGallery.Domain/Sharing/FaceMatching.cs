@@ -7,17 +7,21 @@ namespace PhotoGallery.Domain.Sharing;
 /// found.
 /// </summary>
 /// <remarks>
-/// Normally this is an exact match and nothing more is needed: both machines ran
-/// the same detector over the same rendition, and <c>OnnxFaceScanner</c> appends
-/// no execution provider, so both ran the same CPU graph and drew the same
-/// rectangles.
+/// An exact match is tried first, and between two machines running the detector
+/// on the processor over the same rendition it is all that is needed: the same
+/// graph draws the same rectangles.
 ///
-/// <para>The fallback is for the day that stops being true - a different model
-/// version, or the GPU provider that is tempting to add and would move every box
-/// by a pixel. Then an exact match finds nothing and every answer in the library
-/// would be held for a face sitting right there. So a box that overlaps a local
-/// one well enough is that face, and anything below that is a face this machine
-/// does not have, which is a different answer and gets a different outcome.</para>
+/// <para>The fallback is for when that is not true, which is now the ordinary
+/// case: the detector runs on the graphics card wherever there is one, and
+/// floating point there moves a box by a pixel from one machine to the next. An
+/// exact match then finds nothing and every answer in the library would be held
+/// for a face sitting right there. So a box that overlaps a local one well
+/// enough is that face, and anything below that is a face this machine does not
+/// have, which is a different answer and gets a different outcome.</para>
+///
+/// <para>Taking another machine's faces asks the same question the same way -
+/// see <see cref="VectorAcceptance.Landing"/> - so that a face skipped there as
+/// already here is always one an answer can land on here.</para>
 /// </remarks>
 public static class FaceMatching
 {

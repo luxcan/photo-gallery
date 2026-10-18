@@ -10,8 +10,9 @@ using PhotoGallery.Application.UseCases.Videos;
 namespace PhotoGallery.Application.UseCases.Refresh;
 
 /// <summary>
-/// What one refresh - crawl, generate, place, describe, prepare videos, then
-/// find faces - did to the library.
+/// What one refresh - crawl, take from the sync folder, generate, place,
+/// describe, prepare videos, find faces, then give to the sync folder - did to
+/// the library.
 /// </summary>
 /// <param name="Generated">
 /// Null when the run stopped before generating, so "no pictures were made" and
@@ -44,6 +45,16 @@ namespace PhotoGallery.Application.UseCases.Refresh;
 /// has nothing waiting and gets a result saying so, which is a phase that ran
 /// and found no work rather than one that never started.
 /// </param>
+/// <param name="Taken">
+/// Null when the run stopped before taking anything from the sync folder. A
+/// library with no sync folder, or one that did not answer in time, is not this
+/// case: the phase ran, found it could not use the folder, and says so.
+/// </param>
+/// <param name="Given">
+/// Null when the run stopped before giving - and when the take found the sync
+/// folder could not be used, because the same scan asking again would only say
+/// the same thing a second time.
+/// </param>
 public sealed record RefreshResult(
     IReadOnlyList<ScanResult> Scans,
     ThumbnailBuildResult? Generated,
@@ -53,6 +64,8 @@ public sealed record RefreshResult(
     FaceDetectionResult? Faces,
     HeldResult? Answers,
     AlbumsResult? Collected,
+    PoolResult? Taken,
+    PoolResult? Given,
     TimeSpan Elapsed,
     bool WasCancelled)
 {
@@ -64,6 +77,18 @@ public sealed record RefreshResult(
 
     public int Built => Generated?.Built ?? 0;
 
+    /// <summary>
+    /// How many photographs were filled in from the small copies another
+    /// computer left, rather than made here.
+    /// </summary>
+    public int PicturesTaken => Taken?.Filled ?? 0;
+
+    /// <summary>How many small copies were left for the other computers.</summary>
+    public int PicturesGiven => Given?.Offered ?? 0;
+
+    /// <summary>How many faces another computer found were taken this run.</summary>
+    public int FacesTaken => Taken?.Faces ?? 0;
+
     /// <summary>How many videos were given a picture this run.</summary>
     public int VideosPrepared => Videos?.Prepared ?? 0;
 
@@ -71,13 +96,17 @@ public sealed record RefreshResult(
     public int FacesFound => Faces?.FacesFound ?? 0;
 
     /// <summary>How many answers from another machine were written this run.</summary>
-    public int AnswersApplied => Answers?.Applied ?? 0;
+    /// <remarks>
+    /// Both sweeps: the scan's own, and the one taking the small copies runs
+    /// when a picture or a face it brought is what an answer was waiting for.
+    /// </remarks>
+    public int AnswersApplied => (Answers?.Applied ?? 0) + (Taken?.Swept?.Applied ?? 0);
 
     /// <summary>
     /// How many waiting answers were let go this run without writing anything,
     /// because what stands here already settles them.
     /// </summary>
-    public int AnswersSettled => Answers?.Settled ?? 0;
+    public int AnswersSettled => (Answers?.Settled ?? 0) + (Taken?.Swept?.Settled ?? 0);
 
     /// <summary>
     /// How many answers are still waiting after this run, for whatever reason.
@@ -94,8 +123,13 @@ public sealed record RefreshResult(
     /// an album this library does not have. Why each one waits is the Sync
     /// screen's to say, split by what would have to happen; a line in a scan log
     /// that named one reason for all of them was false for most.</para>
+    ///
+    /// <para>From the last sweep that ran, because each one counts everything
+    /// still waiting rather than what it added: a scan stopped after taking the
+    /// small copies has only that sweep's word for it.</para>
     /// </remarks>
-    public int AnswersWaiting => (Answers?.Waiting ?? 0) + (Answers?.Unplaced ?? 0);
+    public int AnswersWaiting =>
+        (Answers ?? Taken?.Swept) is HeldResult last ? last.Waiting + last.Unplaced : 0;
 
     /// <summary>How many occasions are on offer after this run.</summary>
     public int AlbumsProposed => Collected?.Proposed ?? 0;
@@ -119,9 +153,15 @@ public sealed record RefreshResult(
     /// makes the caller re-query the whole library, so including them meant a
     /// full reload of sixteen thousand tiles after every routine rescan that
     /// happened to find one face. People has its own refresh for its own screen.
+    ///
+    /// <para>A photograph filled in from another computer's small copy is a
+    /// tile as much as one made here, so it counts.</para>
     /// </remarks>
     public bool ChangedAnything =>
-        Scans.Any(scan => scan.ChangedAnything) || Built > 0 || VideosPrepared > 0;
+        Scans.Any(scan => scan.ChangedAnything)
+        || Built > 0
+        || VideosPrepared > 0
+        || PicturesTaken > 0;
 
     /// <summary>
     /// The optional parts that were not installed, named as the user knows them.
@@ -180,12 +220,17 @@ public sealed record RefreshResult(
                 accounted += scan.Elapsed;
             }
 
+            // The sync folder's two phases say what they did, and also why they
+            // did nothing: a folder not chosen, asleep or away is one line here
+            // rather than a failed scan, and the only place it is said at all.
+            Add("taking", Taken?.Elapsed, Taken?.Summary);
             Add("pictures", Generated?.Elapsed, Generated?.Summary);
             Add("places", Located?.Elapsed, Located?.Summary);
             Add("describing", Described?.Elapsed, Described?.Summary);
             Add("videos", Videos?.Elapsed, Videos?.Summary);
             Add("faces", Faces?.Elapsed, Faces?.Summary);
             Add("albums", Collected?.Elapsed, Collected?.Summary);
+            Add("giving", Given?.Elapsed, Given?.Summary);
 
             // Whatever the named phases do not account for. Applying held
             // answers is the one phase that has never timed itself, and giving
@@ -263,6 +308,20 @@ public sealed record RefreshResult(
 
             string faces = FacesFound > 0 ? $", {FacesFound:N0} faces found" : string.Empty;
 
+            // What the other computers saved this one, and what this one left
+            // for them - each only where it happened, like everything here.
+            string taken = PicturesTaken > 0
+                ? $", {PicturesTaken:N0} taken from another computer"
+                : string.Empty;
+
+            string facesTaken = FacesTaken > 0
+                ? $", {FacesTaken:N0} faces taken from another computer"
+                : string.Empty;
+
+            string given = PicturesGiven > 0
+                ? $", {PicturesGiven:N0} left for the other computers"
+                : string.Empty;
+
             // Both sides of the sharing phase, and only where there is one. A
             // library nobody shares with reads nothing about answers at all.
             //
@@ -285,8 +344,9 @@ public sealed record RefreshResult(
                 : string.Empty;
 
             string counted = $"{Added:N0} new, {Updated:N0} changed, {Removed:N0} gone, "
-                           + $"{Built:N0} pictures prepared{searchable}{placed}{videos}{faces}"
-                           + $"{applied}{settled} ({Elapsed.TotalSeconds:N1}s)";
+                           + $"{Built:N0} pictures prepared{taken}{searchable}{placed}{videos}"
+                           + $"{faces}{facesTaken}{applied}{settled}{given} "
+                           + $"({Elapsed.TotalSeconds:N1}s)";
 
             if (WasCancelled)
             {

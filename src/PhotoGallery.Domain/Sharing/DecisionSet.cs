@@ -67,6 +67,31 @@ public sealed record DecisionSet(
     /// </remarks>
     public IReadOnlyList<SharedCollection> Collections { get; init; } = [];
 
+    /// <summary>
+    /// Whether the machine that wrote this lands another machine's faces by
+    /// overlap, as <see cref="VectorAcceptance.Landing"/> does now, rather than
+    /// by the exact box.
+    /// </summary>
+    /// <remarks>
+    /// <strong>Read by the machines giving faces, and by nothing else.</strong>
+    /// The build before this one took a face as new unless its box matched one
+    /// of its own to the pixel - and the detector runs on the graphics card, so
+    /// two machines' boxes for one face differ by a pixel. Handed another
+    /// machine's faces, that build puts a second face on the same nose for
+    /// nearly every face both of them found. So a machine leaves its faces in
+    /// the folder only once every other machine there has said, here, that it
+    /// will not do that.
+    ///
+    /// <para>A flag in the answers rather than the version, because every copy
+    /// of the app calls itself 1.0.0 and the version decides nothing anyway -
+    /// see <see cref="MachineIdentity"/>. False by default, because the build
+    /// before writes no such property and a set it wrote arrives without one:
+    /// the absence is the signal. Not a new schema either, for the reason
+    /// <see cref="Collections"/> is not one: the build before reads a property
+    /// it does not know by skipping it.</para>
+    /// </remarks>
+    public bool LandsFacesByOverlap { get; init; }
+
     /// <summary>An empty set from a machine, for a library that has decided nothing.</summary>
     public static DecisionSet Empty(MachineIdentity machine, DateTime writtenUtc) =>
         new(machine, writtenUtc, [], [], [], [], [], [], [], [], [], []);
