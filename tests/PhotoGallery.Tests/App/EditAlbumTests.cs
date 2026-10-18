@@ -293,7 +293,7 @@ public sealed class EditAlbumTests : IDisposable
 
         _albums.EditedName = "Harbour Weekend 2012";
         _covers.Release();
-        await WaitFor(
+        await TestWait.ForAsync(
             () => _albums.Wall[0].Cover is not null, "the cover to reach the wall");
 
         Assert.Equal("Harbour Weekend 2012", _albums.EditedName);
@@ -320,7 +320,7 @@ public sealed class EditAlbumTests : IDisposable
 
         int readBefore = _repository.MemberReads;
         _covers.Release();
-        await WaitFor(
+        await TestWait.ForAsync(
             () => _albums.Wall[0].Cover is not null, "the cover to reach the wall");
 
         Assert.Equal(readBefore, _repository.MemberReads);
@@ -345,7 +345,7 @@ public sealed class EditAlbumTests : IDisposable
         await OpenForEditAsync(Mine);
 
         _covers.Release();
-        await WaitFor(
+        await TestWait.ForAsync(
             () => _albums.Wall[0].Cover is not null, "the cover to reach the wall");
 
         _albums.EditedName = "Harbour Weekend 2012";
@@ -375,7 +375,7 @@ public sealed class EditAlbumTests : IDisposable
         await OpenForEditAsync(Mine);
 
         _covers.Release();
-        await WaitFor(
+        await TestWait.ForAsync(
             () => _albums.Wall[0].Cover is not null, "the cover to reach the wall");
 
         int readBefore = _repository.MemberReads;
@@ -454,7 +454,7 @@ public sealed class EditAlbumTests : IDisposable
 
         _albums.EditedName = "A weekend away";
         _covers.Release();
-        await WaitFor(
+        await TestWait.ForAsync(
             () => _albums.Collections.Open?.Covers[0] is not null,
             "the mosaic to reach the band");
 
@@ -769,28 +769,6 @@ public sealed class EditAlbumTests : IDisposable
         _albums.Selected = _albums.Showing.Single(item => item.Id == albumId);
 
         await _albums.EditCommand.ExecuteAsync(null);
-    }
-
-    /// <summary>
-    /// Waits on work the wall starts and does not hand back.
-    /// </summary>
-    /// <remarks>
-    /// Decoding a cover is fire-and-forget, as it is in the app: the wall draws
-    /// first and the pictures arrive when they arrive.
-    /// </remarks>
-    private static async Task WaitFor(Func<bool> done, string what)
-    {
-        for (int attempt = 0; attempt < 200; attempt++)
-        {
-            if (done())
-            {
-                return;
-            }
-
-            await Task.Delay(10);
-        }
-
-        Assert.Fail($"Timed out waiting for {what}.");
     }
 
     /// <summary>A real JPEG, because the cover is genuinely decoded.</summary>

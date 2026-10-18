@@ -150,7 +150,7 @@ public sealed class NamingTwoFacesTests : IDisposable
         _gallery.ShowFaceNames = true;
         _gallery.OpenFrom(grid, Tile());
 
-        await WaitFor(() => _gallery.OpenFaces.Count == 2, "the faces to be drawn");
+        await TestWait.ForAsync(() => _gallery.OpenFaces.Count == 2, "the faces to be drawn");
     }
 
     private PhotoFaceItem Face(int faceId) =>
@@ -184,28 +184,6 @@ public sealed class NamingTwoFacesTests : IDisposable
         Assert.True(
             ReferenceEquals(first, entered),
             "The confirmation never reached the library; it failed before the write.");
-    }
-
-    /// <summary>
-    /// Waits on work the screen starts and does not hand back.
-    /// </summary>
-    /// <remarks>
-    /// Loading the faces is fire-and-forget, as it is in the app: the picture
-    /// draws first and the boxes arrive when they arrive.
-    /// </remarks>
-    private static async Task WaitFor(Func<bool> done, string what)
-    {
-        for (int attempt = 0; attempt < 200; attempt++)
-        {
-            if (done())
-            {
-                return;
-            }
-
-            await Task.Delay(10);
-        }
-
-        Assert.Fail($"Timed out waiting for {what}.");
     }
 
     public void Dispose()

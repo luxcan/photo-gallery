@@ -164,7 +164,10 @@ public sealed class WallFollowsTheViewerTests : IDisposable
         GalleryTile group = Tile("3.jpg");
         _gallery.ShowFaceNames = true;
         _gallery.OpenPhotoCommand.Execute(group);
-        await WaitFor(() => _gallery.OpenFaces.Count == 2, "both faces to be drawn");
+        await TestWait.ForAsync(
+            () => _gallery.OpenFaces.Count == 2,
+            "both faces to be drawn",
+            attempts: 300);
 
         _gallery.BeginNamingFaceCommand.Execute(_gallery.OpenFaces[0]);
         _gallery.Picker.Typed = "Shirley";
@@ -203,7 +206,10 @@ public sealed class WallFollowsTheViewerTests : IDisposable
         var elsewhere = new TileWindow(_services.GetRequiredService<IThumbnailStore>());
         elsewhere.Fill([new GalleryTile(ItemFor(filedId))]);
         _gallery.OpenFrom(elsewhere, elsewhere[0]);
-        await WaitFor(() => _gallery.OpenPhotoAlbum is not null, "its album to be read");
+        await TestWait.ForAsync(
+            () => _gallery.OpenPhotoAlbum is not null,
+            "its album to be read",
+            attempts: 300);
 
         await _gallery.AddToAlbumCommand.ExecuteAsync(null);
         await _gallery.Albums.TakeOutCommand.ExecuteAsync(null);
@@ -321,7 +327,10 @@ public sealed class WallFollowsTheViewerTests : IDisposable
     {
         Task load = _gallery.LoadAsync();
 
-        await WaitFor(() => !_gallery.IsLoading && Wall().Count == Photographs, "the wall to be read");
+        await TestWait.ForAsync(
+            () => !_gallery.IsLoading && Wall().Count == Photographs,
+            "the wall to be read",
+            attempts: 300);
 
         Assert.False(load.IsCompleted, "the busy state lasted until the pictures were decoded");
 
@@ -415,7 +424,10 @@ public sealed class WallFollowsTheViewerTests : IDisposable
     {
         _gallery.ShowFaceNames = true;
         _gallery.OpenPhotoCommand.Execute(tile);
-        await WaitFor(() => _gallery.OpenFaces.Count == 1, "its face to be drawn");
+        await TestWait.ForAsync(
+            () => _gallery.OpenFaces.Count == 1,
+            "its face to be drawn",
+            attempts: 300);
 
         _gallery.BeginNamingFaceCommand.Execute(_gallery.OpenFaces[0]);
         _gallery.Picker.Typed = name;
@@ -495,22 +507,6 @@ public sealed class WallFollowsTheViewerTests : IDisposable
         }
 
         db.SaveChanges();
-    }
-
-    /// <summary>Waits for something the screen starts on its own, and fails rather than hanging.</summary>
-    private static async Task WaitFor(Func<bool> done, string what)
-    {
-        for (int attempt = 0; attempt < 300; attempt++)
-        {
-            if (done())
-            {
-                return;
-            }
-
-            await Task.Delay(10);
-        }
-
-        Assert.Fail($"Timed out waiting for {what}.");
     }
 
     public void Dispose()

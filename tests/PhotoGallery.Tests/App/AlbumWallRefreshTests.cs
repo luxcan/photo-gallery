@@ -110,7 +110,7 @@ public sealed class AlbumWallRefreshTests : IDisposable
 
         await _main.Gallery.MakeAlbumCoverCommand.ExecuteAsync(null);
 
-        await WaitFor(() => Shown() == "plain.jpg", "the wall to show the chosen cover");
+        await TestWait.ForAsync(() => Shown() == "plain.jpg", "the wall to show the chosen cover");
     }
 
     /// <summary>
@@ -135,7 +135,7 @@ public sealed class AlbumWallRefreshTests : IDisposable
             await new SqliteAlbumRepository(_db).FindForAssetAsync(_plain.Id);
 
         await _main.Gallery.MakeAlbumCoverCommand.ExecuteAsync(null);
-        await WaitFor(() => Shown() == "plain.jpg", "the wall to show the chosen cover");
+        await TestWait.ForAsync(() => Shown() == "plain.jpg", "the wall to show the chosen cover");
 
         _main.Albums.CloseAlbumCommand.Execute(null);
 
@@ -148,7 +148,7 @@ public sealed class AlbumWallRefreshTests : IDisposable
         _main.SelectedSection =
             _main.TopSections.Single(section => section.Key == ActivitySection.AlbumsKey);
 
-        await WaitFor(() => _main.Albums.Wall.Count == 1, "the wall to be read");
+        await TestWait.ForAsync(() => _main.Albums.Wall.Count == 1, "the wall to be read");
     }
 
     /// <summary>The rendition the card would draw.</summary>
@@ -189,29 +189,6 @@ public sealed class AlbumWallRefreshTests : IDisposable
         _db.Assets.Add(asset);
         _db.SaveChanges();
         return asset;
-    }
-
-    /// <summary>
-    /// Waits on work a screen starts and does not hand back.
-    /// </summary>
-    /// <remarks>
-    /// The reload runs from an event handler, as it does in the app: the shell
-    /// is told the library changed and re-reads the screen behind the viewer
-    /// without anybody awaiting it.
-    /// </remarks>
-    private static async Task WaitFor(Func<bool> done, string what)
-    {
-        for (int attempt = 0; attempt < 200; attempt++)
-        {
-            if (done())
-            {
-                return;
-            }
-
-            await Task.Delay(10);
-        }
-
-        Assert.Fail($"Timed out waiting for {what}.");
     }
 
     private sealed class SilentLog : IActivityLog

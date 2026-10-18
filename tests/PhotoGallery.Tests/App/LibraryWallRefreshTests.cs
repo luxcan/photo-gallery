@@ -111,13 +111,13 @@ public sealed class LibraryWallRefreshTests : IDisposable
         await NarrowedToOutsideAlbumsAsync();
 
         await OpenAsync(ActivitySection.AlbumsKey);
-        await WaitFor(() => _main.Albums.Wall.Count == 1, "the wall of albums to be read");
+        await TestWait.ForAsync(() => _main.Albums.Wall.Count == 1, "the wall of albums to be read");
         _main.Albums.OpenCommand.Execute(_main.Albums.Wall[0]);
         await _main.Albums.DeleteCommand.ExecuteAsync(null);
 
         await OpenAsync(ActivitySection.LibraryKey);
 
-        await WaitFor(
+        await TestWait.ForAsync(
             () => Shown().Count == 4,
             "the wall to show the photographs the removed album let loose");
         Assert.Equal([_loose.Id, .. _filed.Select(photo => photo.Id)], Shown().Order());
@@ -146,7 +146,7 @@ public sealed class LibraryWallRefreshTests : IDisposable
         await new SqliteAlbumRepository(_db).DeleteAsync(_album);
         await _main.Albums.SettleAfterDecidingAsync();
 
-        await WaitFor(() => Shown().Count == 4, "the wall to be redrawn where it stands");
+        await TestWait.ForAsync(() => Shown().Count == 4, "the wall to be redrawn where it stands");
         Assert.True(_main.ShowLibrary, "the reader never left Library");
     }
 
@@ -170,7 +170,7 @@ public sealed class LibraryWallRefreshTests : IDisposable
         // And the count is not simply stuck: the same event from another screen
         // still reads.
         await _main.Albums.SettleAfterDecidingAsync();
-        await WaitFor(
+        await TestWait.ForAsync(
             () => Volatile.Read(ref _reads) > reads + 1,
             "a change reported by another screen to read the wall again");
     }
@@ -179,7 +179,7 @@ public sealed class LibraryWallRefreshTests : IDisposable
     private async Task NarrowedToOutsideAlbumsAsync()
     {
         await OpenAsync(ActivitySection.LibraryKey);
-        await WaitFor(() => Shown().Count == 4, "the wall to be read");
+        await TestWait.ForAsync(() => Shown().Count == 4, "the wall to be read");
 
         await _main.Gallery.ShowOutsideAlbumsCommand.ExecuteAsync(null);
 
@@ -226,30 +226,7 @@ public sealed class LibraryWallRefreshTests : IDisposable
     }
 
     /// <summary>
-    /// Waits on work a screen starts and does not hand back.
-    /// </summary>
-    /// <remarks>
-    /// The reload runs from an event handler, as it does in the app: the shell is
-    /// told the library changed and re-reads the stale screen without anybody
-    /// awaiting it.
-    /// </remarks>
-    private static async Task WaitFor(Func<bool> done, string what)
-    {
-        for (int attempt = 0; attempt < 200; attempt++)
-        {
-            if (done())
-            {
-                return;
-            }
-
-            await Task.Delay(10);
-        }
-
-        Assert.Fail($"Timed out waiting for {what}.");
-    }
-
-    /// <summary>
-    /// The other half of <see cref="WaitFor"/>, for a read that must not happen.
+    /// The other half of <see cref="TestWait.ForAsync"/>, for a read that must not happen.
     /// </summary>
     /// <remarks>
     /// Watching for a while is all a fire-and-forget handler allows. Too short a
