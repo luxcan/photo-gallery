@@ -56,6 +56,11 @@ public interface IDecisionRepository
     /// <para>Called after the pictures have landed, never before: the row is
     /// marked ready, and a row that claims a rendition it has not got is a tile
     /// the gallery cannot draw.</para>
+    ///
+    /// <para>And only ever marked ready. A fact that brings no picture the other
+    /// machine has ready - its "could not be read", even with the name of a copy
+    /// still on it - is not written, so no row here is ever settled by another
+    /// machine's verdict.</para>
     /// </remarks>
     Task<int> FillInAsync(
         IReadOnlyList<PreparedFact> facts, CancellationToken cancellationToken = default);

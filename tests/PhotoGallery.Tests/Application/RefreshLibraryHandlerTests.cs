@@ -15,6 +15,7 @@ using PhotoGallery.Domain.Assets;
 using PhotoGallery.Domain.Library;
 using PhotoGallery.Domain.Search;
 using PhotoGallery.Domain.Sharing;
+using PhotoGallery.Infrastructure.Imaging;
 using PhotoGallery.Infrastructure.Models;
 using PhotoGallery.Infrastructure.Persistence;
 using PhotoGallery.Infrastructure.Sharing;
@@ -744,6 +745,91 @@ public sealed class RefreshLibraryHandlerTests : IDisposable
     }
 
     /// <summary>
+    /// A computer that lost its own small copies and then scanned with its
+    /// originals out of reach decides nothing for the next one.
+    /// </summary>
+    /// <remarks>
+    /// Found driving the app on three libraries. Mum's had everything ready and
+    /// in the sync folder, and Dad's had it too. Then Mum's lost its small
+    /// copies and scanned with the photographs' folder out of reach, which marked
+    /// every photograph "could not be read" and left on each row the name of the
+    /// copy it used to have - and it gave again. A third laptop then scanned:
+    /// Mum's facts were the newest in the folder, so they beat Dad's, and every
+    /// row it filled in was "could not be read" with both its files on the disk.
+    /// Nothing describes, places, groups or looks for faces in such a row, so
+    /// that laptop's library was pictures and nothing else, for good.
+    /// </remarks>
+    [Fact]
+    public async Task Refresh_TakesNoVerdictFromAComputerThatLostItsCopiesAndScannedOffline()
+    {
+        WriteMedia("a.jpg");
+        WriteMedia("b.jpg");
+        PhotoSource source = await AddSourceAsync();
+        string shared = await SyncThroughAsync();
+
+        using var mum = new Library(
+            Path.Combine(_tempRoot, "mum"), "Mum's laptop", source.SharedId);
+        mum.SharesThrough(shared);
+        await PreparedOnAsync(mum, "a.jpg", "aa11.jpg");
+        await PreparedOnAsync(mum, "b.jpg", "bb22.jpg");
+
+        using var dad = new Library(
+            Path.Combine(_tempRoot, "dad"), "Dad's laptop", source.SharedId);
+        dad.SharesThrough(shared);
+        await PreparedOnAsync(dad, "a.jpg", "aa11.jpg");
+        await PreparedOnAsync(dad, "b.jpg", "bb22.jpg");
+
+        // Mum's small copies go, and her own preparing pass cannot reach the
+        // originals to make them again: her library has none of the files.
+        foreach (string name in new[] { "aa11.jpg", "bb22.jpg" })
+        {
+            File.Delete(mum.Thumbnails.ResolveTilePath(name));
+            File.Delete(mum.Thumbnails.ResolvePreviewPath(name));
+        }
+
+        await new BuildThumbnailsHandler(
+                new SqliteGalleryReader(mum.Db),
+                new SqliteAssetRepository(mum.Db),
+                mum.Thumbnails,
+                new WindowsThumbnailGenerator())
+            .HandleAsync();
+        mum.Db.ChangeTracker.Clear();
+
+        Assert.All(mum.Db.Assets.AsNoTracking(), row =>
+        {
+            Assert.Equal(AssetStatus.Failed, row.Status);
+            Assert.NotNull(row.ThumbnailName);
+        });
+
+        await mum.Pooling.GiveAsync();
+
+        StubModelStore searchOnly = new StubModelStore()
+            .Without(ModelId.FaceDetection)
+            .Without(ModelId.FaceRecognition);
+
+        foreach (ModelId id in FeatureModels.Of(ModelFeature.ContentSearch))
+        {
+            searchOnly.Running(id, "search-v1");
+        }
+
+        RefreshResult result = await NewHandler(searchOnly, encoder: new DescribesEverything())
+            .HandleAsync([source.Id]);
+
+        // Ready, and then everything a ready row is for: placed, and described.
+        List<Asset> mine = await _db.Assets.AsNoTracking().ToListAsync();
+        Assert.Equal(2, mine.Count);
+        Assert.All(mine, row =>
+        {
+            Assert.Equal(AssetStatus.Ready, row.Status);
+            Assert.NotNull(row.ThumbnailName);
+            Assert.NotNull(row.LocationReadUtc);
+        });
+
+        Assert.Equal(2, result.NowSearchable);
+        Assert.Equal(2, await _db.PhotoContent.CountAsync());
+    }
+
+    /// <summary>
     /// With a sync folder, the scan takes straight after the crawl and gives
     /// last of all.
     /// </summary>
@@ -935,8 +1021,12 @@ public sealed class RefreshLibraryHandlerTests : IDisposable
     /// The sync folder as the scan sees it: the real one unless a test needs a
     /// folder that will not answer.
     /// </param>
+    /// <param name="encoder">
+    /// What describes a picture, for a test whose models say the search models
+    /// are installed. Left out, nothing may be described at all.
+    /// </param>
     private RefreshLibraryHandler NewHandler(
-        IModelStore? models = null, IRenditionPool? pool = null) =>
+        IModelStore? models = null, IRenditionPool? pool = null, IContentEncoder? encoder = null) =>
         new(new ScanPhotoSourceHandler(
                 _index,
                 _assets,
@@ -948,7 +1038,7 @@ public sealed class RefreshLibraryHandlerTests : IDisposable
             new IndexContentHandler(
                 _reader,
                 _store,
-                new NeverAsked(),
+                encoder ?? new NeverAsked(),
                 new SqliteContentRepository(_db),
                 models ?? new NoModels()),
             new LocatePhotosHandler(
@@ -1111,6 +1201,21 @@ public sealed class RefreshLibraryHandlerTests : IDisposable
             Task.FromResult(ModelState.Missing);
     }
 
+    /// <summary>
+    /// Stands in for the encoder where the search models are installed, and
+    /// describes every picture it is shown.
+    /// </summary>
+    private sealed class DescribesEverything : IContentEncoder
+    {
+        public Task<ContentEmbedding?> DescribePictureAsync(
+            string previewPath, CancellationToken token = default) =>
+            Task.FromResult<ContentEmbedding?>(SomeVector());
+
+        public Task<ContentEmbedding?> DescribePhraseAsync(
+            string phrase, CancellationToken token = default) =>
+            Task.FromResult<ContentEmbedding?>(SomeVector());
+    }
+
     /// <summary>Stands in for the encoder, which nothing here should reach.</summary>
     private sealed class NeverAsked : IContentEncoder
     {
@@ -1163,8 +1268,8 @@ public sealed class RefreshLibraryHandlerTests : IDisposable
     {
         var file = new FileInfo(Path.Combine(_photosRoot, relativePath));
 
-        other.Prepared(relativePath, thumbnailName);
-        Asset theirs = other.Db.Assets.Single();
+        Asset prepared = other.Prepared(relativePath, thumbnailName);
+        Asset theirs = other.Db.Assets.Single(asset => asset.Id == prepared.Id);
         theirs.Length = file.Length;
         theirs.ModifiedUtc = file.LastWriteTimeUtc;
         other.Db.SaveChanges();

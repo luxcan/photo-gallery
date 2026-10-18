@@ -684,7 +684,14 @@ public sealed class SqliteDecisionReader : IDecisionReader
             // takes before it has tried, and a file one laptop cannot decode is
             // very often one that laptop has no codec for. A row still waiting
             // to be prepared has nothing at all and is nobody else's business.
-            .Where(asset => asset.ThumbnailName != null)
+            //
+            // Ready, and not merely named. A row whose copy went missing and
+            // could not be made again - every one of them, on a scan with the
+            // originals out of reach - is marked as could not be read and keeps
+            // the name of the copy it used to have. Given, that verdict was the
+            // newest fact in the folder, beat the picture another laptop had
+            // ready, and was written onto every row that took it.
+            .Where(asset => asset.ThumbnailName != null && asset.Status == AssetStatus.Ready)
             .Select(asset => new
             {
                 asset.Id,

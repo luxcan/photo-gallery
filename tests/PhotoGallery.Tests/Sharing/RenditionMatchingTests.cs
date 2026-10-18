@@ -157,6 +157,62 @@ public sealed class RenditionMatchingTests
         Assert.Contains("aa11.jpg", plan.Wanted);
     }
 
+    /// <summary>
+    /// A fact about a photograph another machine does not have ready is read
+    /// past, even when it still names a picture.
+    /// </summary>
+    /// <remarks>
+    /// A scan that cannot reach the originals marks every photograph whose
+    /// small copy has gone missing as "could not be read", and leaves the name
+    /// of the copy it used to have on the row. The build before gave that row,
+    /// name and verdict together; taken, the verdict was this machine's too,
+    /// for good, because nothing here prepares, describes, places or groups a
+    /// row that could not be read. A laptop that has already written such a
+    /// file leaves it in the folder until it scans again.
+    /// </remarks>
+    [Theory]
+    [InlineData(AssetStatus.Failed)]
+    [InlineData(AssetStatus.Skipped)]
+    [InlineData(AssetStatus.Pending)]
+    public void AFactThatIsNotReadyIsReadPastEvenWithAPicture(AssetStatus status)
+    {
+        PoolPlan plan = RenditionMatching.Match(
+            [Waiting("a.jpg", 1024, Monday)],
+            [Set(Fact("a.jpg", 1024, Monday, "aa11", status))],
+            []);
+
+        Assert.Empty(plan.FillIn);
+        Assert.Empty(plan.Wanted);
+        Assert.Equal(0, plan.Mismatched);
+    }
+
+    /// <summary>
+    /// A later "could not be read" that still names a picture does not hide an
+    /// earlier machine's ready one.
+    /// </summary>
+    /// <remarks>
+    /// The newest manifest wins, and the laptop that lost its own copies and
+    /// scanned with its originals out of reach is the one that wrote last.
+    /// </remarks>
+    [Fact]
+    public void ALaterFailedFactWithAPictureDoesNotHideAnEarlierReadyOne()
+    {
+        PoolPlan plan = RenditionMatching.Match(
+            [Waiting("a.jpg", 1024, Monday)],
+            [
+                Set(Fact("a.jpg", 1024, Monday, "aa11")) with { WrittenUtc = Monday },
+                Set(Fact("a.jpg", 1024, Monday, "aa11", AssetStatus.Failed)) with
+                {
+                    WrittenUtc = Monday.AddHours(1),
+                },
+            ],
+            []);
+
+        PreparedFact filled = Assert.Single(plan.FillIn);
+        Assert.Equal(AssetStatus.Ready, filled.Status);
+        Assert.Equal("aa11.jpg", filled.ThumbnailName);
+    }
+
     [Fact]
     public void AManifestCannotTurnARenditionNameIntoAPath()
     {

@@ -160,6 +160,13 @@ public static class RenditionMatching
     /// laptop cannot decode is very often one that laptop has no codec for.
     /// Whichever laptop scanned a new file first would decide for everybody, and
     /// a later "failed" would hide an earlier machine's picture.</para>
+    ///
+    /// <para>The same goes for a "failed" that still names a picture, which is
+    /// what a laptop leaves when its own copy went missing and a scan with the
+    /// originals out of reach could not make it again. The build before gave
+    /// it, and being the newest it hid the picture another laptop had ready -
+    /// so it is read past here, before the newest is chosen, rather than
+    /// trusted to the giver.</para>
     /// </remarks>
     private static Dictionary<AssetKey, PreparedFact> Offered(IReadOnlyList<PreparedSet> theirs)
     {

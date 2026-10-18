@@ -1467,8 +1467,13 @@ public sealed class SqliteDecisionRepository : IDecisionRepository
         Dictionary<AssetKey, int> rows =
             await AssetRowsAsync(cancellationToken).ConfigureAwait(false);
 
+        // Only a picture another machine has ready. What it decided about a file
+        // it could not read is its own: written here it would be this library's
+        // answer too, for good, because nothing here prepares, describes, places
+        // or groups a row that could not be read - and the file is very often
+        // one that machine simply could not reach.
         Dictionary<AssetKey, PreparedFact> byPhoto = [];
-        foreach (PreparedFact fact in facts)
+        foreach (PreparedFact fact in facts.Where(fact => fact.HasPicture))
         {
             byPhoto[fact.Photo] = fact;
         }

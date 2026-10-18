@@ -203,6 +203,102 @@ public sealed class RenditionPoolTests : IDisposable
         Assert.Empty(Assert.Single(await Dad.Pool.FetchAsync()).Facts);
     }
 
+    /// <summary>
+    /// A photograph that is not ready here is not given, even while its row
+    /// still names the picture it had before.
+    /// </summary>
+    /// <remarks>
+    /// A scan that cannot reach the originals marks every photograph whose small
+    /// copy has gone missing as "could not be read", and leaves the name of the
+    /// copy on the row. Given, that verdict travelled with the name: it was the
+    /// newest fact in the folder, so it beat what another computer had said
+    /// about the same photograph, and every laptop that took it wrote "could
+    /// not be read" onto a row whose picture it had just copied.
+    /// </remarks>
+    [Theory]
+    [InlineData(AssetStatus.Failed)]
+    [InlineData(AssetStatus.Skipped)]
+    [InlineData(AssetStatus.Pending)]
+    public async Task APhotographNotReadyHereIsNotGivenWhileItsRowStillNamesAPicture(
+        AssetStatus status)
+    {
+        Asset mine = Mum.Prepared(@"2019\a.jpg", "aa11.jpg");
+        Mum.Db.Assets
+            .Where(row => row.Id == mine.Id)
+            .ExecuteUpdate(setters => setters.SetProperty(row => row.Status, status));
+
+        await Mum.Pooling.GiveAsync();
+
+        Assert.Empty(Assert.Single(await Dad.Pool.FetchAsync()).Facts);
+    }
+
+    /// <summary>
+    /// A "could not be read" the build before gave, with a picture's name on it,
+    /// neither lands here nor hides another computer's picture.
+    /// </summary>
+    /// <remarks>
+    /// That build wrote every row that named a picture, whatever had become of
+    /// it, and its file stays in the folder until that laptop next scans. It was
+    /// also the newest file there, which is how one laptop's lost copies became
+    /// every laptop's "could not be read".
+    /// </remarks>
+    [Fact]
+    public async Task AVerdictTheBuildBeforeGaveDoesNotHideAnotherComputersPicture()
+    {
+        Dad.Prepared(@"2019\a.jpg", "aa11.jpg");
+        await Dad.Pooling.GiveAsync();
+
+        Asset hers = Mum.Prepared(@"2019\a.jpg", "aa11.jpg");
+        MachineIdentity mum =
+            await PublishDecisionsHandler.ThisMachineAsync(Mum.Index, CancellationToken.None);
+
+        await Mum.Pool.PublishAsync(new PreparedSet(
+            mum,
+            DateTime.UtcNow.AddMinutes(1),
+            [Failed(Mum.KeyOf(hers), hers, "aa11.jpg")],
+            new Dictionary<string, string>()));
+
+        Library gran = _house.Add("Gran's laptop");
+        Asset theirs = gran.Photo(@"2019\a.jpg");
+        theirs.Status = AssetStatus.Pending;
+        gran.Db.SaveChanges();
+        gran.Db.ChangeTracker.Clear();
+
+        PoolResult taken = await gran.Pooling.TakeAsync();
+
+        Assert.Equal(1, taken.Filled);
+
+        Asset filled = gran.Db.Assets.AsNoTracking().Single();
+        Assert.Equal(AssetStatus.Ready, filled.Status);
+        Assert.Equal("aa11.jpg", filled.ThumbnailName);
+    }
+
+    /// <summary>
+    /// Filling in never writes another computer's verdict onto a row here.
+    /// </summary>
+    /// <remarks>
+    /// The last stand of the rule, against the row itself rather than the plan:
+    /// whatever reaches it, a row filled in from another computer is a row with
+    /// a picture and ready, and a row this computer has not tried is left for
+    /// it to try.
+    /// </remarks>
+    [Fact]
+    public async Task FillingInNeverWritesAVerdictAnotherComputerReached()
+    {
+        Asset his = Dad.Photo(@"2019\a.jpg");
+        his.Status = AssetStatus.Pending;
+        Dad.Db.SaveChanges();
+        Dad.Db.ChangeTracker.Clear();
+
+        int filled = await Dad.Writing.FillInAsync([Failed(Dad.KeyOf(his), his, "aa11.jpg")]);
+
+        Assert.Equal(0, filled);
+
+        Asset row = Dad.Db.Assets.AsNoTracking().Single();
+        Assert.Equal(AssetStatus.Pending, row.Status);
+        Assert.Null(row.ThumbnailName);
+    }
+
     [Fact]
     public async Task ThePreviewIsWrittenBeforeTheTile()
     {
@@ -390,6 +486,27 @@ public sealed class RenditionPoolTests : IDisposable
             + "was not found. What was copied is kept.",
             given.Summary);
     }
+
+    /// <summary>
+    /// What the build before gave for a photograph it could not read, while the
+    /// row still named the picture it used to have.
+    /// </summary>
+    private static PreparedFact Failed(AssetKey photo, Asset row, string thumbnailName) =>
+        new(
+            photo,
+            row.Length,
+            row.ModifiedUtc,
+            null,
+            thumbnailName,
+            row.Width ?? 0,
+            row.Height ?? 0,
+            null,
+            null,
+            null,
+            null,
+            null,
+            AssetStatus.Failed,
+            []);
 
     /// <summary>Mum's two scan phases, giving through a folder a test controls.</summary>
     private ShareRenditionsHandler Through(IRenditionPool pool) =>

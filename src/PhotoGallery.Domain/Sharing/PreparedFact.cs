@@ -24,6 +24,14 @@ namespace PhotoGallery.Domain.Sharing;
 /// taken, because taking happens before the next machine has tried, and a file
 /// one laptop cannot decode is very often one that laptop has no codec
 /// for.</para>
+///
+/// <para>Nor is the same news given or taken when the row still names a
+/// picture. A scan that cannot reach the originals marks every photograph whose
+/// small copy has gone missing as "could not be read", and leaves the name of
+/// the copy it used to have on the row - so the build before gave that
+/// verdict, name and all, as the newest fact in the folder, and every laptop
+/// that took it wrote "could not be read" onto a row whose picture it had just
+/// copied. Only a ready row is given, and only a ready fact is taken.</para>
 /// </remarks>
 /// <param name="Length">
 /// With <paramref name="ModifiedUtc"/>, the check that decides whether the
@@ -35,7 +43,8 @@ namespace PhotoGallery.Domain.Sharing;
 /// <param name="ThumbnailName">
 /// What the two renditions are called in the pool. Null only in a fact the
 /// build before wrote for a file that never decoded, which this build reads
-/// past.
+/// past - as it reads past a fact that names a picture under any status but
+/// <see cref="AssetStatus.Ready"/>.
 /// </param>
 /// <param name="Keyframes">
 /// For a video, where in the clip each of its stills was taken from - and
@@ -60,8 +69,18 @@ public sealed record PreparedFact(
     AssetStatus Status,
     IReadOnlyList<SharedKeyframe> Keyframes)
 {
-    /// <summary>Whether this fact brings a picture with it, or only what was learnt.</summary>
-    public bool HasPicture => !string.IsNullOrEmpty(ThumbnailName);
+    /// <summary>
+    /// Whether this fact brings a picture with it - one the machine that wrote
+    /// it has ready - or only what was learnt.
+    /// </summary>
+    /// <remarks>
+    /// A name alone is not a picture. A row whose copy went missing and could
+    /// not be made again keeps the name of the copy it used to have, beside the
+    /// verdict that it could not be read; a fact like that brings the verdict,
+    /// not a picture, and is read past wherever a picture is what is wanted.
+    /// </remarks>
+    public bool HasPicture =>
+        Status == AssetStatus.Ready && !string.IsNullOrEmpty(ThumbnailName);
 
     /// <summary>
     /// Whether this describes the same bytes as a file here does.

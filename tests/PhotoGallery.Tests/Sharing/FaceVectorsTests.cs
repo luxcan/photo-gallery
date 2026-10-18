@@ -473,6 +473,40 @@ public sealed class FaceVectorsTests : IDisposable
     }
 
     /// <summary>
+    /// A face is not taken on the word of a fact that says its own picture could
+    /// not be read.
+    /// </summary>
+    /// <remarks>
+    /// The facts say which picture each face was drawn on, and a fact is about a
+    /// picture only when the computer that wrote it has that picture ready. This
+    /// build gives no fact for a row that could not be read, so the faces on such
+    /// a row land nowhere. The build before gave one, with the old copy's name
+    /// still on it, and the faces beside it are read past in just the same way;
+    /// the face pass here looks for them itself.
+    /// </remarks>
+    [Fact]
+    public async Task AFaceIsNotTakenOnTheWordOfAFactThatSaysItsPictureCouldNotBeRead()
+    {
+        Mum.Face(Mum.Prepared(@"2019\a.jpg", "aa11.jpg"), Head);
+        await Mum.Pooling.GiveAsync();
+
+        // The same fact, as the build before wrote it once her copy had gone and
+        // a scan with the originals out of reach could not make it again.
+        PreparedFact ready = Assert.Single(Assert.Single(await Dad.Pool.FetchAsync()).Facts);
+        await Mum.Pool.PublishAsync(new PreparedSet(
+            await PublishDecisionsHandler.ThisMachineAsync(Mum.Index, CancellationToken.None),
+            DateTime.UtcNow,
+            [ready with { Status = AssetStatus.Failed }],
+            new Dictionary<string, string>()));
+
+        Dad.Prepared(@"2019\a.jpg", "aa11.jpg");
+        PoolResult taken = await Dad.Pooling.TakeAsync();
+
+        Assert.Equal(0, taken.Faces);
+        Assert.Empty(Dad.Db.Faces);
+    }
+
+    /// <summary>
     /// Faces drawn on the photograph as it was are not taken onto it as it is.
     /// </summary>
     /// <remarks>
