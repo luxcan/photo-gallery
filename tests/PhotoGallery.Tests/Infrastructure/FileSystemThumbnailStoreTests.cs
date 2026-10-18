@@ -66,6 +66,83 @@ public sealed class FileSystemThumbnailStoreTests : IDisposable
             file => !file.Contains("-p", StringComparison.Ordinal));
     }
 
+    /// <summary>
+    /// Byte-identical photographs are one picture with one name, and a scan
+    /// prepares several photographs at once - so the same name is written by
+    /// several hands at the same moment.
+    /// </summary>
+    /// <remarks>
+    /// Found on a library given 300 copies of four photographs: the second
+    /// writer's open failed on the first one's handle, and the IOException ended
+    /// the whole scan. Large enough that every write is still going when the
+    /// others start.
+    /// </remarks>
+    [Fact]
+    public async Task Save_ManyAtOnceForTheSamePicture_AllSucceedAndLeaveItWhole()
+    {
+        GeneratedThumbnail picture = Large(seed: 21);
+
+        string[] names = await Task.WhenAll(
+            Enumerable.Range(0, 8).Select(_ => Task.Run(() => _store.SaveAsync(picture))));
+
+        string name = Assert.Single(names.Distinct());
+        Assert.Equal(picture.Tile, await File.ReadAllBytesAsync(_store.ResolveTilePath(name)));
+        Assert.Equal(picture.Preview, await File.ReadAllBytesAsync(_store.ResolvePreviewPath(name)));
+        Assert.Empty(LeftBehind(name));
+    }
+
+    /// <summary>
+    /// A name already there is the picture already there, even while something
+    /// else is reading it.
+    /// </summary>
+    /// <remarks>
+    /// The gallery draws a tile while the scan prepares its twin, and a
+    /// replacement refused because the file is open is no reason to lose the
+    /// photograph: the name is the content, so what is there is what was being
+    /// written.
+    /// </remarks>
+    [Fact]
+    public async Task Save_WhileThatPictureIsBeingRead_Succeeds()
+    {
+        GeneratedThumbnail picture = Thumbnail(22);
+        string name = await _store.SaveAsync(picture);
+
+        using (File.Open(_store.ResolvePreviewPath(name), FileMode.Open, FileAccess.Read, FileShare.Read))
+        {
+            Assert.Equal(name, await _store.SaveAsync(picture));
+        }
+
+        Assert.True(_store.Exists(name));
+        Assert.Equal(picture.Preview, await File.ReadAllBytesAsync(_store.ResolvePreviewPath(name)));
+        Assert.Empty(LeftBehind(name));
+    }
+
+    /// <summary>
+    /// A save that cannot finish says so and leaves nothing a reader would take
+    /// for a finished picture.
+    /// </summary>
+    /// <remarks>
+    /// A folder sitting where the tile belongs is something no write can
+    /// replace. The preview lands, the tile does not, and the pair is not
+    /// reported as there - so the next pass makes it again - with no temporary
+    /// left lying beside it.
+    /// </remarks>
+    [Fact]
+    public async Task Save_ThatCannotFinish_ThrowsAndLeavesNoTemporaryBehind()
+    {
+        GeneratedThumbnail picture = Thumbnail(23);
+        string name = _store.NameFor(picture.ContentHash);
+        Directory.CreateDirectory(_store.ResolveTilePath(name));
+
+        Exception thrown = await Record.ExceptionAsync(() => _store.SaveAsync(picture));
+
+        Assert.True(
+            thrown is IOException or UnauthorizedAccessException,
+            $"expected a file-system failure, got {thrown?.GetType().Name ?? "nothing"}");
+        Assert.False(_store.Exists(name));
+        Assert.Empty(LeftBehind(name));
+    }
+
     [Fact]
     public void Exists_IsFalseForNothing()
     {
@@ -200,6 +277,29 @@ public sealed class FileSystemThumbnailStoreTests : IDisposable
         new([1, 2, 3], [4, 5, 6, 7], 1600, 1200, null, new PerceptualHash(0),
             Convert.ToHexStringLower(
                 System.Security.Cryptography.SHA256.HashData(BitConverter.GetBytes(seed))));
+
+    /// <summary>
+    /// A picture whose renditions take long enough to write that writers of the
+    /// same name overlap, with bytes that differ along their length so a torn
+    /// file cannot pass for a whole one.
+    /// </summary>
+    private static GeneratedThumbnail Large(int seed)
+    {
+        byte[] tile = new byte[256 * 1024];
+        byte[] preview = new byte[4 * 1024 * 1024];
+        new Random(seed).NextBytes(tile);
+        new Random(seed + 1).NextBytes(preview);
+
+        return Thumbnail(seed) with { Tile = tile, Preview = preview };
+    }
+
+    /// <summary>Anything in the picture's shard that is not one of its two renditions.</summary>
+    private string[] LeftBehind(string name) =>
+    [
+        .. Directory.GetFiles(Path.GetDirectoryName(_store.ResolveTilePath(name))!)
+            .Where(file => !file.Equals(_store.ResolveTilePath(name), StringComparison.OrdinalIgnoreCase)
+                        && !file.Equals(_store.ResolvePreviewPath(name), StringComparison.OrdinalIgnoreCase)),
+    ];
 
     public void Dispose()
     {

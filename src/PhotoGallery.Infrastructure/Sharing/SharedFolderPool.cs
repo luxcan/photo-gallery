@@ -5,6 +5,7 @@ using PhotoGallery.Application.Ports;
 using PhotoGallery.Domain.Assets;
 using PhotoGallery.Domain.Library;
 using PhotoGallery.Domain.Sharing;
+using PhotoGallery.Infrastructure.Storage;
 
 namespace PhotoGallery.Infrastructure.Sharing;
 
@@ -453,51 +454,33 @@ public sealed class SharedFolderPool : IRenditionPool
     /// Renaming is what stops a third reading half a JPEG, and it is why a
     /// failure here answers false rather than throwing: the pair is written as a
     /// pair, and half of one is the only outcome that must never be recorded.
+    ///
+    /// <para>The temporary keeps the one name beside the real one it has always
+    /// had, in both directions. In the sync folder that leaves what this build
+    /// writes there exactly as it was; on this computer the take copies each
+    /// name once, in turn, so there is no second writer to make room for.</para>
     /// </remarks>
     private static async Task<bool> CopyAsync(
         string from, string to, CancellationToken cancellationToken)
     {
-        string temporary = to + TempExtension;
-
         try
         {
-            await using (var source = new FileStream(
-                from, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
-            await using (var destination = new FileStream(
-                temporary, FileMode.Create, FileAccess.Write, FileShare.None))
-            {
-                await source.CopyToAsync(destination, cancellationToken).ConfigureAwait(false);
-                await destination.FlushAsync(cancellationToken).ConfigureAwait(false);
-            }
+            await using var source = new FileStream(
+                from, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
 
-            File.Move(temporary, to, overwrite: true);
+            await WholeFile
+                .WriteAsync(
+                    to,
+                    to + TempExtension,
+                    (destination, token) => source.CopyToAsync(destination, token),
+                    cancellationToken)
+                .ConfigureAwait(false);
+
             return true;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            Forget(temporary);
             return false;
-        }
-        catch (OperationCanceledException)
-        {
-            // Stopped part-way. What was copied is copied and what was not is
-            // picked up next time, which is what makes this resumable - but the
-            // half-written temporary is nobody's.
-            Forget(temporary);
-            throw;
-        }
-    }
-
-    private static void Forget(string temporary)
-    {
-        try
-        {
-            File.Delete(temporary);
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            // A leftover .tmp is untidy and harmless: nothing reads them, and the
-            // next write to the same name replaces it.
         }
     }
 

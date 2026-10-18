@@ -17,6 +17,11 @@ public interface IThumbnailStore
     /// The name comes from the picture itself rather than from the row that
     /// happens to hold it, so re-running a pass overwrites what it wrote before
     /// instead of accumulating orphans beside it.
+    ///
+    /// <para>For the same reason it may be called for one picture by several
+    /// threads at once - byte-identical photographs prepared together do exactly
+    /// that - and a name already there counts as stored. What it still throws is
+    /// a picture that could not be put down at all.</para>
     /// </remarks>
     Task<string> SaveAsync(
         GeneratedThumbnail thumbnail,

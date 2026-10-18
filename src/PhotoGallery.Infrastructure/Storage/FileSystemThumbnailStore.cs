@@ -29,6 +29,8 @@ public sealed class FileSystemThumbnailStore : IThumbnailStore
 
     private const string Extension = ".jpg";
 
+    private const string TempExtension = ".tmp";
+
     private const int ShardLength = 2;
 
     private readonly IWorkingFolder _workingFolder;
@@ -49,12 +51,56 @@ public sealed class FileSystemThumbnailStore : IThumbnailStore
         // The tile is the readiness marker, so it lands last. Exists also checks
         // both files, but this order keeps an interrupted write incomplete in
         // the same direction as copies arriving from the shared pool.
-        await File.WriteAllBytesAsync(ResolvePreviewPath(name), thumbnail.Preview, cancellationToken)
+        await PutAsync(ResolvePreviewPath(name), thumbnail.Preview, cancellationToken)
             .ConfigureAwait(false);
-        await File.WriteAllBytesAsync(tilePath, thumbnail.Tile, cancellationToken)
+        await PutAsync(tilePath, thumbnail.Tile, cancellationToken)
             .ConfigureAwait(false);
 
         return name;
+    }
+
+    /// <summary>
+    /// Puts one rendition in place, however many others are putting the same one
+    /// there at the same moment.
+    /// </summary>
+    /// <remarks>
+    /// Byte-identical photographs share a name, and a scan prepares several
+    /// photographs at once - so a folder of copies has two of them writing one
+    /// file together. Written straight to the name, the second open failed on
+    /// the first one's handle and the IOException ended the whole scan: a
+    /// library given 300 copies of four photographs could not finish one, where
+    /// 300 different photographs finished in the ordinary way.
+    ///
+    /// <para>Each write now goes to a temporary of its own and is renamed into
+    /// place, so no two writers ever hold one file and a reader never finds half
+    /// of one. A rename refused while the name is there - another writer landed
+    /// first and something has it open, or the gallery is drawing it - is
+    /// success rather than failure: the name is the content, so what is there is
+    /// what this was writing. Anything else is still thrown, and the pass decides
+    /// what it costs.</para>
+    ///
+    /// <para>A temporary is left behind only if the app itself dies between the
+    /// write and the rename. It ends in <c>.tmp</c>, and nothing that lists the
+    /// pictures here counts one.</para>
+    /// </remarks>
+    private static async Task PutAsync(
+        string path, byte[] rendition, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await WholeFile
+                .WriteAsync(
+                    path,
+                    $"{path}.{Guid.NewGuid():N}{TempExtension}",
+                    (stream, token) => stream.WriteAsync(rendition, token).AsTask(),
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (Exception ex) when ((ex is IOException or UnauthorizedAccessException)
+                                   && File.Exists(path))
+        {
+            // Already there, which is all this was for.
+        }
     }
 
     public string ResolveTilePath(string thumbnailName)

@@ -37,6 +37,18 @@ public sealed class BuildThumbnailsHandler
     /// </remarks>
     private const int SaveBatchSize = 20;
 
+    /// <summary>
+    /// ERROR_SHARING_VIOLATION as the HResult of the IOException it is raised
+    /// as: another program has the file open.
+    /// </summary>
+    private const int SharingViolation = unchecked((int)0x80070020);
+
+    /// <summary>
+    /// ERROR_LOCK_VIOLATION, the same: another program has part of the file
+    /// locked.
+    /// </summary>
+    private const int LockViolation = unchecked((int)0x80070021);
+
     private readonly IGalleryReader _reader;
     private readonly IAssetRepository _assets;
     private readonly IThumbnailStore _store;
@@ -104,12 +116,17 @@ public sealed class BuildThumbnailsHandler
                                 unreadable.Enqueue(item.AssetId);
                                 Interlocked.Increment(ref failed);
                             }
+                            else if (await TrySaveAsync(generated, token)
+                                         .ConfigureAwait(false) is not string name)
+                            {
+                                // Counted as a file that would not decode is, but
+                                // not recorded: the original is fine and only its
+                                // copy could not be put down, so the next pass
+                                // tries it again.
+                                Interlocked.Increment(ref failed);
+                            }
                             else
                             {
-                                string name = await _store
-                                    .SaveAsync(generated, token)
-                                    .ConfigureAwait(false);
-
                                 completed.Enqueue(new ThumbnailUpdate(
                                     item.AssetId,
                                     name,
@@ -152,6 +169,48 @@ public sealed class BuildThumbnailsHandler
         stopwatch.Stop();
         progress?.Report(new ThumbnailProgress(done, pending.Count, built, failed));
         return new ThumbnailBuildResult(pending.Count, built, failed, stopwatch.Elapsed, cancelled);
+    }
+
+    /// <summary>
+    /// Stores one photograph's renditions, or answers null when something else
+    /// was holding this one's file.
+    /// </summary>
+    /// <remarks>
+    /// One picture that cannot be put down is that picture's problem, not the
+    /// pass's. A save used to throw straight out of the pass, so a single file
+    /// something else had open ended the whole scan, and with it every phase
+    /// after this one and the folder counts the scan writes last.
+    ///
+    /// <para>But that is the only failure to save that is about one picture: a
+    /// virus scanner, the search indexer or a backup holding its file at the
+    /// moment it was put in place. Everything else the store raises is about the
+    /// place every picture is kept - a full disk, write-protected media,
+    /// permission refused on the working folder, the drive or the share it is
+    /// on gone away - and refuses every picture alike. Answered here a picture
+    /// at a time, the pass read every original in the library, an hour over the
+    /// share, to record nothing and report the lot as pictures that could not be
+    /// read, while the reason was thrown away and the next scan did it all
+    /// again. So those still end the pass at the first picture, with the words
+    /// the disk gave, as does any fault in the index, which is written elsewhere
+    /// and is the screen's to report.</para>
+    ///
+    /// <para>Windows raises nearly all of them as a plain IOException, so the
+    /// type cannot tell them apart and the error code does. The question asked
+    /// is which failures are the picture's, never which are the library's: the
+    /// ways a disk or a network can fail have no end, and one left off a list
+    /// of them would cost that hour again.</para>
+    /// </remarks>
+    private async Task<string?> TrySaveAsync(
+        GeneratedThumbnail generated, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await _store.SaveAsync(generated, cancellationToken).ConfigureAwait(false);
+        }
+        catch (IOException ex) when (ex.HResult is SharingViolation or LockViolation)
+        {
+            return null;
+        }
     }
 
     /// <summary>
