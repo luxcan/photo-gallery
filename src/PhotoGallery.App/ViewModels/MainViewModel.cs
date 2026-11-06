@@ -199,17 +199,14 @@ public sealed partial class MainViewModel : ObservableObject
     private string _overlayHint = PassHint;
 
     private const string PassHint =
-        "Stopping is safe at any point. Everything finished so far is kept, and "
-        + "running this again carries on from where it left off. Your own photos "
-        + "and videos are never changed.";
+        "Stopping is safe. What is done is kept, and running this again carries on from there.";
 
     private const string DeletingHint =
-        "Stopping is safe, but it does not undo. Photographs already deleted stay "
-        + "deleted; the ones not yet reached are left exactly as they are.";
+        "Stopping keeps the photos not yet deleted. Ones already deleted stay deleted.";
 
     private const string MovingAlbumHint =
-        "Stopping is safe, but it does not undo. Originals already moved stay in the "
-        + "new folder and their library locations are updated; the rest stay where they are.";
+        "Stopping does not undo. Originals already moved stay in the new folder; "
+        + "the rest stay where they are.";
 
     /// <summary>
     /// Shown once the files have gone and only the index is catching up.
@@ -221,8 +218,7 @@ public sealed partial class MainViewModel : ObservableObject
     /// the disk.
     /// </remarks>
     private const string SettlingHint =
-        "The photographs have gone. Photo Gallery is working out what its screens "
-        + "should show now, which takes a few seconds on a large library.";
+        "The photographs have gone. Updating the screens - this can take a few seconds.";
 
     /// <summary>
     /// True once a deletion's files have gone and only the index is catching up.
@@ -257,9 +253,7 @@ public sealed partial class MainViewModel : ObservableObject
         nameof(RecheckPeopleCommand))]
     private bool _isTidying;
 
-    private const string TidyingHint =
-        "Nothing on disk is being changed. Photo Gallery is working out what its "
-        + "screens should show now, which takes a few seconds on a large library.";
+    private const string TidyingHint = "Updating the screens - this can take a few seconds.";
 
     private CancellationTokenSource? _refreshCancellation;
 

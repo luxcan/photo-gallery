@@ -233,19 +233,16 @@ public sealed partial class DuplicatesViewModel : ObservableObject
     /// know that something wrote one photograph out seven times.
     /// </remarks>
     public string ExactExplanation =>
-        "Every file in a set here has exactly the same bytes — same pixels, same "
-        + "capture date, same everything. They differ only in name and folder, so "
-        + "whichever you keep, no part of the photograph is lost.";
+        "These are exact copies that differ only in name and folder, so whichever "
+        + "you keep, nothing is lost.";
 
     /// <summary>
     /// Said outright above the visually-alike list, because it is the one place
     /// in this app where approving without looking can lose a photograph.
     /// </summary>
     public string NearWarning =>
-        "These look alike but are not the same file. A burst of shots seconds apart "
-        + "can score identically, so look at the pictures before ticking anything — "
-        + "and you can keep more than one. Keep them all if the group is not a duplicate "
-        + "at all, and it will not be offered again.";
+        "These look alike but are not the same file, so look before ticking. "
+        + "You can keep more than one, or keep them all and the group will not be offered again.";
 
     /// <summary>
     /// Looks through the library again.
@@ -666,9 +663,8 @@ public sealed partial class DuplicatesViewModel : ObservableObject
         }
 
         Status = result.OutOfReach.Count > 0
-            ? $"{result.Deleted:N0} copies deleted. {result.OutOfReach.Count:N0} were left "
-              + $"alone because {string.Join(", ", result.UnreachableSources)} could not be "
-              + "reached - nothing about them has been changed."
+            ? $"{result.Deleted:N0} copies deleted. {result.OutOfReach.Count:N0} were skipped "
+              + $"because {string.Join(", ", result.UnreachableSources)} could not be reached."
             : result.Refused.Count == 0
                 ? $"{result.Deleted:N0} copies deleted."
                 : $"{result.Deleted:N0} copies deleted. "

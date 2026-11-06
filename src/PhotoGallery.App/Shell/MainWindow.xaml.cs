@@ -1479,10 +1479,8 @@ public partial class MainWindow : Window
               + $"The {(photos.Count == 1 ? "file goes" : "files go")} to the Recycle Bin. {forgets}"
             : $"{what}\n\n"
               + $"{(photos.Count == 1 ? "This file is" : "These files are")} on a network or "
-              + "removable location, so Windows cannot put "
-              + $"{(photos.Count == 1 ? "it" : "them")} in the Recycle Bin. "
-              + $"{(photos.Count == 1 ? "It" : "They")} will be deleted permanently and cannot "
-              + $"be recovered.\n\n{forgets}";
+              + $"removable drive, so {(photos.Count == 1 ? "it" : "they")} cannot go to the "
+              + $"Recycle Bin and will be deleted permanently.\n\n{forgets}";
 
         return AppDialog.Confirm(
             this,
@@ -1574,10 +1572,7 @@ public partial class MainWindow : Window
             {
                 SaidSourceIsAway(
                     unreachable,
-                    photos.Count == 1
-                        ? "This photo is stored there, so it could not be deleted."
-                        : $"These {photos.Count:N0} photos are stored there, so they could "
-                          + "not be deleted.");
+                    photos.Count == 1 ? "delete this photo" : $"delete these {photos.Count:N0} photos");
 
                 return;
             }
@@ -1604,37 +1599,28 @@ public partial class MainWindow : Window
     /// Answers a turn that was refused because the photograph's folder is away.
     /// </summary>
     private void OnTurnRefusedOutOfReach(object? sender, IReadOnlyList<string> sources) =>
-        SaidSourceIsAway(
-            sources,
-            "This photo is stored there, so its own file could not be told which way up it "
-            + "goes. Turning only Photo Gallery's copy would leave the two disagreeing about "
-            + "the same picture, so nothing was turned.");
+        SaidSourceIsAway(sources, "rotate the photo");
 
     /// <summary>
-    /// Tells the user nothing was touched, and why.
+    /// Tells the user that <paramref name="action"/> did not happen because its
+    /// folder cannot be reached.
     /// </summary>
     /// <remarks>
     /// One wording for deleting and for turning, because to the user they are
     /// the same event: a thing they asked for did not happen, and the reason is
     /// the folder rather than the photograph.
-    ///
-    /// <para>Worded to make clear that the pictures are fine. The failure is
-    /// this app's view of them, not the photographs themselves, and a message
-    /// that only said "could not delete" would leave somebody wondering what
-    /// state their library is now in.</para>
     /// </remarks>
-    private void SaidSourceIsAway(IReadOnlyList<string> sources, string consequence)
+    /// <param name="action">What was refused, worded to follow "Unable to",
+    /// such as "rotate the photo".</param>
+    private void SaidSourceIsAway(IReadOnlyList<string> sources, string action)
     {
+        bool one = sources.Count == 1;
         AppDialog.Tell(
             this,
-            sources.Count == 1 ? "That folder cannot be reached" : "Those folders cannot be reached",
-            $"{string.Join("\n", sources)}\n\n"
-            + $"{consequence}\n\n"
-            + $"Photo Gallery cannot see the {(sources.Count == 1 ? "folder" : "folders")} "
-            + "right now - a drive that is disconnected, a network share that is switched "
-            + "off, or a computer that is asleep.\n\n"
-            + "Nothing has been changed. Your photos are untouched, and so is everything "
-            + "Photo Gallery knows about them. Reconnect and try again.",
+            one ? "That folder cannot be reached" : "Those folders cannot be reached",
+            $"Unable to {action} because {(one ? "this folder" : "these folders")} cannot be reached:\n\n"
+            + $"{string.Join("\n", sources)}\n\n"
+            + $"Reconnect {(one ? "it" : "them")} and try again.",
             DialogTone.Caution);
     }
 
@@ -1831,22 +1817,21 @@ public partial class MainWindow : Window
                 ? "Move 1 original"
                 : $"Move {plan.Moving:N0} originals";
             string conflicts = plan.Renamed == 0
-                ? "No destination names conflict."
+                ? string.Empty
                 : plan.Renamed == 1
-                    ? "1 file will receive a numbered name because that name already exists."
-                    : $"{plan.Renamed:N0} files will receive numbered names because those names already exist.";
+                    ? "\n\n1 will get a numbered name because that name is taken."
+                    : $"\n\n{plan.Renamed:N0} will get numbered names because those names are taken.";
             string already = plan.AlreadyThere == 0
                 ? string.Empty
-                : $"\n\n{plan.AlreadyThere:N0} originals already in that folder will stay there.";
+                : $"\n\n{plan.AlreadyThere:N0} {(plan.AlreadyThere == 1 ? "is" : "are")} already there and stay put.";
 
             bool answer = AppDialog.Confirm(
                 this,
                 $"Move originals from \"{album.Name}\"?",
                 $"{counted} ({FileSize.Rounded(plan.TotalBytes)}) into:\n\n"
-                + $"{plan.DestinationFolder}\n\n{conflicts}{already}\n\n"
-                + "Existing files are never overwritten. Each moved photo keeps its album, "
-                + "faces, metadata, and other library information. This cannot be undone as "
-                + "one action.",
+                + $"{plan.DestinationFolder}{conflicts}{already}\n\n"
+                + "Existing files are never overwritten, and each photo keeps its album, "
+                + "faces, metadata and other details. This cannot be undone.",
                 confirm: "Move originals",
                 tone: DialogTone.Caution);
 

@@ -35,9 +35,7 @@ public sealed record FeatureCard(
                 + "them, once each. After that the People screen fills itself in, and "
                 + "you can search your library by name.",
                 "Press Download below and save both files into the folder in Step 1, "
-                + "or click one file name to fetch just that one. They arrive under "
-                + "the names shown, so there is nothing to rename and nothing to "
-                + "unzip.",
+                + "or click a file name to fetch just that one.",
                 status),
 
             ModelFeature.ContentSearch => new FeatureCard(
@@ -46,17 +44,12 @@ public sealed record FeatureCard(
                 "Reads what each photograph is of, so you can search for \"birthday "
                 + "cake\" or \"at the beach\" without having named or tagged anything.",
 
-                // The collision is the whole reason this sentence is long. Two of
-                // the four are called model.onnx where they come from, so a
-                // browser saving both into one folder produces a "(1)" - and a
-                // user who tidies that up by hand is as likely to overwrite one
-                // as to fix it. Photo Gallery matches them by size and proves
-                // them by digest, so the right answer is to leave them alone.
-                "Press Download below and save all four files into the folder in Step "
-                + "1, or click one file name to fetch just that one. Two of them "
-                + "arrive called model.onnx, so your browser will name the second one "
-                + "something like model (1).onnx - leave those names as they are. "
-                + "Photo Gallery works out which is which and renames them itself.",
+                // Two of the four are called model.onnx upstream, so a browser
+                // saves the second as "model (1).onnx". The import matches files
+                // by size and proves them by digest, so that name is fine as it is.
+                "Press Download below and save all four files into the folder in Step 1, "
+                + "or click a file name to fetch just that one. If your browser saves one as "
+                + "model (1).onnx, leave it - Photo Gallery renames it.",
                 status),
 
             _ => throw new ArgumentOutOfRangeException(nameof(status)),

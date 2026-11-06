@@ -29,8 +29,7 @@ public static class OriginalInExplorer
             AppDialog.Tell(
                 owner,
                 "File not available",
-                $"That file is not there at the moment.\n\n{fullPath}\n\n"
-                + "The folder it lives in may be disconnected.",
+                $"This file cannot be found:\n\n{fullPath}\n\nIts folder may be disconnected.",
                 DialogTone.Information);
             return;
         }

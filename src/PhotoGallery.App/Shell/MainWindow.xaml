@@ -145,10 +145,8 @@
 
             <TextBlock Grid.Row="1" Style="{DynamicResource BodyText}" MaxWidth="620"
                        HorizontalAlignment="Left" Margin="0,0,0,22">
-              Add the folders your pictures are in. You can add more than one — a folder
-              on this PC, a USB drive, or a shared folder on your network. Photo Gallery
-              only reads them: nothing is moved, and nothing is changed unless you ask
-              for it.
+              Add the folders your pictures are in: on this PC, a USB drive or a
+              shared network folder. Photo Gallery only reads them.
             </TextBlock>
 
             <!-- Add a folder, above the table -->
@@ -1375,7 +1373,7 @@
                         <TextBlock Style="{DynamicResource FieldLabel}"
                                    Text="This is a suggestion" />
                         <TextBlock Style="{DynamicResource HintText}" TextWrapping="Wrap"
-                                   Text="Throwing it away is remembered: neither this occasion nor the photographs in it are suggested for those days again." />
+                                   Text="If you throw it away, it will not be suggested again." />
                         <Button Style="{DynamicResource PrimaryButton}" Margin="0,8,0,0"
                                 HorizontalAlignment="Stretch" Content="Keep this album"
                                 ToolTip="Make it yours, so no scan changes it again"
@@ -1509,7 +1507,7 @@
                              Text="{Binding Albums.Collections.NamingTitle}" />
                   <TextBlock Style="{DynamicResource HintText}" Margin="0,2,0,12"
                              TextWrapping="Wrap"
-                             Text="A collection is a shelf of albums - Holiday over three trips. Nothing here moves or renames a file, and an album stands on one collection at a time." />
+                             Text="A collection groups albums, such as Holidays. An album can be on one collection at a time." />
 
                   <TextBlock Style="{DynamicResource FieldLabel}" Text="Name" />
                   <TextBox Style="{DynamicResource InputTextBox}" Margin="0,2,0,0"
@@ -1554,7 +1552,7 @@
                              Text="{Binding Albums.Collections.OpenName, Mode=OneWay}" /></TextBlock>
                   <TextBlock Style="{DynamicResource HintText}" Margin="0,2,0,12"
                              TextWrapping="Wrap"
-                             Text="Tick the ones that belong here. Clearing a tick takes an album off and leaves it on the wall. An album is on one collection, so ticking one that is already on another moves it, and the app says which it left." />
+                             Text="Tick the albums that belong here. Ticking one that is on another collection moves it here." />
 
                   <ScrollViewer MaxHeight="360" VerticalScrollBarVisibility="Auto"
                                 HorizontalScrollBarVisibility="Disabled">
@@ -1683,7 +1681,7 @@
                 <TextBlock FontSize="12" VerticalAlignment="Center"
                            TextWrapping="Wrap" MaxWidth="640"
                            Foreground="{DynamicResource Editor.Foreground}"
-                           Text="The face model is installed, but your pictures have not been looked at yet. Faces are found as the last step of a scan, and it reads only the small copies already on this computer." />
+                           Text="Faces have not been found yet. Choose Find faces now to scan your pictures." />
                 <Button Style="{DynamicResource PrimaryButton}" MinWidth="130" Margin="12,0,0,0"
                         VerticalAlignment="Center" Content="Find faces now"
                         ToolTip="Scan your folders. Faces are the last step, and you can stop at any point."
@@ -1773,9 +1771,9 @@
                 <TextBlock Style="{DynamicResource FieldLabel}"
                            Text="Point people out in your pictures" />
                 <TextBlock Style="{DynamicResource HintText}" Margin="0,4,0,0"
-                           Text="Add a name on the left, then open any picture and switch Names on. Every face is outlined; click one and say who it is. The picture's own year is what the app learns from, so an example from 2015 teaches what they looked like in 2015." />
+                           Text="Add a name on the left, then open a picture, switch Names on and click a face to say who it is." />
                 <TextBlock Style="{DynamicResource HintText}" Margin="0,10,0,0"
-                           Text="Choose Check everyone to look through the whole library again for the people you have named. Anything it thinks it has found appears against their name here, for you to confirm or reject." />
+                           Text="Choose Check everyone to find more pictures of the people you have named. You confirm or reject each one here." />
               </StackPanel>
 
               <!-- One person, and what is settled about them: every picture
@@ -2229,7 +2227,7 @@
                   <TextBlock Style="{DynamicResource FieldLabel}" Margin="0,22,0,0"
                              Text="Diagnostic log" />
                   <TextBlock Style="{DynamicResource HintText}" Margin="0,0,0,8"
-                             Text="Records in detail what the app is doing, including failures it would otherwise close on without a word. Written to the library's logs folder and started fresh on every run, with the previous run kept beside it." />
+                             Text="Keeps a detailed record of what the app does, to help find problems. Saved in the library's logs folder." />
                   <StackPanel Orientation="Horizontal">
                     <ToggleButton Style="{DynamicResource Switch}" VerticalAlignment="Center"
                                   AutomationProperties.Name="Diagnostic log"
@@ -2240,7 +2238,7 @@
                   </StackPanel>
 
                   <TextBlock Style="{DynamicResource HintText}" Margin="0,18,0,0"
-                             Text="Photo Gallery reopens this library on its own from now on. Other settings arrive alongside the features that need them; photo folders are managed under Photo sources." />
+                             Text="Photo Gallery reopens this library each time it starts. Manage photo folders under Photo sources." />
                 </StackPanel>
 
                 <StackPanel Visibility="{Binding ShowsSearchSettings,
@@ -2254,7 +2252,7 @@
                              Text="Optional features" />
                   <TextBlock Style="{DynamicResource HintText}" Margin="0,0,0,14"
                              TextWrapping="Wrap"
-                             Text="Finding people, and searching by what is in a picture, each need a machine-learning model. They are large and are published under their own terms, so Photo Gallery does not include them — you download the ones you want, once." />
+                             Text="Finding people and searching by what is in a picture each need a model you download once." />
 
                   <!-- Numbered, because the order matters and getting it the
                        wrong way round is the mistake people make: downloading
@@ -2263,7 +2261,7 @@
                              Text="Step 1 — the folder the files go in" />
                   <TextBlock Style="{DynamicResource HintText}" Margin="0,0,0,8"
                              TextWrapping="Wrap"
-                             Text="Open it now and leave it open — the downloads below go straight into it. It starts inside your library; change it if you would rather keep the files somewhere shared, and nothing is moved when you do." />
+                             Text="Open this folder now, and save the downloads below into it." />
                   <Border Background="{DynamicResource Panel.Background}"
                           BorderBrush="{DynamicResource Panel.Border}" BorderThickness="1"
                           CornerRadius="4" Padding="12,9" Margin="0,0,0,8">
@@ -2297,7 +2295,7 @@
                              Text="Step 2 — download what you want to use" />
                   <TextBlock Style="{DynamicResource HintText}" Margin="0,0,0,8"
                              TextWrapping="Wrap"
-                             Text="Each one is checked file by file after it arrives, and switches its feature on by itself. Neither is needed to browse, and you can add the second one later." />
+                             Text="Each feature switches on by itself once its download is in place. You can add either one later." />
 
                   <ItemsControl ItemsSource="{Binding Models.Features}" Focusable="False">
                     <ItemsControl.ItemTemplate>
@@ -2446,13 +2444,13 @@
                      computers, through a folder they all already reach. -->
                 <TextBlock Style="{DynamicResource BodyText}" Margin="0,10,0,0"
                            TextWrapping="Wrap"
-                           Text="You and the other computers in the house can keep each other up to date with the work everybody has done: the names on faces, the albums, which way up a photo goes. Choose a folder you can all reach, and each computer leaves a small file there for the others to pick up." />
+                           Text="The computers in the house can keep each other up to date: names on faces, albums, which way up a photo goes. Choose a folder they can all reach." />
 
                 <TextBlock Style="{DynamicResource FieldLabel}" Margin="0,22,0,0"
                            Text="Sync folder" />
                 <TextBlock Style="{DynamicResource HintText}" Margin="0,0,0,8"
                            TextWrapping="Wrap"
-                           Text="Somewhere every computer can already reach — a drive on the network, or a folder a cloud service keeps in step. It must not sit inside a folder of your photos, or hold one, because what is kept here would then be indexed as pictures." />
+                           Text="A network drive or a cloud folder that every computer can reach. It must not be inside a photo folder, or contain one." />
 
                 <Border Background="{DynamicResource Panel.Background}"
                         BorderBrush="{DynamicResource Panel.Border}" BorderThickness="1"
@@ -2614,7 +2612,7 @@
                              Text="Small copies of your photos" />
                   <TextBlock Style="{DynamicResource HintText}"
                              TextWrapping="Wrap"
-                             Text="Each scan takes the small copies and faces another computer has already left in this folder, so this one need not make or find them again, and leaves its own there for the others - a few gigabytes the first time, and only what is new after that. Your photographs themselves are never copied." />
+                             Text="Each scan takes the small copies and faces other computers have left here, and leaves its own there for the others: a few gigabytes the first time, then only what is new. Your photos are never copied." />
                 </StackPanel>
 
                 <TextBlock Style="{DynamicResource FieldLabel}" Margin="0,24,0,0"
@@ -2649,7 +2647,7 @@
 
                 <TextBlock Style="{DynamicResource HintText}" Margin="0,14,0,0"
                            TextWrapping="Wrap"
-                           Text="Nobody has to be switched on at the same time as you. Each computer leaves its answers in the folder and picks up everybody else's the next time it syncs."
+                           Text="The other computers do not need to be on. Each one picks up changes the next time it syncs."
                            Visibility="{Binding Sharing.HasFolder,
                                         Converter={StaticResource BoolToVisibility}}" />
               </StackPanel>
@@ -2681,7 +2679,7 @@
                                FontSize="13" LineHeight="19.5"
                                LineStackingStrategy="BlockLineHeight"
                                Foreground="{DynamicResource Editor.Foreground}"
-                               Text="Finds, sorts and searches the photographs you already have. Nothing is uploaded, and nothing happens to one unless you ask: turning a photograph writes which way up it goes into the file, and deleting one deletes it." />
+                               Text="Finds, sorts and searches the photos you already have. Nothing is uploaded, and nothing changes unless you ask." />
                   </StackPanel>
                 </StackPanel>
 
@@ -2720,7 +2718,7 @@
                                FontSize="12.5" LineHeight="19.5"
                                LineStackingStrategy="BlockLineHeight"
                                Foreground="{DynamicResource Editor.Foreground}"
-                               Text="Releases are published on GitHub. This app looks for a newer one about once an hour and says so in the corner if it finds one — it asks a public page for a version number and sends nothing about your photographs, and it never installs anything itself. Open the page below to read what changed." />
+                               Text="Photo Gallery checks GitHub for a new version about once an hour and tells you if there is one. It sends nothing about your photos and never installs anything itself." />
 
                     <StackPanel Orientation="Horizontal" Margin="0,11,0,0">
                       <Button Style="{DynamicResource PrimaryButton}" Height="30" Padding="14,0"
@@ -2785,7 +2783,7 @@
                            Text="Credits" />
                 <TextBlock Style="{DynamicResource HintText}" Margin="0,0,0,6"
                            TextWrapping="Wrap"
-                           Text="Photo Gallery stands on other people's work. Only the first of these travels inside it; the rest you download yourself, and it never sends anything back to them." />
+                           Text="Photo Gallery is built on other people's work. Only the first is included; you download the rest yourself." />
 
                 <TextBlock Style="{DynamicResource HintText}" Margin="10,0,0,5"
                            TextWrapping="Wrap"><Run
@@ -2804,7 +2802,7 @@
                     RequestNavigate="OnLinkRequested"><Run Text="github.com/openai/CLIP" /></Hyperlink></TextBlock>
                 <TextBlock Style="{DynamicResource HintText}" Margin="10,0,0,0"
                            TextWrapping="Wrap"><Run
-                    Text="•  Immich — for exporting CLIP ViT-L/14 to the ONNX form this app can run. Immich itself is a self-hosted photo and video server with Android and iOS apps, AGPL-3.0 — worth a look if you want your library on your phone too. " /><Hyperlink
+                    Text="•  Immich — converted CLIP into the form this app can run. AGPL-3.0. " /><Hyperlink
                     NavigateUri="https://immich.app"
                     RequestNavigate="OnLinkRequested"><Run Text="immich.app" /></Hyperlink></TextBlock>
 

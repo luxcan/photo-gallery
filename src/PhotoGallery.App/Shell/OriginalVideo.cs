@@ -36,10 +36,7 @@ public static class OriginalVideo
                 "Video not available",
                 string.IsNullOrEmpty(fullPath)
                     ? "Photo Gallery does not know where this video is kept."
-                    : $"This video is not there at the moment.\n\n{fullPath}\n\n"
-                      + "The folder it lives in may be disconnected. The picture you "
-                      + "can see is a copy Photo Gallery keeps; the film itself is "
-                      + "still wherever you put it.",
+                    : $"This video cannot be found:\n\n{fullPath}\n\nIts folder may be disconnected.",
                 DialogTone.Information);
             return;
         }

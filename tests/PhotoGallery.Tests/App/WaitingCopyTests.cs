@@ -40,11 +40,11 @@ public sealed class WaitingCopyTests : IDisposable
     /// </summary>
     /// <remarks>
     /// Some of these come good on the next scan and some never do, and which is
-    /// which cannot be known from here - so the sentence says "may", and then
-    /// says outright what happens when it does not.
+    /// which cannot be known from here - so the sentence says "may" and never
+    /// promises that a scan will bring them in.
     /// </remarks>
     [Fact]
-    public void TheFacesLineIsConditionalAndAdmitsTheCaseThatNeverSettles()
+    public void TheFacesLineOffersTheNextScanOnlyAsAPossibility()
     {
         _sharing.WaitingOnFaces = 4;
 
@@ -53,9 +53,11 @@ public sealed class WaitingCopyTests : IDisposable
             _sharing.WaitingOnFacesLabel,
             StringComparison.Ordinal);
 
-        Assert.Contains("may pick them up", _sharing.WaitingOnFacesLabel, StringComparison.Ordinal);
         Assert.Contains(
-            "keeps its answer waiting", _sharing.WaitingOnFacesLabel, StringComparison.Ordinal);
+            "The next scan may pick them up",
+            _sharing.WaitingOnFacesLabel,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("will", _sharing.WaitingOnFacesLabel, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -65,8 +67,7 @@ public sealed class WaitingCopyTests : IDisposable
     /// A turn waiting for a small copy and a move waiting for an album used to be
     /// counted under the face line, which told whoever read it that a scan's
     /// face pass might bring them in. It never would, so this line names what
-    /// they are waiting for instead and, like the missing line, promises that
-    /// nothing is lost.
+    /// they are waiting for instead.
     /// </remarks>
     [Fact]
     public void TheLineAboutPhotosAlreadyHereSaysWhatTheyWaitForAndNotAFace()
@@ -81,7 +82,6 @@ public sealed class WaitingCopyTests : IDisposable
             StringComparison.Ordinal);
         Assert.Contains("small copies to turn", said, StringComparison.Ordinal);
         Assert.Contains("albums to put them in", said, StringComparison.Ordinal);
-        Assert.Contains("Nothing is thrown away", said, StringComparison.Ordinal);
         Assert.DoesNotContain("face", said, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -112,10 +112,11 @@ public sealed class WaitingCopyTests : IDisposable
     }
 
     /// <summary>
-    /// The missing line is conditional too, and promises nothing is lost.
+    /// The missing line is conditional too, and says the photos must come back
+    /// under their old names.
     /// </summary>
     [Fact]
-    public void TheMissingLineIsConditionalAndSaysNothingIsThrownAway()
+    public void TheMissingLineIsConditionalOnThePhotosTurningUpUnderTheirOldNames()
     {
         _sharing.WaitingOnPhotos = 37;
 
@@ -126,7 +127,9 @@ public sealed class WaitingCopyTests : IDisposable
 
         Assert.Contains("If they turn up", _sharing.WaitingOnPhotosLabel, StringComparison.Ordinal);
         Assert.Contains(
-            "Nothing is thrown away", _sharing.WaitingOnPhotosLabel, StringComparison.Ordinal);
+            "under their old names, a scan brings the answers in",
+            _sharing.WaitingOnPhotosLabel,
+            StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -134,11 +137,10 @@ public sealed class WaitingCopyTests : IDisposable
     /// </summary>
     /// <remarks>
     /// Counted in photographs, because a folder of photographs is the thing
-    /// being asked for - and it says what arrives, because "your originals, at
-    /// full size" is the question everybody asks next.
+    /// being asked for.
     /// </remarks>
     [Fact]
-    public void TheElsewhereLineNamesTheFolderAndSaysWhatArrives()
+    public void TheElsewhereLineNamesTheFolderAndSaysWhereToPutIt()
     {
         _sharing.WaitingElsewhere = 812;
         _sharing.WaitingElsewherePhotos = 812;
@@ -149,8 +151,9 @@ public sealed class WaitingCopyTests : IDisposable
         Assert.Contains("812 photos this computer cannot see", said, StringComparison.Ordinal);
         Assert.Contains("2026 Phone Dump", said, StringComparison.Ordinal);
         Assert.Contains(
-            "every computer in the house can reach", said, StringComparison.Ordinal);
-        Assert.Contains("at full size", said, StringComparison.Ordinal);
+            "Put that folder where every computer can reach it.",
+            said,
+            StringComparison.Ordinal);
     }
 
     /// <summary>

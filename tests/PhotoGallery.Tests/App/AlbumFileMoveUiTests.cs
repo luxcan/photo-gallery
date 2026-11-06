@@ -33,6 +33,7 @@ public sealed class AlbumFileMoveUiTests
         Assert.Contains("never overwritten", handler, StringComparison.Ordinal);
         Assert.Contains("keeps its album", handler, StringComparison.Ordinal);
         Assert.Contains("faces, metadata", handler, StringComparison.Ordinal);
+        Assert.Contains("This cannot be undone.", handler, StringComparison.Ordinal);
     }
 
     private static string Handler()

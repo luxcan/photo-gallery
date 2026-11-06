@@ -485,10 +485,8 @@ public sealed partial class AlbumsViewModel : ObservableObject
             }
 
             return People.Any(choice => Matches(choice, wanted))
-                ? "Every name that matches is already in the rule - they are above the "
-                  + "box, and pressing one takes them back out."
-                : "Nobody in this library goes by that name. A rule can only ask for "
-                  + "somebody whose face you have already named.";
+                ? "Every name that matches is already in the rule, above the box."
+                : "Nobody in this library goes by that name. Name their face under People first.";
         }
     }
 
@@ -506,11 +504,8 @@ public sealed partial class AlbumsViewModel : ObservableObject
             }
 
             return Places.Any(choice => Matches(choice, wanted))
-                ? "Every place that matches is already in the rule - they are above the "
-                  + "box, and pressing one takes it back out."
-                : "Nowhere in this library goes by that name. A place comes from the "
-                  + "coordinates in a photograph, so a rule can only ask for one a scan "
-                  + "has already worked out.";
+                ? "Every place that matches is already in the rule, above the box."
+                : "No place in this library goes by that name yet.";
         }
     }
 
@@ -1063,7 +1058,7 @@ public sealed partial class AlbumsViewModel : ObservableObject
 
         if (shelved.Kept)
         {
-            said = $"{said} This album was a suggestion, and is now yours to keep.";
+            said = $"{said} It is now yours to keep.";
         }
 
         return shelved.Left is null ? said : $"{said} Taken off \"{shelved.Left}\".";

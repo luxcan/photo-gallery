@@ -53,10 +53,9 @@ public sealed record MergeResult(
             if (Pairings.FirstOrDefault(pairing =>
                     pairing.Likeness == PairingLikeness.FiledDifferently) is { } filed)
             {
-                return $"Nothing matched. This library keeps its photos under "
-                     + $"{filed.Mine.Root}, and {filed.MachineName} keeps the same pictures "
-                     + $"under {filed.Theirs.Root} - so the two file them differently and no "
-                     + "photo lines up. Point both at the same folder and sync again.";
+                return $"Nothing matched: this computer keeps its photos in {filed.Mine.Root} "
+                     + $"and {filed.MachineName} keeps them in {filed.Theirs.Root}. "
+                     + "Point both at the same folder and sync again.";
             }
 
             // Said before the counts, and for the same reason as the line

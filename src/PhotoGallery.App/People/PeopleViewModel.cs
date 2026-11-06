@@ -296,14 +296,12 @@ public sealed partial class PeopleViewModel : ObservableObject
                 return "Add the year they were born to group these by age.";
             }
 
-            string convention =
-                "Ages are the age they reach that year - without a full date of "
-                + "birth the app cannot tell which side of a birthday a picture falls.";
+            string convention = "Ages are by year of birth, so they may be a year out.";
 
             return DatedFromTheFile == 0
                 ? convention
-                : $"{convention} {DatedFromTheFile:N0} of these carry no capture "
-                  + "date, so their age comes from the file's date and may be too old.";
+                : $"{convention} {DatedFromTheFile:N0} have no capture date, so their "
+                  + "age uses the file date.";
         }
     }
 
@@ -1085,8 +1083,7 @@ public sealed partial class PeopleViewModel : ObservableObject
                 new PersonDirectoryEntry(person.Id, person.DisplayName, person.Summary.Photos))],
             SelectedPerson?.Id,
             "Who is this really?",
-            $"Taken {face.Caption}. Saying who it is teaches the app what they "
-            + "looked like then, rather than only that this one was wrong.");
+            $"Taken {face.Caption}. Naming them teaches the app what they looked like then.");
     }
 
     /// <summary>

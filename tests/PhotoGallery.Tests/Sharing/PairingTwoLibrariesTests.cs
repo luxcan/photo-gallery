@@ -205,8 +205,9 @@ public sealed class PairingTwoLibrariesTests : IDisposable
         Assert.Equal(PairingLikeness.FiledDifferently, filed.Likeness);
         Assert.False(filed.CanPair);
 
-        Assert.Contains("file them differently", merged.Summary);
-        Assert.Contains("no photo lines up", merged.Summary);
+        Assert.StartsWith("Nothing matched", merged.Summary);
+        Assert.Contains(filed.MachineName, merged.Summary);
+        Assert.Contains("Point both at the same folder", merged.Summary);
     }
 
     [Fact]

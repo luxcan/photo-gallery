@@ -56,7 +56,6 @@ public sealed class SetSharedFolderHandler
             {
                 throw new InvalidOperationException(
                     $"That folder overlaps the photos in {source.Path}. "
-                  + "Syncing writes files, and a scan would index them as photographs. "
                   + "Choose a folder outside your photos.");
             }
         }

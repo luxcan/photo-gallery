@@ -23,10 +23,8 @@
 
     <TextBlock Grid.Row="2" Style="{DynamicResource BodyText}" MaxWidth="470"
                HorizontalAlignment="Left">
-      Photo Gallery needs one folder of its own. It keeps everything it makes
-      there — small previews of your pictures, and the names you give to the
-      people it finds. Your photos stay exactly where they are: nothing is
-      moved, changed, or sent anywhere.
+      Choose a folder where Photo Gallery can keep its previews and the names
+      you give people. Your photos stay where they are.
     </TextBlock>
 
     <StackPanel Grid.Row="3" Margin="0,26,0,0">

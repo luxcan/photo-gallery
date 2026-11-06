@@ -2866,13 +2866,13 @@
            name could resolve to, and a rule asking for a name the library
            cannot match is one that quietly finds nothing. -->
       <TextBlock Style="{DynamicResource HintText}" TextWrapping="Wrap"
-                 Text="Nobody has been named yet, so there is no one to ask for. Name a few faces under People first - a rule finds someone by their face, not by their name."
+                 Text="Nobody has been named yet. Name some faces under People first."
                  Visibility="{Binding HasPeopleToPick,
                               Converter={StaticResource InverseBoolToVisibility}}" />
 
       <TextBlock Style="{DynamicResource FieldLabel}" Margin="0,18,0,0" Text="Taken in" />
       <TextBlock Style="{DynamicResource HintText}" Margin="0,0,0,6" TextWrapping="Wrap"
-                 Text="Any one of these. Only about one photograph in nine carries a place, so this narrows less than it looks." />
+                 Text="Any one of these. Most photos have no place, so this narrows less than you might expect." />
 
       <ItemsControl ItemsSource="{Binding ChosenPlaces}" Focusable="False"
                     Visibility="{Binding HasChosenPlaces,
@@ -2942,7 +2942,7 @@
       </StackPanel>
 
       <TextBlock Style="{DynamicResource HintText}" TextWrapping="Wrap"
-                 Text="No photograph has a place yet, so there is nowhere to ask for. Places come from the coordinates in the file, and a scan is what works them out."
+                 Text="No photo has a place yet. Places are worked out when you scan."
                  Visibility="{Binding HasPlacesToPick,
                               Converter={StaticResource InverseBoolToVisibility}}" />
     </StackPanel>

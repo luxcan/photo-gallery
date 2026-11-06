@@ -92,7 +92,7 @@ public sealed class MoveAlbumFilesHandler
         {
             throw new InvalidOperationException(
                 "The destination passes through a linked folder or junction. Choose a regular "
-                + "folder inside the photo source so its stored location cannot escape the source.");
+                + "folder inside the photo source.");
         }
 
         var reserved = new HashSet<string>(

@@ -65,6 +65,7 @@ public sealed class SharedFolderRulesTests : IDisposable
             () => Sharing().HandleAsync(Folder(@"photos\shared")));
 
         Assert.Contains("overlaps the photos", refused.Message);
+        Assert.Contains("Choose a folder outside your photos.", refused.Message);
     }
 
     [Fact]
@@ -88,7 +89,9 @@ public sealed class SharedFolderRulesTests : IDisposable
         InvalidOperationException refused = await Assert.ThrowsAsync<InvalidOperationException>(
             () => AddSourceAsync(Folder("outer")));
 
-        Assert.Contains("syncs through", refused.Message);
+        Assert.Equal(
+            $"That folder overlaps the one this library syncs through: {Folder(@"outer\shared")}",
+            refused.Message);
     }
 
     [Fact]

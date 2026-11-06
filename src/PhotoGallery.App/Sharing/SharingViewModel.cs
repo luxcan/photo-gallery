@@ -240,12 +240,9 @@ public sealed partial class SharingViewModel : ObservableObject
 
             return WaitingElsewherePhotos == 1
                 ? $"1 photo this computer cannot see has an answer waiting{where}. Put that "
-                  + "folder somewhere every computer in the house can reach and it arrives "
-                  + "properly - your original, at full size - with the answer already on it."
+                  + "folder where every computer can reach it."
                 : $"{WaitingElsewherePhotos:N0} photos this computer cannot see have answers "
-                  + $"waiting{where}. Put that folder somewhere every computer in the house "
-                  + "can reach and they arrive properly - your originals, at full size - "
-                  + "with the answers already on them.";
+                  + $"waiting{where}. Put that folder where every computer can reach it.";
         }
     }
 
@@ -261,14 +258,12 @@ public sealed partial class SharingViewModel : ObservableObject
     /// </remarks>
     public string WaitingOnPhotosLabel =>
         WaitingOnPhotos == 1
-            ? "1 answer is waiting for a photo that is not in your folders under the name it "
-              + "was given - renamed, moved, or not arrived yet. If it turns up under that "
-              + "name, a scan brings the answer with it. Nothing is thrown away in the "
-              + "meantime."
+            ? "1 answer is waiting for a photo that is not in your folders - renamed, moved, "
+              + "or not arrived yet. If it turns up under its old name, a scan brings the "
+              + "answer in."
             : $"{WaitingOnPhotos:N0} answers are waiting for photos that are not in your "
-              + "folders under the names they were given - renamed, moved, or not arrived "
-              + "yet. If they turn up under those names, a scan brings the answers with "
-              + "them. Nothing is thrown away in the meantime.";
+              + "folders - renamed, moved, or not arrived yet. If they turn up under their "
+              + "old names, a scan brings the answers in.";
 
     /// <summary>
     /// Answers waiting on this computer's own face pass, the photograph being
@@ -278,8 +273,8 @@ public sealed partial class SharingViewModel : ObservableObject
     /// Two different things wear this number: a photograph whose faces have not
     /// been looked for yet, and one where they have and this machine's detector
     /// drew no box where another machine drew one. The first comes good on a
-    /// scan and the second never does, so the sentence promises the first and
-    /// admits the second rather than quietly meaning only one of them.
+    /// scan and the second never does, so the sentence says the next scan
+    /// "may" pick them up rather than promising it.
     ///
     /// <para>It says "scan" and not "sync" deliberately. What lands a held answer
     /// is the scan's own last phase; writing "the next sync will bring them in"
@@ -287,13 +282,10 @@ public sealed partial class SharingViewModel : ObservableObject
     /// </remarks>
     public string WaitingOnFacesLabel =>
         WaitingOnFaces == 1
-            ? "1 answer is waiting on a face this computer has not found yet. The photo is "
-              + "already here - faces are found at the end of a scan, so the next one may "
-              + "pick it up. A face this computer never finds keeps its answer waiting."
+            ? "1 answer is waiting on a face this computer has not found yet. The next scan "
+              + "may pick it up."
             : $"{WaitingOnFaces:N0} answers are waiting on faces this computer has not found "
-              + "yet. The photos are already here - faces are found at the end of a scan, so "
-              + "the next one may pick them up. A face this computer never finds keeps its "
-              + "answer waiting.";
+              + "yet. The next scan may pick them up.";
 
     /// <summary>
     /// Answers about photographs that are here, waiting on something that is not
@@ -319,10 +311,10 @@ public sealed partial class SharingViewModel : ObservableObject
         WaitingHere == 1
             ? "1 answer about a photo that is already here is waiting for the end of a scan, "
               + "a small copy to turn, or an album to put it in. The next scan may pick it "
-              + "up. Nothing is thrown away in the meantime."
+              + "up."
             : $"{WaitingHere:N0} answers about photos that are already here are waiting for "
               + "the end of a scan, small copies to turn, or albums to put them in. The next "
-              + "scan may pick them up. Nothing is thrown away in the meantime.";
+              + "scan may pick them up.";
 
     /// <summary>
     /// Looks for answers waiting in the folder, and says nothing when there are
