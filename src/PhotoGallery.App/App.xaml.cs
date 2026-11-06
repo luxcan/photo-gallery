@@ -79,6 +79,9 @@ public partial class App : System.Windows.Application
         base.OnStartup(e);
         DispatcherUnhandledException += OnUnhandledException;
 
+        // Before any window exists, so the set-up screen gets it too.
+        ToolTipTiming.Apply();
+
         // The one file outside any working folder, and the one thing that has to
         // be known before a library can be opened: which library. It also carries
         // the diagnostics switch and where the models were put, neither of which
