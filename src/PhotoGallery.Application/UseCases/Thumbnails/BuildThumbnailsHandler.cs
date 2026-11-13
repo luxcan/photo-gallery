@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using PhotoGallery.Application.Ports;
+using PhotoGallery.Application.UseCases.Sources;
 
 namespace PhotoGallery.Application.UseCases.Thumbnails;
 
@@ -22,6 +23,13 @@ namespace PhotoGallery.Application.UseCases.Thumbnails;
 /// folder can be copied, cleaned or synced without its index, and a name in the
 /// database is only a claim - one library had 11,481 rows naming tiles that had
 /// all been deleted.</para>
+///
+/// <para>A source that cannot be reached is left alone, and so is a source that
+/// drops while the pass is running. A file that would not open is written off as
+/// unreadable only when its source still answers: a picture on a share that was
+/// switched off is not broken, and writing it off kept it blank for good once
+/// the share came back - a scan with the drive off did that to 13,990 of
+/// them.</para>
 /// </remarks>
 public sealed class BuildThumbnailsHandler
 {
@@ -53,17 +61,20 @@ public sealed class BuildThumbnailsHandler
     private readonly IAssetRepository _assets;
     private readonly IThumbnailStore _store;
     private readonly IThumbnailGenerator _generator;
+    private readonly ISourceAvailability _availability;
 
     public BuildThumbnailsHandler(
         IGalleryReader reader,
         IAssetRepository assets,
         IThumbnailStore store,
-        IThumbnailGenerator generator)
+        IThumbnailGenerator generator,
+        ISourceAvailability availability)
     {
         _reader = reader;
         _assets = assets;
         _store = store;
         _generator = generator;
+        _availability = availability;
     }
 
     public async Task<ThumbnailBuildResult> HandleAsync(
@@ -83,6 +94,8 @@ public sealed class BuildThumbnailsHandler
 
         int built = 0, failed = 0, done = 0;
         bool cancelled = false;
+
+        var lost = new LostSources(_availability);
 
         try
         {
@@ -105,16 +118,23 @@ public sealed class BuildThumbnailsHandler
                             // The turn the user asked for is reapplied here, so a
                             // photograph straightened once stays straight through
                             // every later pass.
-                            GeneratedThumbnail? generated = await _generator
-                                .GenerateAsync(item.FullPath, item.Rotation, token)
-                                .ConfigureAwait(false);
+                            GeneratedThumbnail? generated = lost.IsLost(item.SourceRoot)
+                                ? null
+                                : await _generator
+                                    .GenerateAsync(item.FullPath, item.Rotation, token)
+                                    .ConfigureAwait(false);
 
                             if (generated is null)
                             {
                                 // Recorded rather than simply counted, so this file
-                                // is not opened again on every future pass.
-                                unreadable.Enqueue(item.AssetId);
-                                Interlocked.Increment(ref failed);
+                                // is not opened again on every future pass - but
+                                // only once its source has answered. Otherwise it
+                                // is left for the next pass, uncounted.
+                                if (lost.StillAnswers(item.SourceRoot))
+                                {
+                                    unreadable.Enqueue(item.AssetId);
+                                    Interlocked.Increment(ref failed);
+                                }
                             }
                             else if (await TrySaveAsync(generated, token)
                                          .ConfigureAwait(false) is not string name)
@@ -214,15 +234,28 @@ public sealed class BuildThumbnailsHandler
     }
 
     /// <summary>
-    /// Photos with no tile on disk, whatever their row claims.
+    /// Photos with no tile on disk, whatever their row claims, on sources that
+    /// can be reached.
     /// </summary>
+    /// <remarks>
+    /// Only the sources of photographs that need a tile are asked about, once
+    /// each, so a library whose pictures are all made never waits on a share
+    /// that is switched off.
+    /// </remarks>
     private async Task<IReadOnlyList<PendingThumbnail>> FindPendingAsync(
         CancellationToken cancellationToken)
     {
         IReadOnlyList<PendingThumbnail> candidates =
             await _reader.GetThumbnailCandidatesAsync(cancellationToken).ConfigureAwait(false);
 
-        return [.. candidates.Where(candidate => !_store.Exists(candidate.ThumbnailName))];
+        var reachable = new ReachableSources(_availability);
+
+        return
+        [
+            .. candidates.Where(candidate =>
+                !_store.Exists(candidate.ThumbnailName)
+                && reachable.CanReach(candidate.SourceRoot)),
+        ];
     }
 
     private async Task SaveAsync(

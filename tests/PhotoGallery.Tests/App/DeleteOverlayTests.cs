@@ -75,7 +75,7 @@ public sealed class DeleteOverlayTests : IDisposable
             .AddSingleton<IAssetRepository>(new SqliteAssetRepository(_db))
             .AddSingleton<IThumbnailStore>(thumbnails)
             .AddSingleton<IOriginalFile>(new StubOriginalFile())
-            .AddSingleton<ISourceAvailability>(new AlwaysReachable())
+            .AddSingleton<ISourceAvailability>(new FakeSourceAvailability())
             .AddScoped<RemovePhotoHandler>()
             .BuildServiceProvider();
 
@@ -249,11 +249,6 @@ public sealed class DeleteOverlayTests : IDisposable
             File.Delete(fullPath);
             return true;
         }
-    }
-
-    private sealed class AlwaysReachable : ISourceAvailability
-    {
-        public bool CanReach(string sourceRoot) => true;
     }
 
     private sealed class SilentLog : IActivityLog

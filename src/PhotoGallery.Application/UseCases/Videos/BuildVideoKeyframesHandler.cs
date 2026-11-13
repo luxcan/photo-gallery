@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using PhotoGallery.Application.Ports;
+using PhotoGallery.Application.UseCases.Sources;
 using PhotoGallery.Domain.Assets;
 
 namespace PhotoGallery.Application.UseCases.Videos;
@@ -28,6 +29,11 @@ namespace PhotoGallery.Application.UseCases.Videos;
 /// <see cref="SaveFramesAsync"/>. A poster present therefore means the whole clip
 /// was got through, and a clip interrupted half way leaves no poster and is
 /// simply done again.</para>
+///
+/// <para>A source that cannot be reached is left out before any clip is opened,
+/// and a source that drops part way is passed over from the clip that found it
+/// gone. Each clip on a missing share used to be tried three times and then
+/// stat'ed - 6,276 of them took eleven and a half minutes to learn nothing.</para>
 /// </remarks>
 public sealed class BuildVideoKeyframesHandler
 {
@@ -75,17 +81,20 @@ public sealed class BuildVideoKeyframesHandler
     private readonly IAssetRepository _assets;
     private readonly IThumbnailStore _store;
     private readonly IKeyframeExtractor _extractor;
+    private readonly ISourceAvailability _availability;
 
     public BuildVideoKeyframesHandler(
         IGalleryReader reader,
         IAssetRepository assets,
         IThumbnailStore store,
-        IKeyframeExtractor extractor)
+        IKeyframeExtractor extractor,
+        ISourceAvailability availability)
     {
         _reader = reader;
         _assets = assets;
         _store = store;
         _extractor = extractor;
+        _availability = availability;
     }
 
     public async Task<VideoBuildResult> HandleAsync(
@@ -125,6 +134,7 @@ public sealed class BuildVideoKeyframesHandler
 
         var completed = new ConcurrentQueue<VideoKeyframeUpdate>();
         var unreadable = new ConcurrentQueue<int>();
+        var lost = new LostSources(_availability);
 
         // One writer at a time. These saves now happen while the rest of the
         // pass is still opening videos, and the index is SQLite behind a single
@@ -145,9 +155,11 @@ public sealed class BuildVideoKeyframesHandler
                 },
                 async (item, token) =>
                 {
-                    KeyframeReading reading = await _extractor
-                        .ExtractAsync(item.FullPath, token)
-                        .ConfigureAwait(false);
+                    KeyframeReading reading = lost.IsLost(item.SourceRoot)
+                        ? KeyframeReading.Unavailable
+                        : await _extractor
+                            .ExtractAsync(item.FullPath, token)
+                            .ConfigureAwait(false);
 
                     ExtractedVideo? extracted =
                         reading.Outcome == KeyframeOutcome.Extracted
@@ -170,6 +182,9 @@ public sealed class BuildVideoKeyframesHandler
                         }
                         else
                         {
+                            // Asked so that, if the whole source has gone, the
+                            // clips still to come from it are not tried at all.
+                            lost.StillAnswers(item.SourceRoot);
                             Interlocked.Increment(ref skipped);
                         }
                     }
@@ -283,6 +298,10 @@ public sealed class BuildVideoKeyframesHandler
     /// preview the face pass reads is not there - and the face pass, finding no
     /// preview, would quietly leave that clip alone for ever. Two stats instead
     /// of one, once per video, closes it.
+    ///
+    /// <para>Only sources with a clip still to do are asked about, once each, so
+    /// a library whose videos are all done never waits on a share that is
+    /// switched off.</para>
     /// </remarks>
     private async Task<IReadOnlyList<PendingVideo>> FindPendingAsync(
         CancellationToken cancellationToken)
@@ -290,7 +309,12 @@ public sealed class BuildVideoKeyframesHandler
         IReadOnlyList<PendingVideo> candidates =
             await _reader.GetVideoCandidatesAsync(cancellationToken).ConfigureAwait(false);
 
-        return [.. candidates.Where(NeedsFrames)];
+        var reachable = new ReachableSources(_availability);
+
+        return
+        [
+            .. candidates.Where(video => NeedsFrames(video) && reachable.CanReach(video.SourceRoot)),
+        ];
     }
 
     private bool NeedsFrames(PendingVideo video)

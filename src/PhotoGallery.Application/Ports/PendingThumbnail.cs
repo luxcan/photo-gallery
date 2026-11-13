@@ -12,5 +12,9 @@ namespace PhotoGallery.Application.Ports;
 /// and get rebuilt whenever the file changes or the cache is cleared, so without
 /// carrying it here a photograph straightened once would come back upside down.
 /// </param>
+/// <param name="SourceRoot">
+/// The photo source the file lives under, asked whether it can be reached before
+/// a file that would not open is written off as unreadable.
+/// </param>
 public readonly record struct PendingThumbnail(
-    int AssetId, string FullPath, string? ThumbnailName, int Rotation);
+    int AssetId, string FullPath, string? ThumbnailName, int Rotation, string SourceRoot);

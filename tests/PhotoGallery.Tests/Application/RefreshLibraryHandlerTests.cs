@@ -37,6 +37,7 @@ public sealed class RefreshLibraryHandlerTests : IDisposable
     private readonly FileSystemThumbnailStore _store;
     private readonly StubGenerator _generator = new();
     private readonly StubExtractor _extractor = new();
+    private readonly FakeSourceAvailability _sources = new();
 
     public RefreshLibraryHandlerTests()
     {
@@ -204,6 +205,35 @@ public sealed class RefreshLibraryHandlerTests : IDisposable
         Assert.Equal(0, result.Removed);
         Assert.Equal(1, await _assets.CountAsync(source.Id));
         Assert.Single(_store.ListStoredNames());
+    }
+
+    /// <summary>
+    /// Photographs on a source that is away are left for the next scan, not
+    /// written off.
+    /// </summary>
+    /// <remarks>
+    /// Found on the family library: a scan with the drive switched off turned
+    /// 13,990 photographs Failed - unreadable for good, so they stayed blank
+    /// after the drive came back.
+    /// </remarks>
+    [Fact]
+    public async Task Refresh_WithTheSourceAway_LeavesItsPhotosToBePreparedLater()
+    {
+        WriteMedia("a.jpg");
+        WriteMedia("b.jpg");
+        PhotoSource source = await AddSourceAsync();
+        _sources.Away.Add(source.Path);
+
+        RefreshResult away = await NewHandler().HandleAsync([source.Id]);
+
+        Assert.Equal(0, _generator.Generated);
+        Assert.Equal(0, away.Built);
+        Assert.DoesNotContain(AssetStatus.Failed, await StatusesAsync());
+
+        _sources.Away.Clear();
+        RefreshResult back = await NewHandler().HandleAsync([source.Id]);
+
+        Assert.Equal(2, back.Built);
     }
 
     /// <summary>
@@ -791,7 +821,7 @@ public sealed class RefreshLibraryHandlerTests : IDisposable
                 new SqliteGalleryReader(mum.Db),
                 new SqliteAssetRepository(mum.Db),
                 mum.Thumbnails,
-                new WindowsThumbnailGenerator())
+                new WindowsThumbnailGenerator(), _sources)
             .HandleAsync();
         mum.Db.ChangeTracker.Clear();
 
@@ -1034,7 +1064,7 @@ public sealed class RefreshLibraryHandlerTests : IDisposable
                 _store,
                 new SqliteDecisionReader(_db),
                 new SqliteDecisionRepository(_db)),
-            new BuildThumbnailsHandler(_reader, _assets, _store, _generator),
+            new BuildThumbnailsHandler(_reader, _assets, _store, _generator, _sources),
             new IndexContentHandler(
                 _reader,
                 _store,
@@ -1047,8 +1077,8 @@ public sealed class RefreshLibraryHandlerTests : IDisposable
                 new NowhereNamed(),
                 new SqlitePlaceRepository(_db),
                 _assets,
-                new EverythingReachable()),
-            new BuildVideoKeyframesHandler(_reader, _assets, _store, _extractor),
+                _sources),
+            new BuildVideoKeyframesHandler(_reader, _assets, _store, _extractor, _sources),
             new DetectFacesHandler(
                 _reader, _store, new NeverScanned(), new SqliteFaceRepository(_db),
                 models ?? new NoModels()),
@@ -1111,11 +1141,6 @@ public sealed class RefreshLibraryHandlerTests : IDisposable
     private sealed class NowhereNamed : IGeocoder
     {
         public GazetteerPlace? Resolve(double latitude, double longitude) => null;
-    }
-
-    private sealed class EverythingReachable : ISourceAvailability
-    {
-        public bool CanReach(string sourceRoot) => true;
     }
 
     /// <summary>

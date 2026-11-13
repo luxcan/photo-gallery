@@ -22,7 +22,7 @@ public sealed class TurnPhotoHandlerTests : IDisposable
     private readonly GalleryDbContext _db;
     private readonly FakeTurner _turner = new();
     private readonly FakeOriginals _originals = new();
-    private readonly FakeAvailability _sources = new();
+    private readonly FakeSourceAvailability _sources = new();
     private readonly TurnPhotoHandler _handler;
 
     public TurnPhotoHandlerTests()
@@ -331,14 +331,6 @@ public sealed class TurnPhotoHandlerTests : IDisposable
             Turns++;
             return Fails ? null : new TurnedRendition(800, 600);
         }
-    }
-
-    /// <summary>Sources that are up, and sources that are away.</summary>
-    private sealed class FakeAvailability : ISourceAvailability
-    {
-        public HashSet<string> Away { get; } = new(StringComparer.OrdinalIgnoreCase);
-
-        public bool CanReach(string sourceRoot) => !Away.Contains(sourceRoot);
     }
 
     /// <summary>

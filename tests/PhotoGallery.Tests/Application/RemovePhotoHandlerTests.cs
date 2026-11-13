@@ -21,7 +21,7 @@ public sealed class RemovePhotoHandlerTests : IDisposable
     private readonly GalleryDbContext _db;
     private readonly FileSystemThumbnailStore _thumbnails;
     private readonly FakeOriginal _original = new();
-    private readonly FakeAvailability _sources = new();
+    private readonly FakeSourceAvailability _sources = new();
     private readonly RemovePhotoHandler _handler;
 
     public RemovePhotoHandlerTests()
@@ -466,27 +466,6 @@ public sealed class RemovePhotoHandlerTests : IDisposable
         });
         _db.SaveChanges();
         _db.ChangeTracker.Clear();
-    }
-
-    /// <summary>
-    /// Sources that are up, and sources that are away.
-    /// </summary>
-    /// <remarks>
-    /// Counts what it was asked, because asking once per source rather than once
-    /// per photograph is the difference between a batch refusing in a moment and
-    /// one that blocks for 21 seconds a file.
-    /// </remarks>
-    private sealed class FakeAvailability : ISourceAvailability
-    {
-        public HashSet<string> Away { get; } = new(StringComparer.OrdinalIgnoreCase);
-
-        public List<string> Asked { get; } = [];
-
-        public bool CanReach(string sourceRoot)
-        {
-            Asked.Add(sourceRoot);
-            return !Away.Contains(sourceRoot);
-        }
     }
 
     private sealed class FakeOriginal : IOriginalFile

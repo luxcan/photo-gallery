@@ -24,7 +24,7 @@ public sealed class LocatePhotosHandlerTests : IDisposable
     private readonly SqlitePlaceRepository _places;
     private readonly StubCoordinates _coordinates = new();
     private readonly StubGeocoder _geocoder = new();
-    private readonly FakeAvailability _availability = new();
+    private readonly FakeSourceAvailability _availability = new();
 
     public LocatePhotosHandlerTests()
     {
@@ -347,14 +347,6 @@ public sealed class LocatePhotosHandlerTests : IDisposable
         public GazetteerPlace? Nearest { get; set; }
 
         public GazetteerPlace? Resolve(double latitude, double longitude) => Nearest;
-    }
-
-    /// <summary>Sources that are up, and sources that are away.</summary>
-    private sealed class FakeAvailability : ISourceAvailability
-    {
-        public HashSet<string> Away { get; } = new(StringComparer.OrdinalIgnoreCase);
-
-        public bool CanReach(string sourceRoot) => !Away.Contains(sourceRoot);
     }
 
     public void Dispose()

@@ -19,6 +19,7 @@ public sealed class BuildThumbnailsHandlerTests : IDisposable
     private readonly SqliteGalleryReader _reader;
     private readonly FileSystemThumbnailStore _store;
     private readonly StubGenerator _generator = new();
+    private readonly FakeSourceAvailability _sources = new();
 
     public BuildThumbnailsHandlerTests()
     {
@@ -47,7 +48,7 @@ public sealed class BuildThumbnailsHandlerTests : IDisposable
     }
 
     private BuildThumbnailsHandler NewHandler(IThumbnailStore? store = null) =>
-        new(_reader, _assets, store ?? _store, _generator);
+        new(_reader, _assets, store ?? _store, _generator, _sources);
 
     [Fact]
     public async Task Build_ProducesTilesForPhotosThatHaveNone()
@@ -202,6 +203,50 @@ public sealed class BuildThumbnailsHandlerTests : IDisposable
 
         Assert.Equal(1, result.Built);
         Assert.Equal(1, result.Failed);
+    }
+
+    [Fact]
+    public async Task Build_OnASourceThatIsAway_OpensNothingAndWritesNothingOff()
+    {
+        AddPhoto("a.jpg");
+        AddPhoto("b.jpg");
+        _sources.Away.Add(_photosRoot);
+
+        ThumbnailBuildResult result = await NewHandler().HandleAsync();
+
+        Assert.Equal(0, _generator.Generated);
+        Assert.Equal(0, result.Pending);
+        Assert.Single(_sources.Asked);
+        Assert.All(await PhotosAsync(), photo => Assert.NotEqual(AssetStatus.Failed, photo.Status));
+    }
+
+    /// <summary>
+    /// A file that would not open while its source went away is not written off,
+    /// and the rest of that source is not tried.
+    /// </summary>
+    /// <remarks>
+    /// A share that drops part way through gives exactly the "could not open" a
+    /// corrupt file does, so the source is asked before the file is believed.
+    /// More than one batch of twenty, so the second batch starts after the first
+    /// has found the source gone.
+    /// </remarks>
+    [Fact]
+    public async Task Build_WhenTheSourceDropsPartWay_WritesNothingOffAndStopsTrying()
+    {
+        const int Photographs = 30;
+        for (int i = 0; i < Photographs; i++)
+        {
+            AddPhoto($"{i}.jpg");
+            _generator.Undecodable.Add($"{i}.jpg");
+        }
+
+        _generator.OnGenerate = () => _sources.SendAway(_photosRoot);
+
+        ThumbnailBuildResult result = await NewHandler().HandleAsync();
+
+        Assert.Equal(0, result.Failed);
+        Assert.InRange(_generator.Generated, 1, 20);
+        Assert.All(await PhotosAsync(), photo => Assert.NotEqual(AssetStatus.Failed, photo.Status));
     }
 
     /// <summary>

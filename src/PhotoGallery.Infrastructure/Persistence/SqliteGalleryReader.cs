@@ -51,7 +51,7 @@ public sealed class SqliteGalleryReader : IGalleryReader
 
         return rows
             .Select(r => new PendingThumbnail(
-                r.Id, Path.Combine(r.Path, r.RelativePath), r.ThumbnailName, r.Rotation))
+                r.Id, Path.Combine(r.Path, r.RelativePath), r.ThumbnailName, r.Rotation, r.Path))
             .ToList();
     }
 
@@ -98,7 +98,8 @@ public sealed class SqliteGalleryReader : IGalleryReader
                 Path.Combine(r.Path, r.RelativePath),
                 r.RelativePath,
                 r.Length,
-                r.ModifiedUtc))
+                r.ModifiedUtc,
+                r.Path))
             .ToList();
     }
 

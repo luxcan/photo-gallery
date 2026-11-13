@@ -26,6 +26,7 @@ public sealed class BuildVideoKeyframesHandlerTests : IDisposable
     private readonly FileSystemThumbnailStore _thumbnails;
     private readonly WorkingFolder _workingFolder;
     private readonly int _sourceId;
+    private readonly FakeSourceAvailability _sources = new();
 
     public BuildVideoKeyframesHandlerTests()
     {
@@ -106,7 +107,7 @@ public sealed class BuildVideoKeyframesHandlerTests : IDisposable
         var written = new List<string>();
         var recording = new RecordingThumbnailStore(_thumbnails, written.Add);
         var handler = new BuildVideoKeyframesHandler(
-            _reader, _assets, recording, new FakeExtractor(frames: 3));
+            _reader, _assets, recording, new FakeExtractor(frames: 3), _sources);
 
         await handler.HandleAsync();
 
@@ -124,7 +125,7 @@ public sealed class BuildVideoKeyframesHandlerTests : IDisposable
         await HandlerYielding(frames: 3).HandleAsync();
 
         var second = new FakeExtractor(frames: 3);
-        var handler = new BuildVideoKeyframesHandler(_reader, _assets, _thumbnails, second);
+        var handler = new BuildVideoKeyframesHandler(_reader, _assets, _thumbnails, second, _sources);
 
         VideoBuildResult result = await handler.HandleAsync();
 
@@ -153,7 +154,7 @@ public sealed class BuildVideoKeyframesHandlerTests : IDisposable
     {
         AddVideo(@"2023\broken.mts");
         var handler = new BuildVideoKeyframesHandler(
-            _reader, _assets, _thumbnails, new FakeExtractor(frames: 0));
+            _reader, _assets, _thumbnails, new FakeExtractor(frames: 0), _sources);
 
         VideoBuildResult first = await handler.HandleAsync();
 
@@ -162,7 +163,7 @@ public sealed class BuildVideoKeyframesHandlerTests : IDisposable
 
         // Recorded as a fact, so it does not cost an open on every future run.
         var second = new FakeExtractor(frames: 3);
-        await new BuildVideoKeyframesHandler(_reader, _assets, _thumbnails, second)
+        await new BuildVideoKeyframesHandler(_reader, _assets, _thumbnails, second, _sources)
             .HandleAsync();
 
         Assert.Equal(0, second.Opened);
@@ -180,7 +181,7 @@ public sealed class BuildVideoKeyframesHandlerTests : IDisposable
         var away = new FakeExtractor(frames: 0) { FailureOutcome = KeyframeOutcome.Unavailable };
 
         VideoBuildResult first = await new BuildVideoKeyframesHandler(
-            _reader, _assets, _thumbnails, away).HandleAsync();
+            _reader, _assets, _thumbnails, away, _sources).HandleAsync();
 
         Assert.Equal(0, first.Failed);
         Assert.Equal(1, first.Skipped);
@@ -191,7 +192,7 @@ public sealed class BuildVideoKeyframesHandlerTests : IDisposable
         // And the next run offers it again, rather than passing over it forever.
         var back = new FakeExtractor(frames: 1);
         VideoBuildResult second = await new BuildVideoKeyframesHandler(
-            _reader, _assets, _thumbnails, back).HandleAsync();
+            _reader, _assets, _thumbnails, back, _sources).HandleAsync();
 
         Assert.Equal(1, back.Opened);
         Assert.Equal(1, second.Prepared);
@@ -199,11 +200,47 @@ public sealed class BuildVideoKeyframesHandlerTests : IDisposable
     }
 
     [Fact]
+    public async Task ASourceThatIsAway_HasNoneOfItsClipsOpened()
+    {
+        // Found on the family library with the drive switched off: every clip on
+        // it was tried three times and then looked for - 6,276 of them, eleven
+        // and a half minutes, to learn nothing.
+        AddVideos(3);
+        _sources.Away.Add(SourceRoot());
+        var extractor = new FakeExtractor(frames: 1);
+
+        VideoBuildResult result = await new BuildVideoKeyframesHandler(
+            _reader, _assets, _thumbnails, extractor, _sources).HandleAsync();
+
+        Assert.Equal(0, extractor.Opened);
+        Assert.Equal(0, result.Considered);
+        Assert.Single(_sources.Asked);
+        Assert.All(_db.Assets.AsNoTracking(), clip => Assert.Equal(AssetStatus.Skipped, clip.Status));
+    }
+
+    [Fact]
+    public async Task ASourceThatGoesAwayPartWay_IsNotTriedAgainThatPass()
+    {
+        AddVideos(5);
+        var extractor = new FakeExtractor(frames: 0) { FailureOutcome = KeyframeOutcome.Unavailable };
+        string root = SourceRoot();
+        extractor.OnExtract = () => _sources.Away.Add(root);
+
+        VideoBuildResult result = await new BuildVideoKeyframesHandler(
+                _reader, _assets, _thumbnails, extractor, _sources)
+            .HandleAsync(degreeOfParallelism: 1);
+
+        Assert.Equal(1, extractor.Opened);
+        Assert.Equal(5, result.Skipped);
+        Assert.Equal(0, result.Failed);
+    }
+
+    [Fact]
     public async Task AClipWithNoLengthStillGetsItsPoster()
     {
         AddVideo(@"2023\clip.mp4");
         var handler = new BuildVideoKeyframesHandler(
-            _reader, _assets, _thumbnails, new FakeExtractor(frames: 1, duration: null));
+            _reader, _assets, _thumbnails, new FakeExtractor(frames: 1, duration: null), _sources);
 
         VideoBuildResult result = await handler.HandleAsync();
 
@@ -244,7 +281,7 @@ public sealed class BuildVideoKeyframesHandlerTests : IDisposable
 
         var extractor = new FakeExtractor(frames: 3);
         VideoBuildResult result = await new BuildVideoKeyframesHandler(
-            _reader, _assets, _thumbnails, extractor).HandleAsync();
+            _reader, _assets, _thumbnails, extractor, _sources).HandleAsync();
 
         Assert.Equal(0, result.Considered);
         Assert.Equal(0, extractor.Opened);
@@ -279,7 +316,7 @@ public sealed class BuildVideoKeyframesHandlerTests : IDisposable
         var extractor = new GatedExtractor(expected: 12);
 
         VideoBuildResult result = await new BuildVideoKeyframesHandler(
-            _reader, _assets, _thumbnails, extractor).HandleAsync(degreeOfParallelism: 12);
+            _reader, _assets, _thumbnails, extractor, _sources).HandleAsync(degreeOfParallelism: 12);
 
         Assert.Equal(12, extractor.Peak);
         Assert.Equal(12, result.Prepared);
@@ -305,7 +342,7 @@ public sealed class BuildVideoKeyframesHandlerTests : IDisposable
         var extractor = new StoppingExtractor(answers: 3, stop);
 
         VideoBuildResult result = await new BuildVideoKeyframesHandler(
-                _reader, _assets, _thumbnails, extractor)
+                _reader, _assets, _thumbnails, extractor, _sources)
             .HandleAsync(degreeOfParallelism: 1, cancellationToken: stop.Token);
 
         Assert.True(result.Cancelled);
@@ -314,7 +351,7 @@ public sealed class BuildVideoKeyframesHandlerTests : IDisposable
     }
 
     private BuildVideoKeyframesHandler HandlerYielding(int frames) =>
-        new(_reader, _assets, _thumbnails, new FakeExtractor(frames));
+        new(_reader, _assets, _thumbnails, new FakeExtractor(frames), _sources);
 
     private void AddVideo(string relativePath)
     {
@@ -334,6 +371,8 @@ public sealed class BuildVideoKeyframesHandlerTests : IDisposable
         _db.SaveChanges();
         _db.ChangeTracker.Clear();
     }
+
+    private string SourceRoot() => _db.PhotoSources.AsNoTracking().Single().Path;
 
     /// <summary>How many clips have frames written down against them.</summary>
     private int ClipsWithFrames() =>
@@ -401,12 +440,16 @@ public sealed class BuildVideoKeyframesHandlerTests : IDisposable
         /// <summary>How many videos were actually opened.</summary>
         public int Opened => _opened;
 
+        /// <summary>Runs as each video is opened, before it answers.</summary>
+        public Action? OnExtract { get; set; }
+
         private int _opened;
 
         public Task<KeyframeReading> ExtractAsync(
             string originalPath, CancellationToken cancellationToken = default)
         {
             Interlocked.Increment(ref _opened);
+            OnExtract?.Invoke();
 
             if (_frames == 0)
             {
