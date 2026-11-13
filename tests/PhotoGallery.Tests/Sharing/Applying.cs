@@ -117,8 +117,10 @@ internal static class Applying
         return
         [
             .. mine.Memberships.Where(membership => !moved.Contains(membership.Photo)),
-            .. plan.Moves.Select(move => new SharedAlbumMembership(
-                move.Photo, move.To, move.AddedUtc, move.DecidedBy)),
+            .. plan.Moves
+                .Where(move => move.To is not null)
+                .Select(move => new SharedAlbumMembership(
+                    move.Photo, move.To!.Value, move.AddedUtc, move.DecidedBy)),
         ];
     }
 

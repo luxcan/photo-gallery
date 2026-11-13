@@ -1347,6 +1347,7 @@ public static class DecisionMerge
         Dictionary<AssetKey, SharedAlbumMembership> winners = new(ours);
         List<SharedAlbumMembership> held = [];
         List<SharedAlbumMembership> nowhere = [];
+        Refusals refusals = Refusals.Of(mine, accepted);
 
         // One machine at a time, because an album is named by the identity the
         // machine that published it uses, and working out what that names here
@@ -1396,6 +1397,16 @@ public static class DecisionMerge
                 SharedAlbumMembership placed =
                     album == membership.Album ? membership : membership with { Album = album };
 
+                // Taken out of that album since it was put there, here or on
+                // another computer. Beaten like an earlier filing, so a
+                // photograph somebody took out is not put straight back by the
+                // computer that has not heard yet.
+                if (refusals.Since(placed, albums.Here(album) ?? theirs.GetValueOrDefault(membership.Album))
+                    is not null)
+                {
+                    continue;
+                }
+
                 if (!here.Photographs.Contains(membership.Photo))
                 {
                     // Parked under the name this library will look the album up
@@ -1410,6 +1421,22 @@ public static class DecisionMerge
                 }
 
                 winners[placed.Photo] = placed;
+            }
+        }
+
+        // This library's own filings that somebody has since taken out - the
+        // half of a removal that travels. Only where nothing newer has moved
+        // the photograph elsewhere in this merge.
+        List<SharedAlbumMove> takenOut = [];
+        foreach (SharedAlbumMembership standing in ours.Values)
+        {
+            if (winners.GetValueOrDefault(standing.Photo) == standing
+                && refusals.Since(standing, albums.Here(standing.Album))
+                    is SharedAlbumRejection refused)
+            {
+                winners.Remove(standing.Photo);
+                takenOut.Add(new SharedAlbumMove(
+                    standing.Photo, standing.Album, To: null, refused.RejectedUtc, refused.DecidedBy));
             }
         }
 
@@ -1428,9 +1455,71 @@ public static class DecisionMerge
                         move.Winner.Album,
                         move.Winner.AddedUtc,
                         move.Winner.DecidedBy)),
+                .. takenOut,
             ],
             held,
             nowhere);
+    }
+
+    /// <summary>
+    /// The latest refusal of each photograph from each album, across this
+    /// library and every computer it has heard from.
+    /// </summary>
+    /// <remarks>
+    /// Taking a photograph out of an album is remembered as a refusal, and
+    /// refusals travel; a membership did not know about them, so the computer
+    /// that had not heard yet put the photograph straight back on the next
+    /// sync. A refusal later than a membership now beats it. Later only, and
+    /// that is what makes putting a photograph back work: the refusal is never
+    /// cleared, but a membership made after it is newer and stands.
+    /// </remarks>
+    private sealed class Refusals
+    {
+        private readonly Dictionary<(AssetKey Photo, string Key), SharedAlbumRejection> _latest = [];
+
+        public static Refusals Of(DecisionSet mine, IEnumerable<DecisionSet> others)
+        {
+            var refusals = new Refusals();
+
+            foreach (SharedAlbumRejection rejection in
+                     mine.Rejections.Concat(others.SelectMany(them => them.Rejections)))
+            {
+                if (AlbumRefusalKey.IsLocalOnly(rejection.ProposalKey))
+                {
+                    continue;
+                }
+
+                (AssetKey, string) key = (rejection.Photo, rejection.ProposalKey);
+
+                if (!refusals._latest.TryGetValue(key, out SharedAlbumRejection? standing)
+                    || rejection.RejectedUtc > standing.RejectedUtc)
+                {
+                    refusals._latest[key] = rejection;
+                }
+            }
+
+            return refusals;
+        }
+
+        /// <summary>
+        /// The refusal that takes this photograph out of this album since it was
+        /// put there, or null.
+        /// </summary>
+        /// <param name="album">The album as this library knows it, or null when unknown.</param>
+        public SharedAlbumRejection? Since(SharedAlbumMembership membership, SharedAlbum? album)
+        {
+            if (album is null)
+            {
+                return null;
+            }
+
+            string key = album.ProposalKey ?? AlbumRefusalKey.Made(album.PublicId);
+
+            return _latest.TryGetValue((membership.Photo, key), out SharedAlbumRejection? refused)
+                   && refused.RejectedUtc > membership.AddedUtc
+                ? refused
+                : null;
+        }
     }
 
     /// <summary>What a merge concluded about which album each photograph is in.</summary>
@@ -1538,6 +1627,9 @@ public static class DecisionMerge
             _byPublicId.TryGetValue(publicId, out SharedAlbum? album)
             && (_settled.Lost.Contains(Identity(album))
                 || _settled.Standing.GetValueOrDefault(Identity(album))?.DeletedUtc is not null);
+
+        /// <summary>This library's album of that identity, if it has one.</summary>
+        public SharedAlbum? Here(Guid publicId) => _byPublicId.GetValueOrDefault(publicId);
 
         /// <summary>
         /// What this library would call the album a membership names, or why it

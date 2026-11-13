@@ -1181,8 +1181,28 @@ public sealed class SqliteDecisionRepository : IDecisionRepository
             // afterwards. The merge now settles what an album is called here
             // and refuses what cannot land, so nothing that reaches this loop
             // should fail to place. See DecisionMerge's album resolution.
-            if (!assets.TryGetValue(move.Photo, out int assetId)
-                || !albums.TryGetValue(move.To, out int albumId))
+            if (!assets.TryGetValue(move.Photo, out int assetId))
+            {
+                continue;
+            }
+
+            // Taken out and put nowhere: somebody took it out of that album
+            // since it was put there. Only out of the album it is leaving, so a
+            // photograph that has meanwhile moved somewhere else stays there.
+            if (move.To is not Guid to)
+            {
+                if (move.From is Guid from && albums.TryGetValue(from, out int leaving))
+                {
+                    moved += await _db.AlbumMembers
+                        .Where(member => member.AssetId == assetId && member.AlbumId == leaving)
+                        .ExecuteDeleteAsync(cancellationToken)
+                        .ConfigureAwait(false);
+                }
+
+                continue;
+            }
+
+            if (!albums.TryGetValue(to, out int albumId))
             {
                 continue;
             }

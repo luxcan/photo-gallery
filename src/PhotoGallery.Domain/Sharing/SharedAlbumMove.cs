@@ -8,6 +8,10 @@ namespace PhotoGallery.Domain.Sharing;
 /// settle it silently.
 /// </remarks>
 /// <param name="From">The album it leaves, or null when it was in none.</param>
+/// <param name="To">
+/// The album it joins, or null when it is taken out of <paramref name="From"/>
+/// and put in none.
+/// </param>
 /// <param name="DecidedBy">
 /// The machine that put it there, kept rather than restamped as this one. A
 /// machine publishes everything it holds, so an answer that lost its author on
@@ -17,6 +21,6 @@ namespace PhotoGallery.Domain.Sharing;
 public sealed record SharedAlbumMove(
     AssetKey Photo,
     Guid? From,
-    Guid To,
+    Guid? To,
     DateTime AddedUtc,
     Guid DecidedBy);
