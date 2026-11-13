@@ -7,10 +7,8 @@ namespace PhotoGallery.Application.UseCases.Updates;
 /// </summary>
 /// <remarks>
 /// Asks, and never acts. The most this can do is hand back something for the
-/// screen to offer; fetching a seventy megabyte executable, checking it,
-/// replacing a running program and restarting it is a different piece of work
-/// with a failure that leaves somebody with half an app. A sentence and a link
-/// is the whole of what this is for.
+/// screen to offer; installing it is <see cref="UpdateAppHandler"/>'s, and only
+/// when somebody presses Update.
 ///
 /// <para>Silent about everything except good news, for the same reason the
 /// shared-answer check is: the machine this runs on is often on a network that

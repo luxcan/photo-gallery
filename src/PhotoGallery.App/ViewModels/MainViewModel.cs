@@ -1743,10 +1743,9 @@ public sealed partial class MainViewModel : ObservableObject
     /// Asks whether a newer version of the app has been published.
     /// </summary>
     /// <remarks>
-    /// It offers the release page and nothing more. Fetching a seventy megabyte
-    /// executable, checking it, replacing a running program and restarting it is
-    /// a different piece of work whose failure leaves somebody with half an app;
-    /// a sentence and a link is the whole of what this is for.
+    /// Offers to install it where this copy can replace itself and the release
+    /// carries a file it can prove; otherwise offers the release page, as it
+    /// always did.
     ///
     /// <para>Silent about every failure, as the folder look is. This machine is
     /// often on a network that reaches nothing, and a complaint about that on
@@ -1756,13 +1755,17 @@ public sealed partial class MainViewModel : ObservableObject
     {
         try
         {
-            PublishedRelease? published = await Task.Run(async () =>
+            (PublishedRelease? published, bool installable) = await Task.Run(async () =>
             {
                 using IServiceScope scope = _scopeFactory.CreateScope();
-                return await scope.ServiceProvider
+                PublishedRelease? newest = await scope.ServiceProvider
                     .GetRequiredService<CheckForNewVersionHandler>()
                     .HandleAsync()
                     .ConfigureAwait(false);
+
+                return (newest, newest is not null
+                    && scope.ServiceProvider.GetRequiredService<UpdateAppHandler>()
+                        .CanInstall(newest));
             }).ConfigureAwait(true);
 
             if (published is null || published.Number <= _versionOffered)
@@ -1771,6 +1774,16 @@ public sealed partial class MainViewModel : ObservableObject
             }
 
             _versionOffered = published.Number;
+
+            if (installable)
+            {
+                Ask(
+                    $"{published.Name} is available. You are running {AppVersion.Number}. "
+                    + "Do you want to update?",
+                    "Update",
+                    () => UpdateAsync(published));
+                return;
+            }
 
             Ask(
                 $"{published.Name} is available. You are running {AppVersion.Number}.",
@@ -1792,6 +1805,81 @@ public sealed partial class MainViewModel : ObservableObject
     /// once for the life of the window rather than every hour.
     /// </summary>
     private Version _versionOffered = new(0, 0);
+
+    /// <summary>
+    /// Closes the app, set by the window. An update ends with the new version
+    /// started and this one closing, so the library is let go before the new
+    /// one opens it.
+    /// </summary>
+    public Action? CloseApp { get; set; }
+
+    /// <summary>
+    /// Downloads and installs a published version, then hands over to it.
+    /// </summary>
+    /// <remarks>
+    /// Under the overlay with Stop while downloading - seventy megabytes on a
+    /// slow line is minutes - and nothing installed is touched until the file
+    /// has arrived whole and proved. A failure says why in a sentence and leaves
+    /// this version running; the release is offered again on the next hourly
+    /// look.
+    /// </remarks>
+    private async Task UpdateAsync(PublishedRelease release)
+    {
+        if (!IsIdle)
+        {
+            _versionOffered = new Version(0, 0);
+            Say("Photo Gallery is busy right now. It will offer the update again within the hour.");
+            return;
+        }
+
+        using var cancellation = new CancellationTokenSource();
+        _refreshCancellation = cancellation;
+        CancellationToken token = cancellation.Token;
+
+        IsRefreshing = true;
+        OverlayTitle = $"Updating to {release.Name}";
+        OverlayTarget = string.Empty;
+        OverlayStatus = "downloading...";
+        OverlayIsIndeterminate = false;
+        OverlayPercent = 0;
+
+        var progress = new Progress<double>(fraction => OverlayPercent = fraction * 100d);
+        bool restarting = false;
+
+        try
+        {
+            using IServiceScope scope = _scopeFactory.CreateScope();
+            UpdateAppHandler handler = scope.ServiceProvider.GetRequiredService<UpdateAppHandler>();
+
+            await Task.Run(() => handler.InstallAsync(release, progress, token), CancellationToken.None)
+                .ConfigureAwait(true);
+
+            restarting = true;
+            Append($"updated to {release.Number}; starting it");
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested)
+        {
+            _versionOffered = new Version(0, 0);
+            Append("update stopped");
+        }
+        catch (UpdateFailedException ex)
+        {
+            _versionOffered = new Version(0, 0);
+            Append($"update failed: {ex.InnerException?.Message ?? ex.Message}");
+            Say(ex.Message);
+        }
+        finally
+        {
+            _refreshCancellation = null;
+            IsRefreshing = false;
+            ClearOverlay();
+        }
+
+        if (restarting)
+        {
+            CloseApp?.Invoke();
+        }
+    }
 
     /// <summary>
     /// Takes the answers the notice is offering, under the shared overlay.

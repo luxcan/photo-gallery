@@ -29,4 +29,12 @@ public interface IReleaseSource
 /// </param>
 /// <param name="Name">What it is called, for the sentence on screen.</param>
 /// <param name="Page">Where a person goes to read about it and fetch it.</param>
-public sealed record PublishedRelease(Version Number, string Name, string Page);
+/// <param name="Download">
+/// The executable the app can install itself from, or null when the release has
+/// none it can prove - and then the page is all that is offered.
+/// </param>
+public sealed record PublishedRelease(
+    Version Number,
+    string Name,
+    string Page,
+    ReleaseDownload? Download = null);

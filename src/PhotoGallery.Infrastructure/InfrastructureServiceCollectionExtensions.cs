@@ -54,6 +54,7 @@ public static class InfrastructureServiceCollectionExtensions
         // one per call leaves its connection held for minutes afterwards, and the
         // habit is what spreads rather than this app's few requests.
         services.AddSingleton<IReleaseSource, GitHubReleases>();
+        services.AddSingleton<IAppInstaller, SelfReplacingInstaller>();
 
         services.AddSingleton<IQuarantineStore, FileSystemQuarantine>();
         services.AddSingleton<IMediaFileWalker, MediaFileWalker>();

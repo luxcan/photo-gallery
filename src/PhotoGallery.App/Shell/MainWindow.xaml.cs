@@ -38,6 +38,7 @@ public partial class MainWindow : Window
         InitializeComponent();
 
         _viewModel.AddFolderQuestions = new AddFolderQuestions(this);
+        _viewModel.CloseApp = Close;
 
         // The title bar is Windows', not this app's, so it has to be told the
         // theme rather than inheriting it.

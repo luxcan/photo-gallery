@@ -108,6 +108,55 @@ public sealed class NewVersionTests
         Assert.Equal("v2.0.0", read.Name);
     }
 
+    private const string Digest = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+
+    [Fact]
+    public void TheExecutableAndGitHubsDigestAreAnInstallableDownload()
+    {
+        PublishedRelease? read = GitHubReleases.Read(Json($$"""
+            { "tag_name": "v1.1.0", "assets": [
+                { "name": "PhotoGallery.exe", "size": 73901754,
+                  "digest": "sha256:{{Digest.ToUpperInvariant()}}",
+                  "browser_download_url": "https://github.com/luxcan/photo-gallery/releases/download/v1.1.0/PhotoGallery.exe" } ] }
+            """));
+
+        ReleaseDownload download = Assert.IsType<ReleaseDownload>(read?.Download);
+        Assert.Equal(Digest, download.Sha256);
+        Assert.Equal(73901754, download.Length);
+        Assert.EndsWith("/PhotoGallery.exe", download.Address.AbsoluteUri, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ADigestFileBesideTheExecutableAlsoProvesIt()
+    {
+        PublishedRelease? read = GitHubReleases.Read(Json("""
+            { "tag_name": "v1.1.0", "assets": [
+                { "name": "PhotoGallery.exe", "size": 10,
+                  "browser_download_url": "https://example.com/PhotoGallery.exe" },
+                { "name": "PhotoGallery.exe.sha256", "size": 82,
+                  "browser_download_url": "https://example.com/PhotoGallery.exe.sha256" } ] }
+            """));
+
+        ReleaseDownload download = Assert.IsType<ReleaseDownload>(read?.Download);
+        Assert.Null(download.Sha256);
+        Assert.Equal("https://example.com/PhotoGallery.exe.sha256", download.Sha256Address?.AbsoluteUri);
+    }
+
+    [Theory]
+    [InlineData("""{ "tag_name": "v1.1.0" }""")]
+    [InlineData("""{ "tag_name": "v1.1.0", "assets": [ { "name": "PhotoGallery.exe", "browser_download_url": "https://example.com/PhotoGallery.exe" } ] }""")]
+    [InlineData("""{ "tag_name": "v1.1.0", "assets": [ { "name": "PhotoGallery.exe", "digest": "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", "browser_download_url": "http://example.com/PhotoGallery.exe" } ] }""")]
+    [InlineData("""{ "tag_name": "v1.1.0", "assets": [ { "name": "Other.exe", "digest": "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", "browser_download_url": "https://example.com/Other.exe" } ] }""")]
+    public void ARelease_WithNoExecutableItCanProve_IsOnlyAPageToRead(string answer)
+    {
+        // No asset, no digest, or not over HTTPS: offered as a page, never
+        // installed.
+        PublishedRelease? read = GitHubReleases.Read(Json(answer));
+
+        Assert.NotNull(read);
+        Assert.Null(read.Download);
+    }
+
     private static CheckForNewVersionHandler Check(PublishedRelease? newest) =>
         new(new OneRelease(newest));
 

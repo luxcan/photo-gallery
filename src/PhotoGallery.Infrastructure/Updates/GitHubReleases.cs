@@ -150,8 +150,77 @@ public sealed class GitHubReleases : IReleaseSource
             ? address
             : "https://github.com/luxcan/photo-gallery/releases";
 
-        return new PublishedRelease(published, name, page);
+        return new PublishedRelease(published, name, page, Downloadable(release));
     }
+
+    /// <summary>The executable the publish script attaches to every release.</summary>
+    internal const string Executable = "PhotoGallery.exe";
+
+    /// <summary>
+    /// The executable attached to the release and the digest that proves it, or
+    /// null when either is missing.
+    /// </summary>
+    /// <remarks>
+    /// GitHub states a digest on every asset uploaded since mid-2025; the publish
+    /// script also attaches <c>PhotoGallery.exe.sha256</c>, so a release still
+    /// proves itself if that field is ever absent. Neither means no download.
+    /// </remarks>
+    private static ReleaseDownload? Downloadable(JsonElement release)
+    {
+        if (!release.TryGetProperty("assets", out JsonElement assets)
+            || assets.ValueKind != JsonValueKind.Array)
+        {
+            return null;
+        }
+
+        JsonElement? executable = null;
+        Uri? digestFile = null;
+
+        foreach (JsonElement asset in assets.EnumerateArray())
+        {
+            string? assetName = asset.TryGetProperty("name", out JsonElement named)
+                ? named.GetString()
+                : null;
+
+            if (string.Equals(assetName, Executable, StringComparison.OrdinalIgnoreCase))
+            {
+                executable = asset;
+            }
+            else if (string.Equals(assetName, Executable + ".sha256", StringComparison.OrdinalIgnoreCase))
+            {
+                digestFile = AddressOf(asset);
+            }
+        }
+
+        if (executable is not JsonElement exe || AddressOf(exe) is not Uri address)
+        {
+            return null;
+        }
+
+        string? digest = exe.TryGetProperty("digest", out JsonElement stated)
+                         && stated.ValueKind == JsonValueKind.String
+            ? SelfReplacingInstaller.Hex(stated.GetString())
+            : null;
+
+        if (digest is null && digestFile is null)
+        {
+            return null;
+        }
+
+        long length = exe.TryGetProperty("size", out JsonElement size)
+                      && size.TryGetInt64(out long bytes)
+            ? bytes
+            : 0;
+
+        return new ReleaseDownload(address, length, digest, digestFile);
+    }
+
+    private static Uri? AddressOf(JsonElement asset) =>
+        asset.TryGetProperty("browser_download_url", out JsonElement url)
+        && Uri.TryCreate(url.GetString(), UriKind.Absolute, out Uri? address)
+        && address.Scheme == Uri.UriSchemeHttps
+            ? address
+            : null;
 
     /// <summary>
     /// This build's own number, said in the header, because a request that

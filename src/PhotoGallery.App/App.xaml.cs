@@ -6,7 +6,9 @@ using PhotoGallery.App.People;
 using PhotoGallery.App.Shell;
 using PhotoGallery.App.Sharing;
 using PhotoGallery.App.Theme;
+using PhotoGallery.App.Updates;
 using PhotoGallery.App.ViewModels;
+using PhotoGallery.Application;
 using PhotoGallery.Application.Ports;
 using PhotoGallery.Application.UseCases.OpenLibrary;
 using PhotoGallery.Domain.Library;
@@ -78,6 +80,10 @@ public partial class App : System.Windows.Application
     {
         base.OnStartup(e);
         DispatcherUnhandledException += OnUnhandledException;
+
+        // Before anything opens the library: the version this one replaced may
+        // still be closing, and two processes must never have it open at once.
+        bool updated = AfterUpdate.WaitForPrevious(e.Args);
 
         // Before any window exists, so the set-up screen gets it too.
         ToolTipTiming.Apply();
@@ -172,6 +178,17 @@ public partial class App : System.Windows.Application
         MainWindow = window;
         ShutdownMode = ShutdownMode.OnMainWindowClose;
         window.Show();
+
+        IAppInstaller installer = _services.GetRequiredService<IAppInstaller>();
+        if (installer.CanReplaceItself)
+        {
+            installer.CleanUp();
+        }
+
+        if (updated)
+        {
+            viewModel.Say($"Photo Gallery has been updated to {AppVersion.Number}.");
+        }
     }
 
     /// <summary>
