@@ -38,15 +38,21 @@ public sealed record ShareResult(MergeResult Merged, PublishResult Published)
             }
 
             // Publishing failed after merging succeeded, which means the folder
-            // went away between the two. Said plainly, because this library has
-            // taken answers nobody else will see until it is shared again.
+            // went away between the two. Said plainly, because this computer's
+            // changes will not reach anybody else until it syncs again. Why it
+            // failed is for the log, not the screen.
             if (!Published.Published)
             {
-                return $"{Merged.Summary} Your own answers could not be synced back: "
-                     + Published.Problem;
+                return (Merged.UpToDate, Merged.Changes) switch
+                {
+                    (true, string changes) =>
+                        $"{changes}, but you are unable to sync your changes with others.",
+                    (true, null) => "You are unable to sync your changes with others.",
+                    _ => $"{Merged.Summary} You are unable to sync your changes with others.",
+                };
             }
 
-            return $"{Merged.Summary} Your answers are synced.";
+            return Merged.Summary;
         }
     }
 }

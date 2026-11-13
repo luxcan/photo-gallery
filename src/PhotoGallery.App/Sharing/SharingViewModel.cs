@@ -606,7 +606,9 @@ public sealed partial class SharingViewModel : ObservableObject
             }).ConfigureAwait(true);
 
             Status = result.Summary;
-            Record(result.Summary);
+            Record(result.Published.Published
+                ? result.Summary
+                : $"{result.Summary} ({result.Published.Problem})");
 
             Offers =
             [

@@ -74,21 +74,15 @@ public sealed record MergeResult(
                 return Refusals();
             }
 
-            List<string> parts = [];
-            Add(parts, Outcome.NamesGained, "name", "names");
-            Add(parts, Outcome.NamesReplaced, "answer replaced", "answers replaced");
-            Add(parts, Outcome.PeopleGained, "person", "people");
-            Add(parts, Outcome.FacesSetAside, "face set aside", "faces set aside");
-            Add(parts, Outcome.PhotographsTurned, "photo turned", "photos turned");
-            Add(parts, Outcome.AlbumsChanged, "album", "albums");
-            Add(parts, Outcome.CollectionsChanged, "collection", "collections");
-            Add(parts, Outcome.PhotographsMoved, "photo moved", "photos moved");
-
-            string changed = parts.Count == 0
-                ? "Nothing new"
-                : string.Join(", ", parts);
-
-            string said = changed + ".";
+            // "Up to date" stands in for "nothing new" rather than following it:
+            // the two said side by side read as two unrelated facts.
+            string said = (Changes, UpToDate) switch
+            {
+                (null, true) => UpToDateSentence,
+                (null, false) => "Nothing new.",
+                (string changes, true) => $"{changes}. {UpToDateSentence}",
+                (string changes, false) => $"{changes}.",
+            };
 
             // What is waiting is not said here. The Sync screen states it a few
             // elements below this line, split into the three things it can
@@ -101,6 +95,47 @@ public sealed record MergeResult(
             // shape of this report that can mislead while every number in it is
             // right: the counts are true and incomplete at the same time.
             return Outcome.Refused.Count == 0 ? said : $"{said} {Refusals()}";
+        }
+    }
+
+    /// <summary>
+    /// Whether this computer now holds everything the others have said, so
+    /// that the screen may say it is up to date.
+    /// </summary>
+    /// <remarks>
+    /// Not after a computer was refused or could not be read, nor before any
+    /// other computer has synced: each of those leaves something unheard, and
+    /// "up to date" beside it would be the reassurance the sentence before it
+    /// takes back.
+    /// </remarks>
+    public bool UpToDate =>
+        Merged
+        && Machines > 0
+        && Outcome.Refused.Count == 0
+        && Unreadable.Count == 0
+        && !Pairings.Any(pairing => pairing.Likeness == PairingLikeness.FiledDifferently);
+
+    /// <summary>What a sync says when nothing is left unheard.</summary>
+    internal const string UpToDateSentence = "You're up to date.";
+
+    /// <summary>
+    /// What changed in this merge, by kind, or null when nothing did.
+    /// </summary>
+    internal string? Changes
+    {
+        get
+        {
+            List<string> parts = [];
+            Add(parts, Outcome.NamesGained, "name", "names");
+            Add(parts, Outcome.NamesReplaced, "answer replaced", "answers replaced");
+            Add(parts, Outcome.PeopleGained, "person", "people");
+            Add(parts, Outcome.FacesSetAside, "face set aside", "faces set aside");
+            Add(parts, Outcome.PhotographsTurned, "photo turned", "photos turned");
+            Add(parts, Outcome.AlbumsChanged, "album", "albums");
+            Add(parts, Outcome.CollectionsChanged, "collection", "collections");
+            Add(parts, Outcome.PhotographsMoved, "photo moved", "photos moved");
+
+            return parts.Count == 0 ? null : string.Join(", ", parts);
         }
     }
 

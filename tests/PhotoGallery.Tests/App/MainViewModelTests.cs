@@ -75,7 +75,7 @@ public sealed class MainViewModelTests : IDisposable
     /// "Not now" is the right word for declining a question, because the offer
     /// stands and will be made again when there is something newer. It is the
     /// wrong word entirely for a report of work already done: a finished sync
-    /// said "5 photos moved. Your answers are synced." and then offered "Not
+    /// said "5 photos moved. You're up to date." and then offered "Not
     /// now", as though the move might be taken back.
     /// </remarks>
     [Fact]
@@ -87,7 +87,7 @@ public sealed class MainViewModelTests : IDisposable
         Assert.Equal("Not now", _main.NoticeDismiss);
         Assert.Contains("offered again", _main.NoticeDismissTip, StringComparison.Ordinal);
 
-        _main.Say("5 photos moved. Your answers are synced.");
+        _main.Say("5 photos moved. You're up to date.");
 
         Assert.False(_main.NoticeAsks);
         Assert.Equal("Dismiss", _main.NoticeDismiss);

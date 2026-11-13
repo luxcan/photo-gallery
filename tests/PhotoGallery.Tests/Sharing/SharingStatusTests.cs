@@ -161,7 +161,7 @@ public sealed class SharingStatusTests : IDisposable
 
         Assert.True(shared.Shared);
         Assert.Contains("1 name", shared.Summary);
-        Assert.Contains("Your answers are synced", shared.Summary);
+        Assert.Contains("You're up to date", shared.Summary);
 
         // Taken, and given back: Dad's own file now exists.
         Assert.Single(Dad.Db.FaceAssignments);
