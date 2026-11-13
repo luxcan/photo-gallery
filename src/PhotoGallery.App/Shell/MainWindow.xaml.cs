@@ -989,7 +989,7 @@ public partial class MainWindow : Window
 
         var dialog = new OpenFolderDialog
         {
-            Title = "Choose a folder every computer in the house can reach",
+            Title = "Choose a folder every computer can reach",
             InitialDirectory = start,
         };
 

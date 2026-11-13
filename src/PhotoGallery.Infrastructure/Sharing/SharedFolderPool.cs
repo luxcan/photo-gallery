@@ -76,7 +76,7 @@ public sealed class SharedFolderPool : IRenditionPool
         if (string.IsNullOrWhiteSpace(folder))
         {
             return ExchangeReadiness.Not(
-                "Choose a folder that every computer in the house can reach.");
+                "Choose a folder that every computer can reach.");
         }
 
         // Off the caller's thread, because this is the call that blocks: an

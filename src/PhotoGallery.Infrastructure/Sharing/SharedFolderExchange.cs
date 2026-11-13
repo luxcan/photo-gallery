@@ -42,7 +42,7 @@ public sealed class SharedFolderExchange : IDecisionExchange
         if (string.IsNullOrWhiteSpace(settings.SharedFolder))
         {
             return ExchangeReadiness.Not(
-                "Choose a folder that every computer in the house can reach.");
+                "Choose a folder that every computer can reach.");
         }
 
         if (!Directory.Exists(settings.SharedFolder))
