@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using PhotoGallery.Application.Ports;
 using PhotoGallery.Application.UseCases.People;
 using PhotoGallery.Domain.Assets;
 using PhotoGallery.Domain.Faces;
@@ -384,7 +385,11 @@ public sealed class AssignFacesHandlerTests : IDisposable
         int hers = AddFace(0, 0, thumbnailName: OnePhotograph);
         int asked = AddFace(0, 0, thumbnailName: OnePhotograph);
 
-        int bea = (await Name([hers], "Bea")).PersonId;
+        // Confirmed on that one file alone, as a copy that reached the library
+        // after its twin was named would be. Naming Bea through the handler
+        // would have carried her to the other copy too, and naming that copy
+        // as Ana would then be correcting Bea rather than leaving her be.
+        int bea = await ConfirmOnlyAsync(hers, "Bea");
 
         AssignmentResult result = await Name([asked], "Ana");
 
@@ -395,6 +400,162 @@ public sealed class AssignFacesHandlerTests : IDisposable
         // Ana got the face she was asked about and nothing of Bea's.
         Assert.Equal([asked], await Confirmed(result.PersonId));
     }
+
+    [Fact]
+    public async Task Name_AFaceConfirmedAsSomebodyElse_MovesItAndRebuildsWhoItLeft()
+    {
+        // Naming a face that is already somebody is the user correcting it, and
+        // the person it was taken from must stop learning from it: their eras
+        // were built with this face among their examples.
+        int moved = AddFace(0, 0);
+        AssignmentResult anna = await Name([moved, AddFace(1, 2), AddFace(2, 4)], "Anna");
+        Assert.Equal(3, await SamplesOf(anna.PersonId));
+
+        AssignmentResult ben = await Name([moved], "Ben");
+
+        Assert.Equal([moved], await Confirmed(ben.PersonId));
+        Assert.DoesNotContain(moved, await Confirmed(anna.PersonId));
+        Assert.Equal(2, await SamplesOf(anna.PersonId));
+    }
+
+    [Fact]
+    public async Task Name_AMovedFaceTakesItsCopiesWithIt()
+    {
+        // The copies were named together as one photograph; moving only the file
+        // that happened to be open would show the same picture under two names.
+        const string OnePhotograph = "thumb-moved.jpg";
+        int asked = AddFace(0, 0, thumbnailName: OnePhotograph);
+        int otherCopy = AddFace(0, 0, thumbnailName: OnePhotograph);
+
+        AssignmentResult anna = await Name([asked], "Anna");
+        Assert.Equal([asked, otherCopy], await Confirmed(anna.PersonId));
+
+        AssignmentResult ben = await Name([asked], "Ben");
+
+        Assert.Equal([asked, otherCopy], await Confirmed(ben.PersonId));
+        Assert.Empty(await Confirmed(anna.PersonId));
+    }
+
+    [Fact]
+    public async Task Name_AMovedFaceLeavesACopyConfirmedAsAThirdPerson()
+    {
+        // Only what was said about the face being corrected goes with it. A copy
+        // somebody named as a third person is a separate decision.
+        const string OnePhotograph = "thumb-three-names.jpg";
+        int hers = AddFace(0, 0, thumbnailName: OnePhotograph);
+        int asked = AddFace(0, 0, thumbnailName: OnePhotograph);
+
+        int bea = await ConfirmOnlyAsync(hers, "Bea");
+        await ConfirmOnlyAsync(asked, "Anna");
+
+        AssignmentResult ben = await Name([asked], "Ben");
+
+        Assert.Equal([asked], await Confirmed(ben.PersonId));
+        Assert.Equal([hers], await Confirmed(bea));
+    }
+
+    [Fact]
+    public async Task Name_ABatchCorrectsEachPhotographOnlyForWhoItsOwnFaceWas()
+    {
+        // A correction belongs to the photograph it was made on. Naming two faces
+        // together, one of them a face of Anna's, must not reach into the other
+        // photograph and take a copy somebody confirmed as Anna on its own.
+        const string SecondPhotograph = "thumb-batch-second.jpg";
+        int annasFace = AddFace(0, 0);
+        int unclaimed = AddFace(1, 0, thumbnailName: SecondPhotograph);
+        int independentCopy = AddFace(1, 0, thumbnailName: SecondPhotograph);
+
+        int anna = await ConfirmOnlyAsync(annasFace, "Anna");
+        await ConfirmOnlyAsync(independentCopy, "Anna");
+
+        AssignmentResult ben = await Name([annasFace, unclaimed], "Ben");
+
+        Assert.Equal([annasFace, unclaimed], await Confirmed(ben.PersonId));
+        Assert.Equal([independentCopy], await Confirmed(anna));
+    }
+
+    [Fact]
+    public async Task Name_AFaceConfirmedAsTwoPeople_RebuildsBothAndTakesBothTheirCopies()
+    {
+        // The state an older build left behind, and that another laptop may still
+        // hold until it merges: one face confirmed as two people. Correcting it
+        // takes it off both, so both must stop learning from it, and a copy
+        // confirmed as either of them is the same photograph and goes with it.
+        const string OnePhotograph = "thumb-two-people.jpg";
+        int doubled = AddFace(0, 0, thumbnailName: OnePhotograph);
+        int beasCopy = AddFace(0, 0, thumbnailName: OnePhotograph);
+
+        // Bea's copy first, so naming Anna leaves it be rather than carrying to it.
+        int bea = await ConfirmOnlyAsync(beasCopy, "Bea");
+        int anna = (await Name([doubled, AddFace(1, 2), AddFace(2, 4)], "Anna")).PersonId;
+        await ConfirmAlongsideAsync(doubled, bea);
+        Assert.Equal(3, await SamplesOf(anna));
+        Assert.Equal(2, await SamplesOf(bea));
+
+        AssignmentResult ben = await Name([doubled], "Ben");
+
+        Assert.Equal([doubled, beasCopy], await Confirmed(ben.PersonId));
+        Assert.Equal(2, await SamplesOf(anna));
+        Assert.Equal(0, await SamplesOf(bea));
+    }
+
+    [Fact]
+    public async Task Name_AFaceConfirmedAsTwoPeople_AsOneOfThem_RebuildsTheOther()
+    {
+        // Naming the face as one of its two people settles it on that one, and
+        // the other loses it whichever of the two the screens happened to show.
+        int doubled = AddFace(0, 0);
+
+        int anna = (await Name([doubled, AddFace(1, 2)], "Anna")).PersonId;
+        int bea = (await Name([AddFace(2, 4)], "Bea")).PersonId;
+        await ConfirmAlongsideAsync(doubled, bea);
+        Assert.Equal(2, await SamplesOf(bea));
+
+        await Name([doubled], "Anna");
+
+        Assert.Contains(doubled, await Confirmed(anna));
+        Assert.DoesNotContain(doubled, await Confirmed(bea));
+        Assert.Equal(1, await SamplesOf(bea));
+    }
+
+    /// <summary>
+    /// Adds a second confirmation for a face without taking it off whoever it is
+    /// already confirmed as - what an older build did - and rebuilds the person
+    /// it was added to, so their eras learn from it.
+    /// </summary>
+    private async Task ConfirmAlongsideAsync(int faceId, int personId)
+    {
+        _db.FaceAssignments.Add(new FaceAssignment
+        {
+            FaceId = faceId,
+            PersonId = personId,
+            Source = AssignmentSource.Confirmed,
+            DecidedUtc = s_start,
+        });
+        await _db.SaveChangesAsync();
+        _db.ChangeTracker.Clear();
+
+        await NewHandler().RebuildErasAsync(personId);
+    }
+
+    /// <summary>
+    /// Confirms one row as somebody without carrying it to the photograph's other
+    /// copies, and returns who that is.
+    /// </summary>
+    private async Task<int> ConfirmOnlyAsync(int faceId, string name)
+    {
+        int personId = await _repository.EnsurePersonAsync(name);
+        await _repository.AssignAsync(
+            personId, [new ScoredFace(faceId)], AssignmentSource.Confirmed);
+
+        return personId;
+    }
+
+    /// <summary>How many confirmed faces one person's eras were built from.</summary>
+    private async Task<int> SamplesOf(int personId) =>
+        await _db.Set<PersonEra>()
+            .Where(era => era.PersonId == personId)
+            .SumAsync(era => era.SampleCount);
 
     /// <summary>The faces confirmed as one person, in order.</summary>
     private async Task<int[]> Confirmed(int personId) =>

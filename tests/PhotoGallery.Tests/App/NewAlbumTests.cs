@@ -969,6 +969,10 @@ public sealed class NewAlbumTests : IDisposable
         public Task<IReadOnlyList<FaceRejection>> GetRejectionsAsync(
             CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
+
+        public Task<IReadOnlyList<FaceConfirmation>> GetConfirmationsAsync(
+            IReadOnlyCollection<int> faceIds, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
     }
 
     /// <summary>

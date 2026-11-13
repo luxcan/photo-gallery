@@ -1106,6 +1106,10 @@ public sealed class EditAlbumTests : IDisposable
         public Task<IReadOnlyList<FaceRejection>> GetRejectionsAsync(
             CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
+
+        public Task<IReadOnlyList<FaceConfirmation>> GetConfirmationsAsync(
+            IReadOnlyCollection<int> faceIds, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
     }
 
     /// <summary>No places, and the means to keep the panel waiting for them.</summary>

@@ -589,6 +589,10 @@ public sealed class FaceInspectionTests : IDisposable
         public Task<IReadOnlyList<FaceRejection>> GetRejectionsAsync(
             CancellationToken token = default) =>
             Task.FromResult<IReadOnlyList<FaceRejection>>([]);
+
+        public Task<IReadOnlyList<FaceConfirmation>> GetConfirmationsAsync(
+            IReadOnlyCollection<int> faceIds, CancellationToken token = default) =>
+            Task.FromResult<IReadOnlyList<FaceConfirmation>>([]);
     }
 
     /// <summary>

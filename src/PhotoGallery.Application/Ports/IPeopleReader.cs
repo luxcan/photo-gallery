@@ -71,4 +71,16 @@ public interface IPeopleReader
     /// </remarks>
     Task<IReadOnlyList<FaceRejection>> GetRejectionsAsync(
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Everybody some faces are confirmed as, every one of them.
+    /// </summary>
+    /// <remarks>
+    /// Not what <see cref="GetFacesAsync"/> reports. That gives one claim per
+    /// face, because a screen shows one name, and a face an older build left
+    /// confirmed as two people reads there as only one of them. Correcting such
+    /// a face takes it off both, so whoever does that needs to know both.
+    /// </remarks>
+    Task<IReadOnlyList<FaceConfirmation>> GetConfirmationsAsync(
+        IReadOnlyCollection<int> faceIds, CancellationToken cancellationToken = default);
 }

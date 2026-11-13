@@ -32,6 +32,11 @@ public interface IPeopleRepository
     /// <summary>
     /// Says who some faces are, replacing anything said about them before.
     /// </summary>
+    /// <remarks>
+    /// A confirmation also takes the faces off whoever they were confirmed as
+    /// before, and withdraws everybody's proposals for them: a face is one
+    /// person. Other people's rejections are kept.
+    /// </remarks>
     Task AssignAsync(
         int personId,
         IReadOnlyList<ScoredFace> faces,

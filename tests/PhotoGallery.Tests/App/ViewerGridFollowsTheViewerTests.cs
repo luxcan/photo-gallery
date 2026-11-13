@@ -11,7 +11,6 @@ using PhotoGallery.App.Shell;
 using PhotoGallery.App.ViewModels;
 using PhotoGallery.Application.Ports;
 using PhotoGallery.Application.UseCases.Gallery;
-using PhotoGallery.Application.UseCases.People;
 using PhotoGallery.Domain.Albums;
 using PhotoGallery.Domain.Assets;
 using PhotoGallery.Domain.Duplicates;
@@ -339,12 +338,6 @@ public sealed class ViewerGridFollowsTheViewerTests : IDisposable
     /// A face given to somebody else takes the photograph off the first person's
     /// page once the viewer closes, and the count and the heading drop with it.
     /// </summary>
-    /// <remarks>
-    /// Written directly rather than through the viewer's name list: naming a face
-    /// that is already confirmed as somebody adds a second confirmation and
-    /// leaves the first, so the list cannot take a face off anybody. Marked the
-    /// way the viewer marks a write it made, with the grid it was opened from.
-    /// </remarks>
     [Fact]
     public async Task GivenToSomeoneElse_LeavesThePersonsPage_AndCountAndHeadingDrop()
     {
@@ -352,8 +345,7 @@ public sealed class ViewerGridFollowsTheViewerTests : IDisposable
         GalleryTile given = PersonTile(2);
 
         await OpenFromPersonAsync(given, faces: 1);
-        await GiveFaceToAsync(_main.Gallery.OpenFaces[0].FaceId, "Ben");
-        _main.Gallery.ChangedWhileOpen(2, _main.People);
+        await NameFaceAsync(_main.Gallery.OpenFaces[0], "Ben");
 
         _main.Gallery.ClosePhotoCommand.Execute(null);
         await _main.Gallery.WallSettled;
@@ -827,15 +819,6 @@ public sealed class ViewerGridFollowsTheViewerTests : IDisposable
         _main.Gallery.BeginNamingFaceCommand.Execute(face);
         _main.Gallery.Picker.Typed = name;
         await _main.Gallery.Picker.AddCommand.ExecuteAsync(null);
-    }
-
-    /// <summary>Takes a face off whoever it was and confirms it as somebody else.</summary>
-    private async Task GiveFaceToAsync(int faceId, string name)
-    {
-        using IServiceScope scope = _services.CreateScope();
-        await scope.ServiceProvider.GetRequiredService<IPeopleRepository>().UnassignAsync([faceId]);
-        await scope.ServiceProvider.GetRequiredService<AssignFacesHandler>().HandleAsync(
-            new AssignFacesRequest([faceId], AssignmentSource.Confirmed, DisplayName: name));
     }
 
     /// <summary>Gives Bali a rule for 2020 and asks it for proposals: the two loose ones.</summary>

@@ -256,6 +256,17 @@ public sealed class ConfirmQueueRefreshTests : IDisposable
             CancellationToken token = default) =>
             Task.FromResult<IReadOnlyList<FaceRejection>>([]);
 
+        public Task<IReadOnlyList<FaceConfirmation>> GetConfirmationsAsync(
+            IReadOnlyCollection<int> faceIds, CancellationToken token = default) =>
+            Task.FromResult<IReadOnlyList<FaceConfirmation>>(
+            [
+                .. _faces
+                    .Where(face => faceIds.Contains(face.FaceId)
+                        && face.Source == AssignmentSource.Confirmed
+                        && face.PersonId is not null)
+                    .Select(face => new FaceConfirmation(face.FaceId, face.PersonId!.Value)),
+            ]);
+
         public Task ReplaceErasAsync(
             int personId, IReadOnlyList<PersonEra> eras, CancellationToken token = default) =>
             Task.CompletedTask;

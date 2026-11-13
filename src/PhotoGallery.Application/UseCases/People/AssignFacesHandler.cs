@@ -53,8 +53,19 @@ public sealed class AssignFacesHandler
                     cancellationToken)
                 .ConfigureAwait(false);
 
-        IReadOnlyList<int> answered = await EveryCopyOfAsync(
-            request.FaceIds, personId, cancellationToken).ConfigureAwait(false);
+        IReadOnlyList<FaceRecord> faces = await _people
+            .GetFacesAsync(includeEmbeddings: false, cancellationToken)
+            .ConfigureAwait(false);
+
+        // Read before the answer is written, because writing it is what takes
+        // the faces off whoever they were confirmed as.
+        ILookup<int, int> confirmedAs = await ConfirmationsOnAsync(
+                faces, request.FaceIds, cancellationToken)
+            .ConfigureAwait(false);
+
+        bool correcting = request.Source == AssignmentSource.Confirmed;
+        IReadOnlyList<int> answered =
+            EveryCopyOf(faces, request.FaceIds, personId, confirmedAs, correcting);
 
         await _repository
             .AssignAsync(
@@ -63,6 +74,21 @@ public sealed class AssignFacesHandler
                 request.Source,
                 cancellationToken)
             .ConfigureAwait(false);
+
+        // The repository took these faces off whoever they were confirmed as,
+        // and those people's eras were built with them among the examples. Left
+        // alone, they would go on being offered faces that look like one the
+        // user has just said is not them.
+        // Every one of them, read from the confirmations themselves: a face an
+        // older build left confirmed as two people has just lost both.
+        int[] movedFrom = correcting
+            ? [.. answered.SelectMany(faceId => SomebodyElse(confirmedAs[faceId], personId)).Distinct()]
+            : [];
+
+        foreach (int previous in movedFrom)
+        {
+            await RebuildErasAsync(previous, cancellationToken).ConfigureAwait(false);
+        }
 
         // What is reported back is how many questions were answered, not how
         // many rows that came to - the user answered one face, whatever number
@@ -92,21 +118,49 @@ public sealed class AssignFacesHandler
     /// cannot be them and not them, and the newer answer is the one they just
     /// gave. A face set aside as a stranger is not being offered to anybody and
     /// stays that way.</para>
+    ///
+    /// <para>The one exception is a correction: when the face asked about was
+    /// itself confirmed as somebody, the copies of that same photograph
+    /// confirmed as that same person were named with it, and move with it -
+    /// otherwise one picture would show two names depending on which file is
+    /// open. Only that photograph's: a correction made on one picture says
+    /// nothing about a copy of another picture in the same batch, whoever that
+    /// copy happens to be confirmed as.</para>
     /// </remarks>
-    private async Task<IReadOnlyList<int>> EveryCopyOfAsync(
-        IReadOnlyList<int> faceIds, int personId, CancellationToken cancellationToken)
+    /// <param name="confirmedAs">
+    /// Everybody each face was confirmed as before this answer.
+    /// </param>
+    /// <param name="correcting">
+    /// Whether this answer is a confirmation, the only kind that takes a face
+    /// off whoever it was confirmed as.
+    /// </param>
+    private static IReadOnlyList<int> EveryCopyOf(
+        IReadOnlyList<FaceRecord> faces,
+        IReadOnlyList<int> faceIds,
+        int personId,
+        ILookup<int, int> confirmedAs,
+        bool correcting)
     {
-        IReadOnlyList<FaceRecord> faces = await _people
-            .GetFacesAsync(includeEmbeddings: false, cancellationToken)
-            .ConfigureAwait(false);
-
         HashSet<int> asked = [.. faceIds];
-        HashSet<(string ThumbnailName, FaceBounds Bounds)> places =
+
+        // Each photograph asked about, with whoever its asked face is being
+        // taken off - kept per photograph, so one correction cannot open the
+        // door to another photograph's copies.
+        Dictionary<(string ThumbnailName, FaceBounds Bounds), HashSet<int>> places =
             new(FaceOnPicture.Comparer);
 
         foreach (FaceRecord face in faces.Where(face => asked.Contains(face.FaceId)))
         {
-            places.Add((face.ThumbnailName, face.Bounds));
+            if (!places.TryGetValue((face.ThumbnailName, face.Bounds), out HashSet<int>? previous))
+            {
+                previous = [];
+                places.Add((face.ThumbnailName, face.Bounds), previous);
+            }
+
+            if (correcting)
+            {
+                previous.UnionWith(SomebodyElse(confirmedAs[face.FaceId], personId));
+            }
         }
 
         if (places.Count == 0)
@@ -117,8 +171,9 @@ public sealed class AssignFacesHandler
         return
         [
             .. faces
-                .Where(face => asked.Contains(face.FaceId) || (Free(face, personId)
-                    && places.Contains((face.ThumbnailName, face.Bounds))))
+                .Where(face => asked.Contains(face.FaceId)
+                    || (places.TryGetValue((face.ThumbnailName, face.Bounds), out HashSet<int>? previous)
+                        && Free(face, personId, confirmedAs, previous)))
                 .Select(face => face.FaceId),
         ];
     }
@@ -127,14 +182,61 @@ public sealed class AssignFacesHandler
     /// Whether an answer about one copy of a photograph may carry to this row.
     /// </summary>
     /// <remarks>
-    /// A rejection reads back here as no claim at all, by design - refusing a
-    /// face for one person leaves it free to be offered to another - so this
-    /// cannot tell a refused copy from an untouched one, and does not need to.
-    /// What it has to protect is a copy confirmed as somebody else.
+    /// A rejection is not a confirmation, by design - refusing a face for one
+    /// person leaves it free to be offered to another - so this cannot tell a
+    /// refused copy from an untouched one, and does not need to. What it has to
+    /// protect is a copy confirmed as somebody else - unless everybody it is
+    /// confirmed as is somebody this answer is correcting on this photograph.
     /// </remarks>
-    private static bool Free(FaceRecord face, int personId) =>
+    /// <param name="previous">
+    /// Whoever the face asked about on this photograph is being taken off.
+    /// </param>
+    private static bool Free(
+        FaceRecord face, int personId, ILookup<int, int> confirmedAs, IReadOnlySet<int> previous) =>
         !face.IsIgnored
-        && (face.Source != AssignmentSource.Confirmed || face.PersonId == personId);
+        && SomebodyElse(confirmedAs[face.FaceId], personId).All(previous.Contains);
+
+    /// <summary>Everybody in a list of people but the one now named.</summary>
+    private static IEnumerable<int> SomebodyElse(IEnumerable<int> people, int personId) =>
+        people.Where(person => person != personId);
+
+    /// <summary>
+    /// Everybody the faces asked about, and every copy of their photographs,
+    /// are confirmed as.
+    /// </summary>
+    /// <remarks>
+    /// Read from the confirmations rather than from <see cref="FaceRecord"/>,
+    /// which carries one claim per face: a face an older build left confirmed as
+    /// two people would show only one of them, and correcting it takes it off
+    /// both.
+    /// </remarks>
+    private async Task<ILookup<int, int>> ConfirmationsOnAsync(
+        IReadOnlyList<FaceRecord> faces,
+        IReadOnlyList<int> faceIds,
+        CancellationToken cancellationToken)
+    {
+        HashSet<int> asked = [.. faceIds];
+        HashSet<(string ThumbnailName, FaceBounds Bounds)> places = new(
+            faces
+                .Where(face => asked.Contains(face.FaceId))
+                .Select(face => (face.ThumbnailName, face.Bounds)),
+            FaceOnPicture.Comparer);
+
+        HashSet<int> onThosePictures =
+        [
+            .. asked,
+            .. faces
+                .Where(face => places.Contains((face.ThumbnailName, face.Bounds)))
+                .Select(face => face.FaceId),
+        ];
+
+        IReadOnlyList<FaceConfirmation> confirmations = await _people
+            .GetConfirmationsAsync(onThosePictures, cancellationToken)
+            .ConfigureAwait(false);
+
+        return confirmations.ToLookup(
+            confirmation => confirmation.FaceId, confirmation => confirmation.PersonId);
+    }
 
     /// <summary>
     /// Rebuilds a person from the examples given for them, without changing any

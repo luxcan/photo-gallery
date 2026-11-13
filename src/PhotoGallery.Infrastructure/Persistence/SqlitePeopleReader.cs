@@ -264,6 +264,29 @@ public sealed class SqlitePeopleReader : IPeopleReader
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
 
+    public async Task<IReadOnlyList<FaceConfirmation>> GetConfirmationsAsync(
+        IReadOnlyCollection<int> faceIds, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(faceIds);
+
+        var confirmations = new List<FaceConfirmation>();
+
+        // Chunked: SQLite caps parameters per statement, and correcting a large
+        // group is exactly when that limit is met.
+        foreach (int[] chunk in faceIds.Distinct().Chunk(400))
+        {
+            confirmations.AddRange(await _db.FaceAssignments
+                .AsNoTracking()
+                .Where(assignment => assignment.Source == AssignmentSource.Confirmed
+                                  && chunk.Contains(assignment.FaceId))
+                .Select(assignment => new FaceConfirmation(assignment.FaceId, assignment.PersonId))
+                .ToListAsync(cancellationToken)
+                .ConfigureAwait(false));
+        }
+
+        return confirmations;
+    }
+
     /// <summary>
     /// The photographs a face may be found in: still in the library, and with a
     /// rendition the detector could have looked at.

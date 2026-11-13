@@ -116,13 +116,19 @@ public sealed class SqlitePeopleRepository : IPeopleRepository
                 .ExecuteDeleteAsync(cancellationToken)
                 .ConfigureAwait(false);
 
-            // Saying who somebody is settles the face for everyone, so the
-            // guesses other people were holding are withdrawn. Their rejections
-            // are not - those were answers, not guesses.
+            // Saying who somebody is settles the face for everyone. A face is
+            // one person, so whoever it was confirmed as before loses it, and
+            // the guesses other people were holding are withdrawn. Leaving the
+            // old confirmation beside the new one made a face two people, and
+            // every screen that shows one name per face picked either. Their
+            // rejections stay - those were answers about somebody else, and
+            // the sharing merge already settles a face on its latest
+            // confirmation the same way, so this travels as it is.
             if (source == AssignmentSource.Confirmed)
             {
                 await _db.FaceAssignments
-                    .Where(assignment => assignment.Source == AssignmentSource.Proposed
+                    .Where(assignment => (assignment.Source == AssignmentSource.Proposed
+                                          || assignment.Source == AssignmentSource.Confirmed)
                                       && chunk.Contains(assignment.FaceId))
                     .ExecuteDeleteAsync(cancellationToken)
                     .ConfigureAwait(false);
