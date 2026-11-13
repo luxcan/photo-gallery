@@ -37,6 +37,8 @@ public partial class MainWindow : Window
         DataContext = viewModel;
         InitializeComponent();
 
+        _viewModel.AddFolderQuestions = new AddFolderQuestions(this);
+
         // The title bar is Windows', not this app's, so it has to be told the
         // theme rather than inheriting it.
         TitleBarPainter.Follow(this);

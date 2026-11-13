@@ -71,6 +71,8 @@ public static class AppServiceCollectionExtensions
             .AddScoped<CheckForNewVersionHandler>()
             .AddScoped<ShareNowHandler>()
             .AddScoped<ConfirmPairingHandler>()
+            .AddScoped<FindSameFolderElsewhereHandler>()
+            .AddScoped<AdoptSameFolderHandler>()
             .AddScoped<ShareRenditionsHandler>()
             .AddScoped<RefreshLibraryHandler>()
             .AddScoped<QueryGalleryHandler>()

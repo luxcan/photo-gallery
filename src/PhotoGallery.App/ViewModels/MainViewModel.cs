@@ -28,6 +28,7 @@ using PhotoGallery.Application.UseCases.Sharing;
 using PhotoGallery.Application.UseCases.Sources;
 using PhotoGallery.Application.UseCases.Updates;
 using PhotoGallery.Domain.Library;
+using PhotoGallery.Domain.Sharing;
 using PhotoGallery.Infrastructure.Models;
 
 namespace PhotoGallery.App.ViewModels;
@@ -848,6 +849,10 @@ public sealed partial class MainViewModel : ObservableObject
     /// a dead end: the folder is in the library but the library has nothing to
     /// show for it until the user finds a second button. One action now carries
     /// through to pictures on screen.
+    ///
+    /// <para>Between adding and scanning, the questions that let that scan take
+    /// what the other computers have already made: see
+    /// <see cref="AskAboutOtherComputersAsync"/>.</para>
     /// </remarks>
     [RelayCommand(CanExecute = nameof(CanAddSource))]
     private async Task AddSourceAsync()
@@ -863,6 +868,7 @@ public sealed partial class MainViewModel : ObservableObject
         }
 
         PhotoSourceItem added;
+        Guid sharedId;
         try
         {
             using IServiceScope scope = _scopeFactory.CreateScope();
@@ -875,6 +881,7 @@ public sealed partial class MainViewModel : ObservableObject
                 .Run(() => handler.HandleAsync(folder))
                 .ConfigureAwait(true);
 
+            sharedId = source.SharedId;
             added = new PhotoSourceItem(source.Id, source.Path, 0, source.LastScanUtc);
             Sources.Add(added);
             NewSourcePath = string.Empty;
@@ -890,10 +897,111 @@ public sealed partial class MainViewModel : ObservableObject
             return;
         }
 
+        await AskAboutOtherComputersAsync(added, sharedId, isFirst: Sources.Count == 1);
         await RunRefreshAsync([added]);
     }
 
     private bool CanAddSource() => IsIdle && !string.IsNullOrWhiteSpace(NewSourcePath);
+
+    /// <summary>
+    /// Who answers the questions adding a folder asks, set by the window. With
+    /// nobody set, a folder is added and scanned without asking anything.
+    /// </summary>
+    public IAddFolderQuestions? AddFolderQuestions { get; set; }
+
+    /// <summary>
+    /// Asks what lets a folder's first scan take the pictures the other
+    /// computers have already made, rather than spend hours making them.
+    /// </summary>
+    /// <remarks>
+    /// Two questions, each only where it can help. The first folder a library
+    /// is given, with no sync folder chosen, is a new laptop: it is offered the
+    /// sync folder before anything else. Then, with a sync folder, a folder
+    /// another computer keeps under a matching name is put to the user - "is
+    /// that the same folder?" - as the Sync screen puts it, and a yes gives the
+    /// new folder their identity before the scan starts, so the scan's take
+    /// matches their pictures at once. Until now both happened only after that
+    /// scan.
+    ///
+    /// <para>Never in the way. With nobody to answer, a sync folder that does
+    /// not answer within its deadline, or anything that goes wrong, the folder
+    /// is scanned as it always was.</para>
+    /// </remarks>
+    private async Task AskAboutOtherComputersAsync(
+        PhotoSourceItem added, Guid sharedId, bool isFirst)
+    {
+        if (AddFolderQuestions is not IAddFolderQuestions questions)
+        {
+            return;
+        }
+
+        try
+        {
+            SameFolderElsewhere elsewhere = await LookElsewhereAsync(added, sharedId);
+
+            if (!elsewhere.SyncFolderChosen && isFirst
+                && questions.ChooseSyncFolderFirst() is string chosen)
+            {
+                await Sharing.ChooseFolderAsync(chosen);
+
+                if (!Sharing.HasFolder)
+                {
+                    // Refused - inside a photo folder, say. Said here, where the
+                    // user is, since the Sync screen that would say it is not
+                    // on screen.
+                    SourceError = Sharing.Status;
+                    return;
+                }
+
+                elsewhere = await LookElsewhereAsync(added, sharedId);
+            }
+
+            if (elsewhere.Proposals.FirstOrDefault(questions.IsSameFolder) is PairingProposal same)
+            {
+                using IServiceScope scope = _scopeFactory.CreateScope();
+                AdoptSameFolderHandler adopting =
+                    scope.ServiceProvider.GetRequiredService<AdoptSameFolderHandler>();
+
+                await Task.Run(() => adopting.HandleAsync(same.Mine.SharedId, same.Theirs.SharedId))
+                    .ConfigureAwait(true);
+
+                Append($"  same folder as {same.Theirs.Root} on {same.MachineName}");
+            }
+        }
+        catch (Exception ex) when (LibraryFailure.IsExpected(ex))
+        {
+            DiagnosticLog.Write("could not ask about the other computers", ex);
+            Append($"  could not look for this folder on the other computers: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Asks the sync folder which other computers keep a folder like this one,
+    /// with the window covered and saying so while it waits.
+    /// </summary>
+    private async Task<SameFolderElsewhere> LookElsewhereAsync(
+        PhotoSourceItem added, Guid sharedId)
+    {
+        IsRefreshing = true;
+        OverlayTitle = "Checking the sync folder";
+        OverlayTarget = added.Path;
+        OverlayStatus = "looking for this folder on your other computers...";
+        OverlayIsIndeterminate = true;
+
+        try
+        {
+            using IServiceScope scope = _scopeFactory.CreateScope();
+            FindSameFolderElsewhereHandler handler =
+                scope.ServiceProvider.GetRequiredService<FindSameFolderElsewhereHandler>();
+
+            return await Task.Run(() => handler.HandleAsync(sharedId)).ConfigureAwait(true);
+        }
+        finally
+        {
+            IsRefreshing = false;
+            ClearOverlay();
+        }
+    }
 
     /// <summary>
     /// Clears the last failure as soon as the path changes, so a stale red line
