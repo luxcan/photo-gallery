@@ -226,6 +226,10 @@ public sealed class NamingTwoFacesTests : IDisposable
             bool includeEmbeddings, CancellationToken token = default) =>
             Task.FromResult<IReadOnlyList<FaceRecord>>([]);
 
+        public Task<IReadOnlyList<FaceRecord>> GetFacesOnPicturesOfAsync(
+            IReadOnlyCollection<int> faceIds, CancellationToken token = default) =>
+            Task.FromResult<IReadOnlyList<FaceRecord>>([]);
+
         public Task<IReadOnlyList<FaceSample>> GetSamplesAsync(
             int personId, CancellationToken token = default) =>
             Task.FromResult<IReadOnlyList<FaceSample>>([]);

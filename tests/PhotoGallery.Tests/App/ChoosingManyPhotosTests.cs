@@ -797,6 +797,14 @@ public sealed class ChoosingManyPhotosTests : IDisposable
             int albumId, CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
 
+        public Task<IReadOnlyList<int>> GetMembersAmongAsync(
+            int albumId, IReadOnlyList<int> assetIds, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public Task<IReadOnlyList<int>> StillSuggestedAsync(
+            int albumId, IReadOnlyList<int> assetIds, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
         public Task AcceptAsync(int albumId, CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
 

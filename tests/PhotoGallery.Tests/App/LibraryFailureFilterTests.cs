@@ -67,6 +67,33 @@ public sealed class LibraryFailureFilterTests
     }
 
     /// <summary>
+    /// And every write the photo viewer makes, with the questions that lead to
+    /// a delete and the delete itself.
+    /// </summary>
+    /// <remarks>
+    /// Each of these writes the database, and each named only IOException and
+    /// InvalidOperationException - so a library another copy of the app had
+    /// locked raised a SqliteException that went past the filter and out of the
+    /// command, while the methods beside them already asked LibraryFailure.
+    /// </remarks>
+    [Theory]
+    [InlineData("Gallery", "GalleryViewModel.cs", "private async Task PlaceAsync")]
+    [InlineData("Gallery", "GalleryViewModel.cs", "private async Task TakeOutOfAlbumAsync")]
+    [InlineData("Gallery", "GalleryViewModel.cs", "private async Task IgnoreFaceAsync")]
+    [InlineData("Gallery", "GalleryViewModel.cs", "private async Task AssignOpenFaceAsync")]
+    [InlineData("Gallery", "GalleryViewModel.cs", "private async Task TurnPhotoAsync")]
+    [InlineData("Gallery", "GalleryViewModel.cs", "public async Task<PhotoToRemove?> DescribeDeletionAsync")]
+    [InlineData("Gallery", "GalleryViewModel.cs", "public async Task<IReadOnlyList<PhotoToRemove>> DescribeChosenDeletionAsync")]
+    [InlineData("ViewModels", "MainViewModel.cs", "public async Task<PhotoRemovalResult> DeletePhotosAsync")]
+    public void TheViewersWritesAskLibraryFailure(string folder, string file, string signature)
+    {
+        string method = MethodIn(folder, file, signature);
+
+        Assert.Contains("LibraryFailure.IsExpected(ex)", method, StringComparison.Ordinal);
+        Assert.DoesNotContain("when (ex is IOException", method, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// One method's text, from its signature to the start of the next member.
     /// </summary>
     private static string MethodIn(string folder, string file, string signature)

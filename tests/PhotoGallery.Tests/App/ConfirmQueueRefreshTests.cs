@@ -181,6 +181,18 @@ public sealed class ConfirmQueueRefreshTests : IDisposable
             bool includeEmbeddings, CancellationToken token = default) =>
             Task.FromResult<IReadOnlyList<FaceRecord>>([.. _faces]);
 
+        public async Task<IReadOnlyList<FaceRecord>> GetFacesOnPicturesOfAsync(
+            IReadOnlyCollection<int> faceIds, CancellationToken token = default)
+        {
+            IReadOnlyList<FaceRecord> faces = await GetFacesAsync(includeEmbeddings: false, token);
+            HashSet<string> pictures =
+            [
+                .. faces.Where(face => faceIds.Contains(face.FaceId)).Select(face => face.ThumbnailName),
+            ];
+
+            return [.. faces.Where(face => pictures.Contains(face.ThumbnailName))];
+        }
+
         public Task<IReadOnlyList<Person>> GetPeopleAsync(CancellationToken token = default) =>
             Task.FromResult<IReadOnlyList<Person>>([new Person { Id = Ana, DisplayName = "Ana" }]);
 

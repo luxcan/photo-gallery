@@ -884,6 +884,14 @@ public sealed class NewAlbumTests : IDisposable
             return [];
         }
 
+        public Task<IReadOnlyList<int>> GetMembersAmongAsync(
+            int albumId, IReadOnlyList<int> assetIds, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public Task<IReadOnlyList<int>> StillSuggestedAsync(
+            int albumId, IReadOnlyList<int> assetIds, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
         public Task AcceptAsync(int albumId, CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
 
@@ -952,6 +960,10 @@ public sealed class NewAlbumTests : IDisposable
 
         public Task<IReadOnlyList<FaceRecord>> GetFacesAsync(
             bool confirmedOnly, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public Task<IReadOnlyList<FaceRecord>> GetFacesOnPicturesOfAsync(
+            IReadOnlyCollection<int> faceIds, CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
 
         public Task<IReadOnlyList<FaceSample>> GetSamplesAsync(

@@ -180,6 +180,10 @@ public sealed class GalleryAsyncResultTests : IDisposable
             bool includeEmbeddings, CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
 
+        public Task<IReadOnlyList<FaceRecord>> GetFacesOnPicturesOfAsync(
+            IReadOnlyCollection<int> faceIds, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
         public Task<IReadOnlyList<FaceSample>> GetSamplesAsync(
             int personId, CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();

@@ -37,6 +37,32 @@ public sealed class AssignFacesHandler
     public async Task<AssignmentResult> HandleAsync(
         AssignFacesRequest request, CancellationToken cancellationToken = default)
     {
+        int personId = await RecordAsync(request, cancellationToken).ConfigureAwait(false);
+
+        // What is reported back is how many questions were answered, not how
+        // many rows that came to - the user answered one face, whatever number
+        // of files that photograph happens to exist as.
+        return await RefreshAsync(personId, request.FaceIds.Count, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Records the answer and puts right whoever it took faces from, without
+    /// working out what it means for the person named.
+    /// </summary>
+    /// <remarks>
+    /// For answering a queue one face at a time, where rebuilding the person and
+    /// sweeping the library after every click would make two hundred answers
+    /// unusable - that consequence is left for later. What is not left is the
+    /// person a confirmation took the face from: their eras were built with it,
+    /// and only this knows who they were. Writing the answer straight to the
+    /// index skipped them, so they went on being offered faces like one the
+    /// user had just said was not them.
+    /// </remarks>
+    /// <returns>The person named, made first when the request names somebody new.</returns>
+    public async Task<int> RecordAsync(
+        AssignFacesRequest request, CancellationToken cancellationToken = default)
+    {
         ArgumentNullException.ThrowIfNull(request);
 
         if (request.FaceIds.Count == 0)
@@ -53,8 +79,10 @@ public sealed class AssignFacesHandler
                     cancellationToken)
                 .ConfigureAwait(false);
 
+        // Only the photographs asked about: everything below looks for copies
+        // of those, and the queue waits on this once per click.
         IReadOnlyList<FaceRecord> faces = await _people
-            .GetFacesAsync(includeEmbeddings: false, cancellationToken)
+            .GetFacesOnPicturesOfAsync(request.FaceIds, cancellationToken)
             .ConfigureAwait(false);
 
         // Read before the answer is written, because writing it is what takes
@@ -90,11 +118,7 @@ public sealed class AssignFacesHandler
             await RebuildErasAsync(previous, cancellationToken).ConfigureAwait(false);
         }
 
-        // What is reported back is how many questions were answered, not how
-        // many rows that came to - the user answered one face, whatever number
-        // of files that photograph happens to exist as.
-        return await RefreshAsync(personId, request.FaceIds.Count, cancellationToken)
-            .ConfigureAwait(false);
+        return personId;
     }
 
     /// <summary>

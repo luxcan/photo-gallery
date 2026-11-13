@@ -166,6 +166,23 @@ public sealed partial class PeopleViewModel : ObservableObject, IViewerGrid
     [NotifyPropertyChangedFor(nameof(IsInspecting), nameof(InspectedPosition))]
     private FaceCropItem? _inspected;
 
+    /// <summary>
+    /// True while an answer given in the queue is being written.
+    /// </summary>
+    /// <remarks>
+    /// The answer is written off the UI thread, and until it is the face it is
+    /// about is still the one open. Without this, a second click in that window
+    /// - Leave out straight after Keep, meant for the next face - landed on the
+    /// same face again: it overwrote the first answer, was counted twice, and
+    /// sent the queue back to its start. So nothing that answers or moves on
+    /// starts until the answer before it has finished.
+    /// </remarks>
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(
+        nameof(KeepInspectedCommand), nameof(DropInspectedCommand), nameof(ReassignInspectedCommand),
+        nameof(InspectNextCommand), nameof(InspectPreviousCommand))]
+    private bool _isAnswering;
+
     [ObservableProperty]
     private ImageSource? _inspectedPicture;
 
@@ -430,6 +447,8 @@ public sealed partial class PeopleViewModel : ObservableObject, IViewerGrid
 
     public bool IsIdle => !IsBusy;
 
+    public bool IsNotAnswering => !IsAnswering;
+
     public bool HasFaces => TotalFaces > 0;
 
     public bool HasNoFaces => TotalFaces == 0;
@@ -496,11 +515,19 @@ public sealed partial class PeopleViewModel : ObservableObject, IViewerGrid
     /// that while the photo viewer is open over them: refilling replaced every
     /// tile, so the viewer's arrows lost the one they were on and went dead, and
     /// the page jumped back to the top behind it. The viewer takes a picture off
-    /// this page itself once it moves on, so nothing is left stale - except a
-    /// copy newly named, which appears the next time the page is opened.
+    /// this page itself once it moves on, but it cannot put one on - a copy
+    /// newly named as this person - so the page is marked to be read again once
+    /// the viewer has gone; see <see cref="ReadStalePhotosAsync"/>.
     /// </param>
     public async Task ReloadAsync(bool refillPhotos = true)
     {
+        // Before the busy guard: a reload turned away still means something
+        // changed under the page.
+        if (!refillPhotos)
+        {
+            _photosStale = true;
+        }
+
         if (IsBusy)
         {
             return;
@@ -628,7 +655,13 @@ public sealed partial class PeopleViewModel : ObservableObject, IViewerGrid
     /// every face row in the library, and it answers a question the user has not
     /// asked yet - choosing a name is "show me them", not "give me work".
     /// </remarks>
-    private async Task LoadPersonAsync(int personId)
+    /// <param name="personId">The person whose pictures to read.</param>
+    /// <param name="onlyIfChanged">
+    /// True to leave the page exactly as it is when it already holds what the
+    /// person is in, in the same order - where it is scrolled to and every
+    /// picture already decoded.
+    /// </param>
+    private async Task LoadPersonAsync(int personId, bool onlyIfChanged = false)
     {
         GalleryPage page;
         using (IServiceScope scope = _scopeFactory.CreateScope())
@@ -648,6 +681,12 @@ public sealed partial class PeopleViewModel : ObservableObject, IViewerGrid
             return;
         }
 
+        if (onlyIfChanged
+            && page.Items.Select(item => item.Id).SequenceEqual(_pictures.Select(picture => picture.Id)))
+        {
+            return;
+        }
+
         _pictures = [.. page.Items];
         PhotoCount = page.TotalCount;
         IsEditingBirthYear = false;
@@ -660,6 +699,40 @@ public sealed partial class PeopleViewModel : ObservableObject, IViewerGrid
     }
 
     private IReadOnlyList<GalleryItem> _pictures = [];
+
+    /// <summary>
+    /// Whether the open person's pictures may have changed while the viewer
+    /// was open over them.
+    /// </summary>
+    private bool _photosStale;
+
+    /// <summary>
+    /// Reads the open person's pictures again if a reload left them alone, and
+    /// puts the page right only if they changed.
+    /// </summary>
+    /// <remarks>
+    /// The same shape as an album's page: for the shell to call once the viewer
+    /// has closed and every picture it left has been checked. Left alone when
+    /// the person is in exactly what the page shows - most changes made in the
+    /// viewer take a picture off, which the viewer has already done - so a
+    /// reader who scrolled down is not put back at the top for nothing.
+    /// </remarks>
+    public async Task ReadStalePhotosAsync()
+    {
+        if (!_photosStale)
+        {
+            return;
+        }
+
+        // Cleared whether or not anybody is open: choosing somebody later reads
+        // their pictures anyway.
+        _photosStale = false;
+
+        if (SelectedPerson is PersonItem open)
+        {
+            await LoadPersonAsync(open.Id, onlyIfChanged: true).ConfigureAwait(true);
+        }
+    }
 
     /// <summary>
     /// Cuts the pictures into ages again, without refetching or throwing away
@@ -1076,10 +1149,10 @@ public sealed partial class PeopleViewModel : ObservableObject, IViewerGrid
         }
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(IsNotAnswering))]
     private Task InspectNextAsync() => StepAsync(1);
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(IsNotAnswering))]
     private Task InspectPreviousAsync() => StepAsync(-1);
 
     /// <summary>Answers the open proposal, then moves on to the next.</summary>
@@ -1091,50 +1164,80 @@ public sealed partial class PeopleViewModel : ObservableObject, IViewerGrid
     /// after each click would make walking a queue of two hundred unusable. It is
     /// done once, on the way out.
     /// </remarks>
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(IsNotAnswering))]
     private Task KeepInspectedAsync() => AnswerAsync(keep: true);
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(IsNotAnswering))]
     private Task DropInspectedAsync() => AnswerAsync(keep: false);
 
     private async Task AnswerAsync(bool keep)
     {
-        if (Inspected is null || SelectedPerson is null)
+        if (IsAnswering || Inspected is null || SelectedPerson is null)
         {
             return;
         }
 
         FaceCropItem answered = Inspected;
+        IsAnswering = true;
 
         try
         {
-            using IServiceScope scope = _scopeFactory.CreateScope();
-            await scope.ServiceProvider
-                .GetRequiredService<IPeopleRepository>()
-                .AssignAsync(
-                    SelectedPerson.Id,
-                    [new ScoredFace(answered.FaceId)],
-                    keep ? AssignmentSource.Confirmed : AssignmentSource.Rejected)
-                .ConfigureAwait(true);
-        }
-        catch (Exception ex) when (ex is IOException or InvalidOperationException)
-        {
-            // The face stays in the queue: an answer that was not written is an
-            // answer still to give.
-            Status = $"That answer could not be saved: {ex.Message}";
-            return;
-        }
+            try
+            {
+                await RecordAnswerAsync(new AssignFacesRequest(
+                        [answered.FaceId],
+                        keep ? AssignmentSource.Confirmed : AssignmentSource.Rejected,
+                        PersonId: SelectedPerson.Id))
+                    .ConfigureAwait(true);
+            }
+            catch (Exception ex) when (LibraryFailure.IsExpected(ex))
+            {
+                // The face stays in the queue: an answer that was not written is
+                // an answer still to give.
+                Status = $"That answer could not be saved: {ex.Message}";
+                return;
+            }
 
-        if (keep)
-        {
-            Kept++;
-        }
-        else
-        {
-            LeftOut++;
-        }
+            if (keep)
+            {
+                Kept++;
+            }
+            else
+            {
+                LeftOut++;
+            }
 
-        await LeaveQueueAsync(answered).ConfigureAwait(true);
+            await LeaveQueueAsync(answered).ConfigureAwait(true);
+        }
+        finally
+        {
+            IsAnswering = false;
+        }
+    }
+
+    /// <summary>
+    /// Writes one answer given in the queue, and returns who it named.
+    /// </summary>
+    /// <remarks>
+    /// Through the assignment handler's own recording, not straight to the
+    /// index. A confirmation takes the face off whoever else it was confirmed
+    /// as, and only the handler rebuilds their eras; written straight to the
+    /// index, they went on learning from a face the user had just said was not
+    /// them. It also carries the answer to every copy of the photograph, as the
+    /// batch buttons do - the queue asks about a photograph once, and copies
+    /// left proposed came back as the same question.
+    ///
+    /// <para>What it leaves out is the sweep of the whole library that naming
+    /// from the viewer runs: the consequence is worked out once, on the way out
+    /// of the queue. Off the UI thread all the same, because recording reads
+    /// every face row to find the copies.</para>
+    /// </remarks>
+    private async Task<int> RecordAnswerAsync(AssignFacesRequest request)
+    {
+        using IServiceScope scope = _scopeFactory.CreateScope();
+        AssignFacesHandler handler = scope.ServiceProvider.GetRequiredService<AssignFacesHandler>();
+
+        return await Task.Run(() => handler.RecordAsync(request)).ConfigureAwait(true);
     }
 
     /// <summary>
@@ -1205,7 +1308,8 @@ public sealed partial class PeopleViewModel : ObservableObject, IViewerGrid
     /// </remarks>
     private Task StepAsync(int delta)
     {
-        if (Inspected is null)
+        // The arrow keys call Execute without asking CanExecute first.
+        if (IsAnswering || Inspected is null)
         {
             return Task.CompletedTask;
         }
@@ -1309,10 +1413,10 @@ public sealed partial class PeopleViewModel : ObservableObject, IViewerGrid
     /// being changed - and picking them again is a way of saying "yes" that the
     /// user should be able to see is the same thing.
     /// </remarks>
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(IsNotAnswering))]
     private void ReassignInspected()
     {
-        if (Inspected is not FaceCropItem face)
+        if (IsAnswering || Inspected is not FaceCropItem face)
         {
             return;
         }
@@ -1329,57 +1433,60 @@ public sealed partial class PeopleViewModel : ObservableObject, IViewerGrid
     /// Records the face as somebody else and moves on.
     /// </summary>
     /// <remarks>
-    /// Written straight to the index rather than through the assignment handler,
-    /// for the same reason keeping and leaving out are: re-weighing every face
-    /// in the library after each click would make a queue of two hundred
-    /// unusable. The consequence is worked out once, on the way out.
+    /// Recorded without re-weighing every face in the library, for the same
+    /// reason keeping and leaving out are: doing that after each click would
+    /// make a queue of two hundred unusable. See <see cref="RecordAnswerAsync"/>.
     /// </remarks>
     private async Task ReassignInspectedToAsync(string displayName)
     {
-        if (Inspected is not FaceCropItem face || string.IsNullOrWhiteSpace(displayName))
+        if (IsAnswering
+            || Inspected is not FaceCropItem face
+            || string.IsNullOrWhiteSpace(displayName))
         {
             return;
         }
 
-        int personId;
+        IsAnswering = true;
+
         try
         {
-            using IServiceScope scope = _scopeFactory.CreateScope();
-            IPeopleRepository repository =
-                scope.ServiceProvider.GetRequiredService<IPeopleRepository>();
+            int personId;
+            try
+            {
+                personId = await RecordAnswerAsync(new AssignFacesRequest(
+                        [face.FaceId], AssignmentSource.Confirmed, DisplayName: displayName.Trim()))
+                    .ConfigureAwait(true);
+            }
+            catch (Exception ex) when (LibraryFailure.IsExpected(ex))
+            {
+                Status = $"That answer could not be saved: {ex.Message}";
+                return;
+            }
 
-            personId = await repository
-                .EnsurePersonAsync(displayName.Trim())
-                .ConfigureAwait(true);
+            // The name given may belong to somebody who did not exist until now.
+            LibraryChanged?.Invoke(this, EventArgs.Empty);
 
-            await repository
-                .AssignAsync(personId, [new ScoredFace(face.FaceId)], AssignmentSource.Confirmed)
-                .ConfigureAwait(true);
+            Reassign.Close();
+
+            // The person whose queue this is comes marked in the list so that
+            // they can be picked, and picking them means yes. Counting it as a
+            // face given to somebody else then reported the opposite of what
+            // was said.
+            if (personId == SelectedPerson?.Id)
+            {
+                Kept++;
+            }
+            else
+            {
+                Moved++;
+            }
+
+            await LeaveQueueAsync(face).ConfigureAwait(true);
         }
-        catch (Exception ex) when (ex is IOException or InvalidOperationException)
+        finally
         {
-            Status = $"That answer could not be saved: {ex.Message}";
-            return;
+            IsAnswering = false;
         }
-
-        // The name given may belong to somebody who did not exist until now.
-        LibraryChanged?.Invoke(this, EventArgs.Empty);
-
-        Reassign.Close();
-
-        // The person whose queue this is comes marked in the list so that they
-        // can be picked, and picking them means yes. Counting it as a face given
-        // to somebody else then reported the opposite of what was said.
-        if (personId == SelectedPerson?.Id)
-        {
-            Kept++;
-        }
-        else
-        {
-            Moved++;
-        }
-
-        await LeaveQueueAsync(face).ConfigureAwait(true);
     }
 
     /// <summary>

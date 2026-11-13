@@ -24,6 +24,20 @@ public interface IPeopleReader
         bool includeEmbeddings, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Every face on the photographs some faces were found on, every copy of
+    /// those photographs included.
+    /// </summary>
+    /// <remarks>
+    /// What <see cref="GetFacesAsync"/> returns for those photographs alone,
+    /// without vectors. An answer has to settle every copy of the photograph it
+    /// was given on, and the queue gives one answer per click and waits for it:
+    /// reading every face in the library to find the copies of one photograph
+    /// made each click cost the size of the library.
+    /// </remarks>
+    Task<IReadOnlyList<FaceRecord>> GetFacesOnPicturesOfAsync(
+        IReadOnlyCollection<int> faceIds, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// The confirmed faces of one person, as the examples their eras are built
     /// from.
     /// </summary>

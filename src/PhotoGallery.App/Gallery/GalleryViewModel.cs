@@ -1469,7 +1469,7 @@ public sealed partial class GalleryViewModel : ObservableObject
 
             LibraryChanged?.Invoke(this, EventArgs.Empty);
         }
-        catch (Exception ex) when (ex is IOException or InvalidOperationException)
+        catch (Exception ex) when (LibraryFailure.IsExpected(ex))
         {
             AlbumNotice = $"That could not be done: {ex.Message}";
         }
@@ -1575,7 +1575,7 @@ public sealed partial class GalleryViewModel : ObservableObject
             ChangedWhileOpen(tile.Item.Id, from);
             LibraryChanged?.Invoke(this, EventArgs.Empty);
         }
-        catch (Exception ex) when (ex is IOException or InvalidOperationException)
+        catch (Exception ex) when (LibraryFailure.IsExpected(ex))
         {
             AlbumNotice = $"That could not be done: {ex.Message}";
         }
@@ -1821,7 +1821,7 @@ public sealed partial class GalleryViewModel : ObservableObject
                 .SetIgnoredAsync([face.FaceId], ignored: true)
                 .ConfigureAwait(true);
         }
-        catch (Exception ex) when (ex is IOException or InvalidOperationException)
+        catch (Exception ex) when (LibraryFailure.IsExpected(ex))
         {
             CancelNamingFace();
             return;
@@ -1915,7 +1915,7 @@ public sealed partial class GalleryViewModel : ObservableObject
                 _viewerWrites.Release();
             }
         }
-        catch (Exception ex) when (ex is IOException or InvalidOperationException)
+        catch (Exception ex) when (LibraryFailure.IsExpected(ex))
         {
             DiagnosticLog.Write($"could not record {displayName} on face {face.FaceId}", ex);
 
@@ -2570,6 +2570,16 @@ public sealed partial class GalleryViewModel : ObservableObject
         // Brought into line rather than replaced, so the tree on screen keeps
         // which folders are open and which one is chosen.
         FolderItem.Reconcile(Folders, folders);
+
+        // A folder emptied by a delete or a scan leaves the tree, and the tree
+        // on screen is left choosing nothing - which the window ignores - while
+        // the wall would go on asking for that folder. Letting go of it is what
+        // "no folder chosen" already means: the whole library. Every caller
+        // reads the wall again straight after this, so the wall follows.
+        if (SelectedFolder is FolderItem chosen && !FolderItem.Holds(Folders, chosen))
+        {
+            SelectedFolder = null;
+        }
     }
 
     /// <summary>
@@ -2964,7 +2974,7 @@ public sealed partial class GalleryViewModel : ObservableObject
                 .HandleAsync(tile.ThumbnailName, turn)
                 .ConfigureAwait(true);
         }
-        catch (Exception ex) when (ex is IOException or InvalidOperationException)
+        catch (Exception ex) when (LibraryFailure.IsExpected(ex))
         {
             DiagnosticLog.Write($"could not turn {tile.FileName}", ex);
             return;
@@ -3075,7 +3085,7 @@ public sealed partial class GalleryViewModel : ObservableObject
                 .DescribeAsync(tile.Item.Id)
                 .ConfigureAwait(true);
         }
-        catch (Exception ex) when (ex is IOException or InvalidOperationException)
+        catch (Exception ex) when (LibraryFailure.IsExpected(ex))
         {
             DiagnosticLog.Write($"could not read {tile.FileName} to delete it", ex);
             return null;
@@ -3126,7 +3136,7 @@ public sealed partial class GalleryViewModel : ObservableObject
                 return (IReadOnlyList<PhotoToRemove>)photos;
             }).ConfigureAwait(true);
         }
-        catch (Exception ex) when (ex is IOException or InvalidOperationException)
+        catch (Exception ex) when (LibraryFailure.IsExpected(ex))
         {
             DiagnosticLog.Write("could not read the chosen photographs to delete them", ex);
             return [];
@@ -3210,9 +3220,15 @@ public sealed partial class GalleryViewModel : ObservableObject
         // the viewer captures it: the grid is the one the photograph was open
         // from when it was deleted, not whichever holds the viewer by the end.
         IViewerGrid? grid = _viewerSource;
+        FolderItem? folder = SelectedFolder;
 
         LibraryChanged?.Invoke(this, EventArgs.Empty);
         await LoadFoldersAfterDeletingAsync().ConfigureAwait(true);
+
+        // The delete emptied the folder being stepped through, and the tree let
+        // go of it. What the wall shows now is the whole library, and stepping
+        // on into it would wander out of the folder the user was clearing.
+        bool folderEmptied = folder is not null && SelectedFolder is null;
 
         // Only the library's own grid can be STEPPED THROUGH from here. A
         // picture opened from another screen's grid belongs to that screen, so
@@ -3250,7 +3266,7 @@ public sealed partial class GalleryViewModel : ObservableObject
 
         // Whatever moved up into its place, or the new last one at the end of a
         // folder. Nothing left to show closes the viewer.
-        if (_window.Count == 0 || at < 0)
+        if (_window.Count == 0 || at < 0 || folderEmptied)
         {
             ClosePhoto();
             return;

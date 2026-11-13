@@ -87,6 +87,18 @@ public sealed partial class AlbumsViewModel : ObservableObject, IViewerGrid
     private int _panelRequest;
 
     /// <summary>
+    /// Which read of the open album's photographs is the current one.
+    /// </summary>
+    /// <remarks>
+    /// Opening an album and coming back to a page marked out of date can both
+    /// read the same album at once. Without this each filled the page in turn,
+    /// so the second replaced every tile the first had just drawn - under a
+    /// reader who may already have scrolled, or opened one. Only the read asked
+    /// for last may fill the page.
+    /// </remarks>
+    private int _photosRequest;
+
+    /// <summary>
     /// Which shelf the wall is standing in, as the band last reported it.
     /// </summary>
     /// <remarks>
@@ -343,6 +355,10 @@ public sealed partial class AlbumsViewModel : ObservableObject, IViewerGrid
     /// The album open now, not the one the photograph was opened from: the page
     /// is one grid reused for every album. With none open there is no page to
     /// put right, and opening one reads its photographs afresh.
+    ///
+    /// <para>One question for all of them. It was asked a photograph at a time,
+    /// each a query on the UI thread, and a photograph is settled together with
+    /// every copy of it on the page.</para>
     /// </remarks>
     async Task<IReadOnlySet<int>> IViewerGrid.StillShowingAsync(IReadOnlyList<int> assetIds)
     {
@@ -352,20 +368,12 @@ public sealed partial class AlbumsViewModel : ObservableObject, IViewerGrid
         }
 
         using IServiceScope scope = _scopeFactory.CreateScope();
-        IAlbumRepository albums = scope.ServiceProvider.GetRequiredService<IAlbumRepository>();
-        HashSet<int> held = [];
+        IReadOnlyList<int> held = await scope.ServiceProvider
+            .GetRequiredService<IAlbumRepository>()
+            .GetMembersAmongAsync(album.Id, assetIds)
+            .ConfigureAwait(true);
 
-        foreach (int assetId in assetIds)
-        {
-            AlbumSummary? holding = await albums.FindForAssetAsync(assetId).ConfigureAwait(true);
-
-            if (holding?.Id == album.Id)
-            {
-                held.Add(assetId);
-            }
-        }
-
-        return held;
+        return held.ToHashSet();
     }
 
     void IViewerGrid.Dropped(GalleryTile tile)
@@ -2145,6 +2153,8 @@ public sealed partial class AlbumsViewModel : ObservableObject, IViewerGrid
     /// </param>
     private async Task LoadPhotosAsync(int albumId, bool onlyIfChanged = false)
     {
+        int request = ++_photosRequest;
+
         try
         {
             GalleryPage page;
@@ -2158,6 +2168,11 @@ public sealed partial class AlbumsViewModel : ObservableObject, IViewerGrid
 
                 if (members.Count == 0)
                 {
+                    if (request != _photosRequest)
+                    {
+                        return;
+                    }
+
                     _photos.Fill(Array.Empty<GalleryTile>());
                     OnPropertyChanged(nameof(PhotoCount));
                     OnPropertyChanged(nameof(HasPhotos));
@@ -2173,7 +2188,7 @@ public sealed partial class AlbumsViewModel : ObservableObject, IViewerGrid
                     .ConfigureAwait(true);
             }
 
-            if (Selected?.Id != albumId)
+            if (Selected?.Id != albumId || request != _photosRequest)
             {
                 return;
             }
@@ -2294,15 +2309,17 @@ public sealed partial class AlbumsViewModel : ObservableObject, IViewerGrid
         /// Which of these photographs the open album's rule would still offer.
         /// </summary>
         /// <remarks>
-        /// The same question the strip was filled from, rather than "is it in no
+        /// The same rule the strip was filled from, rather than "is it in no
         /// album": a photograph the app swept into one of its own suggestions is
         /// offered anyway, and asking the narrower question would take one that
         /// is still on offer out of the strip merely because it had been opened.
+        /// Asked of these photographs alone - the whole search was run, and
+        /// then a lookup per photograph, for every arrow press that left a
+        /// changed proposal.
         ///
-        /// <para>Off the UI thread, as the Suggest button runs it, because it is
-        /// the same search of the whole library and SQLite's asynchronous
-        /// methods are synchronous underneath. Run on the dispatcher, it froze
-        /// the viewer after the arrow press that left a changed proposal.</para>
+        /// <para>Off the UI thread, as the Suggest button runs its search,
+        /// because SQLite's asynchronous methods are synchronous underneath and
+        /// the rule can still be a walk of every face in the library.</para>
         ///
         /// <para>A proposal no longer offered because it is now in this very
         /// album - filed there through the viewer's album list - marks the page
@@ -2324,16 +2341,14 @@ public sealed partial class AlbumsViewModel : ObservableObject, IViewerGrid
                 IAlbumRepository albums = scope.ServiceProvider
                     .GetRequiredService<IAlbumRepository>();
 
-                HashSet<int> stillOffered = (await albums.SuggestAsync(albumId).ConfigureAwait(false))
-                    .Intersect(assetIds)
-                    .ToHashSet();
+                HashSet<int> stillOffered =
+                [
+                    .. await albums.StillSuggestedAsync(albumId, assetIds).ConfigureAwait(false),
+                ];
 
-                bool anyJoined = false;
-                foreach (int assetId in assetIds.Where(id => !stillOffered.Contains(id)))
-                {
-                    AlbumSummary? holding = await albums.FindForAssetAsync(assetId).ConfigureAwait(false);
-                    anyJoined |= holding?.Id == albumId;
-                }
+                int[] gone = [.. assetIds.Where(id => !stillOffered.Contains(id))];
+                bool anyJoined = gone.Length > 0
+                    && (await albums.GetMembersAmongAsync(albumId, gone).ConfigureAwait(false)).Count > 0;
 
                 return (stillOffered, anyJoined);
             }).ConfigureAwait(true);

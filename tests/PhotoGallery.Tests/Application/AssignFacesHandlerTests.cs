@@ -419,6 +419,54 @@ public sealed class AssignFacesHandlerTests : IDisposable
     }
 
     [Fact]
+    public async Task Record_RebuildsWhoAFaceWasTakenFrom_ButNotWhoItNamed()
+    {
+        // Answering a queue one face at a time records without working out what
+        // the answer means for the person named - that is left for the way out.
+        // The person the face was taken from is another matter: only this
+        // answer knows who they were.
+        int moved = AddFace(0, 0);
+        AssignmentResult anna = await Name([moved, AddFace(1, 2), AddFace(2, 4)], "Anna");
+        Assert.Equal(3, await SamplesOf(anna.PersonId));
+
+        int ben = await NewHandler().RecordAsync(
+            new AssignFacesRequest([moved], AssignmentSource.Confirmed, DisplayName: "Ben"));
+
+        Assert.Equal([moved], await Confirmed(ben));
+        Assert.Equal(2, await SamplesOf(anna.PersonId));
+        Assert.False(
+            await _db.Set<PersonEra>().AnyAsync(era => era.PersonId == ben),
+            "recording one answer rebuilt the person it named");
+    }
+
+    [Fact]
+    public async Task Record_ReadsOnlyThePhotographsItWasAskedAbout()
+    {
+        // The queue records one answer per click and waits for it before moving
+        // on, so finding the copies of one photograph must not cost a read of
+        // every face in the library - the read the board is kept off the UI
+        // thread for.
+        const string OnePhotograph = "thumb-narrow.jpg";
+        int asked = AddFace(0, 0, thumbnailName: OnePhotograph);
+        int otherCopy = AddFace(0, 0, thumbnailName: OnePhotograph);
+        int anotherPicture = AddFace(9, 0);
+
+        var calls = new System.Collections.Concurrent.ConcurrentDictionary<string, int>();
+        IPeopleReader counted = CallCounter<IPeopleReader>.Wrap(_reader, calls);
+        var handler = new AssignFacesHandler(
+            counted, _repository, new ProposeFacesHandler(counted, _repository));
+
+        int ana = await handler.RecordAsync(
+            new AssignFacesRequest([asked], AssignmentSource.Confirmed, DisplayName: "Ana"));
+
+        Assert.False(
+            calls.ContainsKey(nameof(IPeopleReader.GetFacesAsync)),
+            "recording one answer read every face in the library");
+        Assert.Equal([asked, otherCopy], await Confirmed(ana));
+        Assert.DoesNotContain(anotherPicture, await Confirmed(ana));
+    }
+
+    [Fact]
     public async Task Name_AMovedFaceTakesItsCopiesWithIt()
     {
         // The copies were named together as one photograph; moving only the file

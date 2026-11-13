@@ -48,9 +48,10 @@ public sealed partial class FolderItem : ObservableObject
     /// </summary>
     /// <remarks>
     /// A folder is the same folder when its source and its path are, whatever
-    /// its count. One that is gone is taken out and one that is new is put in
-    /// where the tree as read has it; the order of the rest is the tree's own
-    /// and does not change between reads.
+    /// its count. One that is gone is taken out, one that is new is put in, and
+    /// every one ends up exactly where the tree as read has it. A kept folder is
+    /// moved rather than replaced, which keeps the object - and with it whether
+    /// it is open and whether it is chosen.
     /// </remarks>
     /// <param name="shown">The folders on screen, changed in place.</param>
     /// <param name="read">The folders as read now, in the order to show them.</param>
@@ -67,6 +68,8 @@ public sealed partial class FolderItem : ObservableObject
             }
         }
 
+        // Everything before 'at' is already the read's own first folders in the
+        // read's own order, so 'at' is never past the end of what is shown.
         for (int at = 0; at < read.Count; at++)
         {
             FolderNode folder = read[at];
@@ -74,13 +77,35 @@ public sealed partial class FolderItem : ObservableObject
 
             if (kept is null)
             {
-                shown.Insert(Math.Min(at, shown.Count), new FolderItem(folder));
+                shown.Insert(at, new FolderItem(folder));
                 continue;
+            }
+
+            int from = shown.IndexOf(kept);
+            if (from != at)
+            {
+                shown.Move(from, at);
             }
 
             kept.ItemCount = folder.ItemCount;
             Reconcile(kept.Children, folder.Children);
         }
+    }
+
+    /// <summary>
+    /// Whether this very folder is anywhere in a tree, at any depth.
+    /// </summary>
+    /// <remarks>
+    /// By object rather than by path, because <see cref="Reconcile"/> keeps the
+    /// object of every folder that is still there - so a folder not found here
+    /// is one a read took out.
+    /// </remarks>
+    public static bool Holds(IEnumerable<FolderItem> tree, FolderItem folder)
+    {
+        ArgumentNullException.ThrowIfNull(tree);
+        ArgumentNullException.ThrowIfNull(folder);
+
+        return tree.Any(item => ReferenceEquals(item, folder) || Holds(item.Children, folder));
     }
 
     private bool IsFor(FolderNode folder) =>

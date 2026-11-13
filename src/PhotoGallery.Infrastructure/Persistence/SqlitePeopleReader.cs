@@ -14,13 +14,62 @@ public sealed class SqlitePeopleReader : IPeopleReader
 
     public SqlitePeopleReader(GalleryDbContext db) => _db = db;
 
-    public async Task<IReadOnlyList<FaceRecord>> GetFacesAsync(
-        bool includeEmbeddings, CancellationToken cancellationToken = default)
+    public Task<IReadOnlyList<FaceRecord>> GetFacesAsync(
+        bool includeEmbeddings, CancellationToken cancellationToken = default) =>
+        ReadFacesAsync(InLibrary(), includeEmbeddings, cancellationToken);
+
+    public async Task<IReadOnlyList<FaceRecord>> GetFacesOnPicturesOfAsync(
+        IReadOnlyCollection<int> faceIds, CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(faceIds);
+
+        // Renditions are named after the picture's content, so every copy of a
+        // photograph carries the same name - which is what makes them copies.
+        var pictures = new HashSet<string>(StringComparer.Ordinal);
+
+        // Chunked: SQLite caps parameters per statement, and naming a large
+        // group is exactly when that limit is met.
+        foreach (int[] chunk in faceIds.Distinct().Chunk(400))
+        {
+            pictures.UnionWith(await _db.Faces
+                .AsNoTracking()
+                .Where(face => chunk.Contains(face.Id))
+                .Join(
+                    InLibrary(),
+                    face => face.AssetId,
+                    asset => asset.Id,
+                    (_, asset) => asset.ThumbnailName!)
+                .ToListAsync(cancellationToken)
+                .ConfigureAwait(false));
+        }
+
+        var records = new List<FaceRecord>();
+        foreach (string[] chunk in pictures.Chunk(400))
+        {
+            records.AddRange(await ReadFacesAsync(
+                    InLibrary().Where(asset => chunk.Contains(asset.ThumbnailName!)),
+                    includeEmbeddings: false,
+                    cancellationToken)
+                .ConfigureAwait(false));
+        }
+
+        return records;
+    }
+
+    /// <summary>
+    /// The faces found in some photographs, with whatever anyone has said about
+    /// them.
+    /// </summary>
+    private async Task<IReadOnlyList<FaceRecord>> ReadFacesAsync(
+        IQueryable<Asset> assets, bool includeEmbeddings, CancellationToken cancellationToken)
+    {
+        IQueryable<int> faceIds = _db.Faces
+            .Join(assets, face => face.AssetId, asset => asset.Id, (face, _) => face.Id);
+
         var rows = await _db.Faces
             .AsNoTracking()
             .Join(
-                InLibrary(),
+                assets,
                 face => face.AssetId,
                 asset => asset.Id,
                 (face, asset) => new
@@ -48,7 +97,7 @@ public sealed class SqlitePeopleReader : IPeopleReader
             ? await _db.Faces
                 .AsNoTracking()
                 .Join(
-                    InLibrary(),
+                    assets,
                     face => face.AssetId,
                     asset => asset.Id,
                     (face, asset) => new { face.Id, face.Embedding })
@@ -58,7 +107,8 @@ public sealed class SqlitePeopleReader : IPeopleReader
 
         var claims = await _db.FaceAssignments
             .AsNoTracking()
-            .Where(assignment => assignment.Source != AssignmentSource.Rejected)
+            .Where(assignment => assignment.Source != AssignmentSource.Rejected
+                              && faceIds.Contains(assignment.FaceId))
             .Select(assignment => new
             {
                 assignment.FaceId, assignment.PersonId, assignment.Source,

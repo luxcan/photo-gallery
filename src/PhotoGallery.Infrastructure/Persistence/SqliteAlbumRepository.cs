@@ -246,6 +246,26 @@ public sealed class SqliteAlbumRepository : IAlbumRepository
             .ConfigureAwait(false);
     }
 
+    public async Task<IReadOnlyList<int>> GetMembersAmongAsync(
+        int albumId, IReadOnlyList<int> assetIds, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(assetIds);
+
+        if (assetIds.Count == 0)
+        {
+            return [];
+        }
+
+        int[] asked = [.. assetIds.Distinct()];
+
+        return await _db.AlbumMembers
+            .AsNoTracking()
+            .Where(member => member.AlbumId == albumId && asked.Contains(member.AssetId))
+            .Select(member => member.AssetId)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+    }
+
     public async Task<IReadOnlyList<int>> GetMembersAsync(
         int albumId, CancellationToken cancellationToken = default)
     {
@@ -349,6 +369,65 @@ public sealed class SqliteAlbumRepository : IAlbumRepository
     public async Task<IReadOnlyList<int>> SuggestAsync(
         int albumId, CancellationToken cancellationToken = default)
     {
+        IQueryable<Asset>? fitting = await OfferedAsync(albumId, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (fitting is null)
+        {
+            return [];
+        }
+
+        return await fitting
+            // Newest first, by the same date the filter just used. This was a
+            // third spelling of the rule that left out the creation date, so a
+            // photograph could be offered in one order and filed in another.
+            .OrderByDescending(AssetDates.Taken)
+            .ThenByDescending(asset => asset.Id)
+            .Select(asset => asset.Id)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    public async Task<IReadOnlyList<int>> StillSuggestedAsync(
+        int albumId, IReadOnlyList<int> assetIds, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(assetIds);
+
+        if (assetIds.Count == 0)
+        {
+            return [];
+        }
+
+        IQueryable<Asset>? fitting = await OfferedAsync(albumId, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (fitting is null)
+        {
+            return [];
+        }
+
+        int[] asked = [.. assetIds.Distinct()];
+
+        return await fitting
+            .Where(asset => asked.Contains(asset.Id))
+            .Select(asset => asset.Id)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// The photographs an album's rule offers it, as a query not yet run, or
+    /// nothing when the album has no rule.
+    /// </summary>
+    /// <remarks>
+    /// One spelling of the rule for both questions asked of it - the whole
+    /// search behind the Suggest button, and whether a few photographs are
+    /// still on offer once the viewer has changed them - so the two cannot
+    /// drift apart.
+    /// </remarks>
+    private async Task<IQueryable<Asset>?> OfferedAsync(
+        int albumId, CancellationToken cancellationToken)
+    {
         AlbumRule rule = await GetRuleAsync(albumId, cancellationToken)
             .ConfigureAwait(false);
 
@@ -356,7 +435,7 @@ public sealed class SqliteAlbumRepository : IAlbumRepository
         {
             // No rule, nothing to look for. Answering with the whole library
             // would be the opposite of a suggestion.
-            return [];
+            return null;
         }
 
         string span = await SpanKeyAsync(albumId, cancellationToken).ConfigureAwait(false);
@@ -439,15 +518,7 @@ public sealed class SqliteAlbumRepository : IAlbumRepository
                     && assignment.Source == AssignmentSource.Confirmed)));
         }
 
-        return await fitting
-            // Newest first, by the same date the filter just used. This was a
-            // third spelling of the rule that left out the creation date, so a
-            // photograph could be offered in one order and filed in another.
-            .OrderByDescending(AssetDates.Taken)
-            .ThenByDescending(asset => asset.Id)
-            .Select(asset => asset.Id)
-            .ToListAsync(cancellationToken)
-            .ConfigureAwait(false);
+        return fitting;
     }
 
     /// <summary>

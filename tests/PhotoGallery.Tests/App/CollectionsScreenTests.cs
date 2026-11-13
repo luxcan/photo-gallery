@@ -1022,6 +1022,14 @@ public sealed class CollectionsScreenTests : IDisposable
             int albumId, CancellationToken cancellationToken = default) =>
             _inner.SuggestAsync(albumId, cancellationToken);
 
+        public Task<IReadOnlyList<int>> GetMembersAmongAsync(
+            int albumId, IReadOnlyList<int> assetIds, CancellationToken cancellationToken = default) =>
+            _inner.GetMembersAmongAsync(albumId, assetIds, cancellationToken);
+
+        public Task<IReadOnlyList<int>> StillSuggestedAsync(
+            int albumId, IReadOnlyList<int> assetIds, CancellationToken cancellationToken = default) =>
+            _inner.StillSuggestedAsync(albumId, assetIds, cancellationToken);
+
         public Task AcceptAsync(int albumId, CancellationToken cancellationToken = default) =>
             _inner.AcceptAsync(albumId, cancellationToken);
 

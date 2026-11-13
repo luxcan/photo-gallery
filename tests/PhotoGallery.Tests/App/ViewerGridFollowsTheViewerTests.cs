@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using Microsoft.EntityFrameworkCore;
@@ -53,6 +54,7 @@ public sealed class ViewerGridFollowsTheViewerTests : IDisposable
     private const int SecondCopy = 8;
 
     private readonly string _root;
+    private readonly ConcurrentDictionary<string, int> _albumCalls = new();
     private readonly ServiceProvider _services;
     private readonly MainViewModel _main;
 
@@ -64,9 +66,14 @@ public sealed class ViewerGridFollowsTheViewerTests : IDisposable
         _root = Path.Combine(Path.GetTempPath(), $"pg-grid-follows-{Guid.NewGuid():N}");
         Directory.CreateDirectory(_root);
 
+        // The real album store, counted: a few tests pin how often the screens
+        // ask it the expensive questions, not only what they are told.
         _services = new ServiceCollection()
             .AddPhotoGalleryInfrastructure(_root)
             .AddPhotoGalleryHandlers()
+            .AddScoped(provider => CallCounter<IAlbumRepository>.Wrap(
+                new SqliteAlbumRepository(provider.GetRequiredService<GalleryDbContext>()),
+                _albumCalls))
             .BuildServiceProvider();
 
         using (IServiceScope scope = _services.CreateScope())
@@ -123,6 +130,27 @@ public sealed class ViewerGridFollowsTheViewerTests : IDisposable
             () => Card("Bali").Summary.PhotoCount == 2 && Card("Sentosa").Summary.PhotoCount == 2,
             "both albums' cards to count the photograph where it now is",
             attempts: 1000);
+    }
+
+    /// <summary>
+    /// Settling the album page asks the album store one question for all the
+    /// photographs being settled, not one per photograph.
+    /// </summary>
+    [Fact]
+    public async Task MovedToAnotherAlbum_TheAlbumPageIsSettledWithoutALookupPerPhoto()
+    {
+        await OpenAlbumAsync("Bali", 3);
+        GalleryTile moved = AlbumTile(2);
+
+        await OpenFromAlbumAsync(moved);
+        await ChooseAlbumForOpenPhotoAsync("Sentosa");
+        int lookups = AlbumCalls(nameof(IAlbumRepository.FindForAssetAsync));
+
+        _main.Gallery.ClosePhotoCommand.Execute(null);
+        await _main.Gallery.WallSettled;
+
+        Assert.DoesNotContain(moved, _main.Albums.Photos.Tiles);
+        Assert.Equal(lookups, AlbumCalls(nameof(IAlbumRepository.FindForAssetAsync)));
     }
 
     /// <summary>
@@ -419,6 +447,70 @@ public sealed class ViewerGridFollowsTheViewerTests : IDisposable
     }
 
     /// <summary>
+    /// A copy that naming carried to the open person joins their page once the
+    /// viewer closes.
+    /// </summary>
+    /// <remarks>
+    /// Naming a face carries the name to every copy of the photograph, so a
+    /// copy that was never on the person's page can be on it now. The page is
+    /// left alone under the open viewer, and nothing read it again once the
+    /// viewer had gone - the copy appeared only when the person was chosen
+    /// again.
+    /// </remarks>
+    [Fact]
+    public async Task ACopyNamedAsTheOpenPerson_JoinsTheirPageWhenTheViewerCloses()
+    {
+        int copy = AddCopyOfTheUnnamedFace();
+        await OpenPersonAsync("Ana", 3);
+
+        await OpenFromPersonAsync(PersonTile(3), faces: 2);
+        await NameFaceAsync(
+            _main.Gallery.OpenFaces.Single(face => face.Face.PersonName is null), "Ana");
+
+        _main.Gallery.ClosePhotoCommand.Execute(null);
+        await _main.Gallery.WallSettled;
+
+        await TestWait.ForAsync(
+            () => _main.People.PhotoCount == 4
+                && _main.People.Photos.Tiles.Any(tile => tile.Item.Id == copy),
+            "the copy named as Ana to join her page",
+            attempts: 1000);
+    }
+
+    /// <summary>
+    /// A person's page whose pictures did not change keeps its tiles when the
+    /// viewer over it closes.
+    /// </summary>
+    /// <remarks>
+    /// Read again only to find out; refilling a page that came back the same
+    /// would put somebody who had scrolled down it back at the top for nothing.
+    /// </remarks>
+    [Fact]
+    public async Task APersonsPageThatDidNotChange_KeepsItsTilesWhenTheViewerCloses()
+    {
+        await OpenPersonAsync("Ana", 3);
+        List<GalleryTile> before = [.. _main.People.Photos.Tiles];
+
+        await OpenFromPersonAsync(PersonTile(3), faces: 2);
+        await NameFaceAsync(
+            _main.Gallery.OpenFaces.Single(face => face.Face.PersonName is null), "Ben");
+        await TestWait.ForAsync(
+            () => _main.People.Named.Any(person => person.DisplayName == "Ben") && !_main.People.IsBusy,
+            "the People screen to be rebuilt behind the viewer",
+            attempts: 1000);
+
+        _main.Gallery.ClosePhotoCommand.Execute(null);
+        await _main.Gallery.WallSettled;
+
+        // Long enough for a read started on the viewer closing to land.
+        for (int check = 0; check < 30; check++)
+        {
+            await Task.Delay(10);
+            Assert.Equal(before, _main.People.Photos.Tiles);
+        }
+    }
+
+    /// <summary>
     /// A merge of another computer's answers, landing while the viewer is open
     /// over a person's page, leaves the viewer's arrows working.
     /// </summary>
@@ -475,6 +567,35 @@ public sealed class ViewerGridFollowsTheViewerTests : IDisposable
 
         Assert.Equal(_sentosa, (await AlbumOfAsync(5))?.Id);
         Assert.Equal(_bali, (await AlbumOfAsync(6))?.Id);
+    }
+
+    /// <summary>
+    /// Leaving a changed proposal asks about that photograph alone, rather than
+    /// running the album's whole search again.
+    /// </summary>
+    /// <remarks>
+    /// The strip's question was answered by searching the whole library with
+    /// the album's rule and looking for the photograph in the answer, and then
+    /// asking which album held it, one photograph at a time - for every arrow
+    /// press that left a proposal the viewer had changed.
+    /// </remarks>
+    [Fact]
+    public async Task LeavingAChangedProposal_DoesNotSearchTheWholeLibraryAgain()
+    {
+        await SuggestForBaliAsync();
+        GalleryTile filed = SuggestionTile(5);
+
+        _main.OpenSuggestedPhotoCommand.Execute(filed);
+        await FileOpenPhotoAsync("Sentosa");
+        int searches = AlbumCalls(nameof(IAlbumRepository.SuggestAsync));
+        int lookups = AlbumCalls(nameof(IAlbumRepository.FindForAssetAsync));
+
+        _main.Gallery.ClosePhotoCommand.Execute(null);
+        await _main.Gallery.WallSettled;
+
+        Assert.DoesNotContain(filed, _main.Albums.Suggestions);
+        Assert.Equal(searches, AlbumCalls(nameof(IAlbumRepository.SuggestAsync)));
+        Assert.Equal(lookups, AlbumCalls(nameof(IAlbumRepository.FindForAssetAsync)));
     }
 
     /// <summary>
@@ -670,6 +791,36 @@ public sealed class ViewerGridFollowsTheViewerTests : IDisposable
     }
 
     /// <summary>
+    /// Deleting the last photograph of the chosen folder lets go of the folder,
+    /// so the wall and the tree agree: the whole library, and no folder chosen.
+    /// </summary>
+    /// <remarks>
+    /// An emptied folder leaves the tree as it is read again, and the tree on
+    /// screen was left with nothing selected - which the window ignores - while
+    /// the wall went on asking for that folder and showing nothing at all.
+    /// </remarks>
+    [Fact]
+    public async Task DeletingTheLastPhotoOfTheChosenFolder_LetsGoOfTheFolder()
+    {
+        await _main.Gallery.LoadFoldersAsync();
+        _main.Gallery.SelectedFolder = Folder("copies");
+        await _main.Gallery.LoadAsync();
+        Assert.Equal(2, _main.Gallery.Rows.Sum(row => row.Tiles.Count));
+
+        await DeleteDirectlyAsync(FirstCopy);
+        await _main.Gallery.LoadAsync();
+        _main.Gallery.OpenPhotoCommand.Execute(WallTile(SecondCopy));
+        await DeleteOpenPhotoAsync();
+
+        Assert.Null(_main.Gallery.SelectedFolder);
+        Assert.DoesNotContain(
+            _main.Gallery.Folders.SelectMany(root => root.Children),
+            folder => folder.RelativeFolder == "copies");
+        Assert.Equal(Photographs, _main.Gallery.Rows.Sum(row => row.Tiles.Count));
+        Assert.False(_main.Gallery.IsViewerOpen, "the folder being stepped through has nothing left");
+    }
+
+    /// <summary>
     /// Deleting from the viewer puts the Photo sources table's count right.
     /// </summary>
     [Fact]
@@ -687,6 +838,37 @@ public sealed class ViewerGridFollowsTheViewerTests : IDisposable
             () => source.PhotoCount == total - 1,
             "the source's count to be read again",
             attempts: 1000);
+    }
+
+    /// <summary>
+    /// A change that deletes nothing leaves the Photo sources table's counts
+    /// alone.
+    /// </summary>
+    /// <remarks>
+    /// The counts were read again at the end of every change a screen reported -
+    /// each face named, each face set aside, each turn - and the read is a
+    /// count over the whole library on the UI thread. Only a delete changes how
+    /// many photographs a source holds. The count here is deliberately wrong, so
+    /// a re-read would show.
+    /// </remarks>
+    [Fact]
+    public async Task TurningInTheViewer_LeavesTheSourceCountsAlone()
+    {
+        const int Untouched = 99;
+        var source = new PhotoSourceItem(1, _root, Untouched, new DateTime(2026, 1, 1));
+        _main.Sources.Add(source);
+
+        await _main.Gallery.LoadAsync();
+        _main.Gallery.OpenPhotoCommand.Execute(WallTile(5));
+        await _main.Gallery.TurnPhotoCommand.ExecuteAsync("90");
+
+        // Long enough for the shell to finish with the change: a re-read of the
+        // counts, had it started, lands well inside this.
+        for (int check = 0; check < 30; check++)
+        {
+            await Task.Delay(10);
+            Assert.Equal(Untouched, source.PhotoCount);
+        }
     }
 
     /// <summary>
@@ -743,6 +925,9 @@ public sealed class ViewerGridFollowsTheViewerTests : IDisposable
     }
 
     // ------------------------------------------------------------- helpers
+
+    /// <summary>How many times the screens have asked the album store this.</summary>
+    private int AlbumCalls(string method) => _albumCalls.GetValueOrDefault(method);
 
     private void ShowSection(string key) =>
         _main.SelectedSection = _main.TopSections.Single(section => section.Key == key);
@@ -894,11 +1079,20 @@ public sealed class ViewerGridFollowsTheViewerTests : IDisposable
     }
 
     /// <summary>Deletes the open photograph the way the window's Delete button does.</summary>
+    /// <remarks>
+    /// Through the shell, as the window does, because the shell's delete is the
+    /// one place every delete ends - and some of what a delete puts right, the
+    /// Photo sources table's counts among it, is put right there.
+    /// </remarks>
     private async Task DeleteOpenPhotoAsync()
     {
-        int assetId = _main.Gallery.OpenTile!.Item.Id;
-        PhotoRemovalResult result = await DeleteDirectlyAsync(assetId);
-        await _main.Gallery.AfterOpenPhotoDeletedAsync(result);
+        PhotoToRemove? photo = await _main.Gallery.DescribeDeletionAsync();
+        Assert.NotNull(photo);
+
+        PhotoRemovalResult result = await _main.DeletePhotosAsync(
+            [photo], _main.Gallery.AfterOpenPhotoDeletedAsync);
+
+        Assert.Equal(1, result.Deleted);
     }
 
     private async Task<PhotoRemovalResult> DeleteDirectlyAsync(int assetId)
@@ -910,6 +1104,31 @@ public sealed class ViewerGridFollowsTheViewerTests : IDisposable
 
         Assert.Equal(1, result.Deleted);
         return result;
+    }
+
+    /// <summary>
+    /// Another file of the third photograph, carrying its own row for the face
+    /// nobody has named, and returns its id.
+    /// </summary>
+    private int AddCopyOfTheUnnamedFace()
+    {
+        const int Copy = 9;
+
+        using IServiceScope scope = _services.CreateScope();
+        GalleryDbContext db = scope.ServiceProvider.GetRequiredService<GalleryDbContext>();
+
+        Asset third = db.Assets.AsNoTracking().Single(asset => asset.Id == 3);
+        db.Assets.Add(Photo(Copy, @"elsewhere\3.jpg", third.TakenUtc!.Value, third.ThumbnailName!));
+        db.Faces.Add(new Face
+        {
+            AssetId = Copy,
+            Bounds = new FaceBounds(40, 30, 12, 12),
+            DetectScore = 0.9f,
+            Embedding = TestEmbeddings.At(120),
+        });
+        db.SaveChanges();
+
+        return Copy;
     }
 
     /// <summary>Moves one photograph into an album by writing it, as another screen would.</summary>

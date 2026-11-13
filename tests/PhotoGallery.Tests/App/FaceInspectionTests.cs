@@ -42,6 +42,7 @@ public sealed class FaceInspectionTests : IDisposable
             .AddTransient<QueryGalleryHandler>()
             .AddTransient<GetPersonReviewHandler>()
             .AddTransient<GetPeopleBoardHandler>()
+            .AddTransient<ProposeFacesHandler>()
             .AddTransient<AssignFacesHandler>()
             .BuildServiceProvider();
 
@@ -552,6 +553,18 @@ public sealed class FaceInspectionTests : IDisposable
                 Confirmed(101, personId: 1),
                 Confirmed(102, personId: 2),
             ]);
+
+        public async Task<IReadOnlyList<FaceRecord>> GetFacesOnPicturesOfAsync(
+            IReadOnlyCollection<int> faceIds, CancellationToken token = default)
+        {
+            IReadOnlyList<FaceRecord> faces = await GetFacesAsync(includeEmbeddings: false, token);
+            HashSet<string> pictures =
+            [
+                .. faces.Where(face => faceIds.Contains(face.FaceId)).Select(face => face.ThumbnailName),
+            ];
+
+            return [.. faces.Where(face => pictures.Contains(face.ThumbnailName))];
+        }
 
         private static FaceRecord Confirmed(int faceId, int personId) => new(
             faceId,

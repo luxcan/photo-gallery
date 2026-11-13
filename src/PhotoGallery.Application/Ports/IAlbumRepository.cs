@@ -54,6 +54,15 @@ public interface IAlbumRepository
     Task<IReadOnlyList<int>> GetMembersAsync(
         int albumId, CancellationToken cancellationToken = default);
 
+    /// <summary>Which of these photographs one album holds, in no particular order.</summary>
+    /// <remarks>
+    /// One question for several photographs. The viewer settles a photograph
+    /// together with every copy of it on an album's page, and asking which album
+    /// held each one in turn was a query per copy for a single arrow press.
+    /// </remarks>
+    Task<IReadOnlyList<int>> GetMembersAmongAsync(
+        int albumId, IReadOnlyList<int> assetIds, CancellationToken cancellationToken = default);
+
     /// <summary>Makes an album of the user's own, and returns its id.</summary>
     Task<int> CreateAsync(string name, CancellationToken cancellationToken = default);
 
@@ -83,6 +92,19 @@ public interface IAlbumRepository
     /// </remarks>
     Task<IReadOnlyList<int>> SuggestAsync(
         int albumId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Which of these photographs <see cref="SuggestAsync"/> would still offer
+    /// the album, in no particular order.
+    /// </summary>
+    /// <remarks>
+    /// The same rule, the same exclusions, asked of a few photographs rather
+    /// than the whole library. The viewer asks it each time it leaves a
+    /// proposal it changed, and the whole search was the price of that one
+    /// answer.
+    /// </remarks>
+    Task<IReadOnlyList<int>> StillSuggestedAsync(
+        int albumId, IReadOnlyList<int> assetIds, CancellationToken cancellationToken = default);
 
     /// <summary>Keeps a proposal, so no pass may change it again.</summary>
     Task AcceptAsync(int albumId, CancellationToken cancellationToken = default);

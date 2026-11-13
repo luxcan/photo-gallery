@@ -359,14 +359,16 @@ public sealed partial class MainViewModel : ObservableObject
                 _ = Albums.SettleAfterDecidingAsync();
             }
 
-            // The album page itself, once the viewer is out of the way: a
+            // The page behind the viewer, once the viewer is out of the way. A
             // proposal filed into the open album through the viewer's album
-            // list leaves the strip, and only this puts it on the page.
+            // list leaves the strip, and a copy that naming carried to the open
+            // person was never on their page: the viewer can only take a
+            // picture off a page, and only this puts one on.
             if (e.PropertyName == nameof(GalleryViewModel.IsViewerOpen)
                 && !Gallery.IsViewerOpen
-                && ShowAlbums)
+                && (ShowAlbums || ShowPeople))
             {
-                _ = ReadStaleAlbumPageAsync();
+                _ = ReadStalePageAsync();
             }
         };
 
@@ -465,10 +467,6 @@ public sealed partial class MainViewModel : ObservableObject
                     await ShowGalleryAsync();
                 }
             }
-
-            // Last, so a source count that cannot be read never stands between
-            // a screen and the reload above.
-            await RefreshSourceCountsAsync();
         }
         catch (Exception ex) when (LibraryFailure.IsExpected(ex))
         {
@@ -494,24 +492,33 @@ public sealed partial class MainViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Reads the open album's page again once the viewer over it has closed and
-    /// every photograph it left has been checked.
+    /// Reads the open album's or person's page again once the viewer over it
+    /// has closed and every photograph it left has been checked.
     /// </summary>
     /// <remarks>
     /// After the checks, because it is one of them - the proposal strip's -
-    /// that says the page is out of date. Nobody awaits this, so a failure is
-    /// caught and logged here rather than left unobserved.
+    /// that says an album's page is out of date. Nobody awaits this, so a
+    /// failure is caught and logged here rather than left unobserved.
     /// </remarks>
-    private async Task ReadStaleAlbumPageAsync()
+    private async Task ReadStalePageAsync()
     {
         try
         {
             await Gallery.WallSettled;
-            await Albums.ReadStalePhotosAsync();
+
+            if (ShowAlbums)
+            {
+                await Albums.ReadStalePhotosAsync();
+            }
+
+            if (ShowPeople)
+            {
+                await People.ReadStalePhotosAsync();
+            }
         }
         catch (Exception ex) when (LibraryFailure.IsExpected(ex))
         {
-            DiagnosticLog.Write("could not read the open album again after the viewer closed", ex);
+            DiagnosticLog.Write("could not read the page behind the viewer again after it closed", ex);
         }
     }
 
@@ -522,7 +529,14 @@ public sealed partial class MainViewModel : ObservableObject
     /// The Photo sources table was told its counts only when the library opened
     /// and when a scan finished, so every photograph deleted in between left the
     /// row claiming one more than the source holds - until the next rescan or
-    /// restart. Read here, on the way through every change a screen reports.
+    /// restart. Read after a delete, which every screen's delete ends in, and
+    /// not after every change a screen reports: naming, setting aside and
+    /// turning leave the counts as they were, and this is a count over the
+    /// whole library.
+    ///
+    /// <para>A count that cannot be read is logged and left: the photographs
+    /// have gone, and saying the deletion failed over a number would be a lie
+    /// about the disk.</para>
     /// </remarks>
     private async Task RefreshSourceCountsAsync()
     {
@@ -531,17 +545,24 @@ public sealed partial class MainViewModel : ObservableObject
             return;
         }
 
-        Dictionary<int, int> counts;
-        using (IServiceScope scope = _scopeFactory.CreateScope())
+        try
         {
-            counts = await scope.ServiceProvider
-                .GetRequiredService<IAssetRepository>()
-                .GetCountsBySourceAsync();
-        }
+            Dictionary<int, int> counts;
+            using (IServiceScope scope = _scopeFactory.CreateScope())
+            {
+                counts = await scope.ServiceProvider
+                    .GetRequiredService<IAssetRepository>()
+                    .GetCountsBySourceAsync();
+            }
 
-        foreach (PhotoSourceItem source in Sources)
+            foreach (PhotoSourceItem source in Sources)
+            {
+                source.PhotoCount = counts.GetValueOrDefault(source.Id);
+            }
+        }
+        catch (Exception ex) when (LibraryFailure.IsExpected(ex))
         {
-            source.PhotoCount = counts.GetValueOrDefault(source.Id);
+            DiagnosticLog.Write("could not re-read the photo sources' counts", ex);
         }
     }
 
@@ -1384,7 +1405,7 @@ public sealed partial class MainViewModel : ObservableObject
                 {
                     await settle(result);
                 }
-                catch (Exception ex) when (ex is IOException or InvalidOperationException)
+                catch (Exception ex) when (LibraryFailure.IsExpected(ex))
                 {
                     // Caught here rather than falling into the handler below,
                     // which answers a different question. The photographs did
@@ -1395,10 +1416,14 @@ public sealed partial class MainViewModel : ObservableObject
                 }
             }
 
+            if (result.Deleted > 0)
+            {
+                await RefreshSourceCountsAsync();
+            }
+
             return result;
         }
-        catch (Exception ex) when (ex is IOException or InvalidOperationException
-                                       or UnauthorizedAccessException)
+        catch (Exception ex) when (LibraryFailure.IsExpected(ex))
         {
             // Not one file refusing - that is counted and reported. This is the
             // index itself failing, which leaves the caller unable to say what

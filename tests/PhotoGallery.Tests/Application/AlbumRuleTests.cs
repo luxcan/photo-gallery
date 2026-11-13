@@ -442,6 +442,84 @@ public sealed class AlbumRuleTests : IDisposable
         Assert.Empty(await Repository().SuggestAsync(album));
     }
 
+    /// <summary>
+    /// Asked about a few photographs, the rule answers for exactly those with
+    /// the answer the whole search would give them.
+    /// </summary>
+    /// <remarks>
+    /// The viewer asks this each time it leaves a proposal it changed, about
+    /// that one photograph; the whole search was run to answer it. Every way a
+    /// photograph stops being offered is here - outside the rule, filed in the
+    /// album itself, filed in one somebody made, refused - beside one still
+    /// offered from inside a suggestion and one the question did not ask about.
+    /// </remarks>
+    [Fact]
+    public async Task StillSuggested_AnswersForTheAskedPhotographsAsTheSearchWould()
+    {
+        int offered = Add("offered.jpg", March);
+        int fromASuggestion = Add("suggested.jpg", March);
+        int notAsked = Add("not-asked.jpg", March);
+        int outsideTheRule = Add("outside.jpg", March.AddDays(5));
+        int filedHere = Add("here.jpg", March);
+        int filedElsewhere = Add("elsewhere.jpg", March);
+        int refused = Add("refused.jpg", March);
+        Proposal("Eight days in March", fromASuggestion);
+
+        int album = await Rule(new AlbumRule(
+            DateOnly.FromDateTime(March), DateOnly.FromDateTime(March), [], []));
+
+        IAlbumRepository repository = Repository();
+        int somewhereElse = await repository.CreateAsync("Somewhere else");
+        await repository.AddAsync(somewhereElse, [filedElsewhere]);
+        await repository.AddAsync(album, [filedHere]);
+        await repository.RefuseAsync(album, [refused]);
+        _db.ChangeTracker.Clear();
+
+        int[] asked = [offered, fromASuggestion, outsideTheRule, filedHere, filedElsewhere, refused];
+
+        IReadOnlyList<int> still = await Repository().StillSuggestedAsync(album, asked);
+
+        Assert.Equal([offered, fromASuggestion], still.Order());
+        Assert.Equal(
+            (await Repository().SuggestAsync(album)).Intersect(asked).Order(),
+            still.Order());
+        Assert.DoesNotContain(notAsked, still);
+    }
+
+    [Fact]
+    public async Task StillSuggested_ARuleThatSaysNothingOffersNothing()
+    {
+        int album = await Repository().CreateAsync("Empty");
+        int photograph = Add("a.jpg", March);
+
+        Assert.Empty(await Repository().StillSuggestedAsync(album, [photograph]));
+    }
+
+    /// <summary>
+    /// Which of a few photographs one album holds, in one question.
+    /// </summary>
+    [Fact]
+    public async Task MembersAmong_AnswersWhichOfTheAskedAnAlbumHolds()
+    {
+        int held = Add("held.jpg", March);
+        int alsoHeld = Add("also-held.jpg", March);
+        int notAsked = Add("not-asked.jpg", March);
+        int elsewhere = Add("elsewhere.jpg", March);
+        int loose = Add("loose.jpg", March);
+
+        IAlbumRepository repository = Repository();
+        int album = await repository.CreateAsync("Holding");
+        await repository.AddAsync(album, [held, alsoHeld, notAsked]);
+        int other = await repository.CreateAsync("Other");
+        await repository.AddAsync(other, [elsewhere]);
+        _db.ChangeTracker.Clear();
+
+        IReadOnlyList<int> members = await Repository().GetMembersAmongAsync(
+            album, [held, alsoHeld, elsewhere, loose]);
+
+        Assert.Equal([held, alsoHeld], members.Order());
+    }
+
     [Fact]
     public async Task ARuleIsReadBackAsItWasWritten()
     {
