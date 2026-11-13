@@ -1649,7 +1649,11 @@ public static class DecisionMerge
         {
             (AssetKey Photo, string ProposalKey) key = (rejection.Photo, rejection.ProposalKey);
 
-            if (ours.Contains(key) || !seen.Add(key))
+            // A laptop on an older build names a made album by its own row
+            // number, which here is a different album or none: taken, it kept a
+            // photograph out of an unrelated album's "Find photos that fit".
+            if (AlbumRefusalKey.IsLocalOnly(rejection.ProposalKey)
+                || ours.Contains(key) || !seen.Add(key))
             {
                 continue;
             }

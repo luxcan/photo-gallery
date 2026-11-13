@@ -16,7 +16,7 @@ namespace PhotoGallery.Infrastructure.Persistence.Migrations
         protected override void BuildModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
-            modelBuilder.HasAnnotation("ProductVersion", "9.0.21");
+            modelBuilder.HasAnnotation("ProductVersion", "9.0.23");
 
             modelBuilder.Entity("PhotoGallery.Domain.Albums.Album", b =>
                 {

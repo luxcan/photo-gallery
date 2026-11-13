@@ -455,20 +455,22 @@ public sealed class SqliteAlbumRepository : IAlbumRepository
     /// </summary>
     /// <remarks>
     /// A proposal is remembered by its run of days, because the row itself is
-    /// rebuilt. An album somebody made is permanent, so its own id is a
-    /// stable name - and the two are kept in one table because they answer the
-    /// same question: never offer this photograph here again.
+    /// rebuilt. An album somebody made is permanent, so its public id is a
+    /// stable name, and the same one on every computer - see
+    /// <see cref="AlbumRefusalKey"/>. The two are kept in one table because they
+    /// answer the same question: never offer this photograph here again.
     /// </remarks>
     private async Task<string> SpanKeyAsync(int albumId, CancellationToken cancellationToken)
     {
-        string? key = await _db.Albums
+        var album = await _db.Albums
             .AsNoTracking()
             .Where(row => row.Id == albumId)
-            .Select(row => row.ProposalKey)
+            .Select(row => new { row.ProposalKey, row.PublicId })
             .FirstOrDefaultAsync(cancellationToken)
-            .ConfigureAwait(false);
+            .ConfigureAwait(false)
+            ?? throw new InvalidOperationException("That album is not in this library.");
 
-        return key ?? $"made:{albumId}";
+        return album.ProposalKey ?? AlbumRefusalKey.Made(album.PublicId);
     }
 
     public async Task AcceptAsync(int albumId, CancellationToken cancellationToken = default)
