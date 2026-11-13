@@ -2105,18 +2105,25 @@ public sealed partial class AlbumsViewModel : ObservableObject, IViewerGrid
         FillWall();
     }
 
-    partial void OnSelectedChanged(AlbumItem? value)
+    partial void OnSelectedChanged(AlbumItem? oldValue, AlbumItem? newValue)
     {
-        if (_rebuilding)
+        // The same album re-pointed at is not opening it. A card is a record,
+        // so a decoded cover or a rebuilt wall hands over a new card for the
+        // album already open - and opening it again re-read its photographs,
+        // which replaced every tile on the page, under the viewer too. The
+        // guard alone was not enough: covers arrive from several decodes, and
+        // where they are not funnelled through one thread one swap could clear
+        // the guard while another was carrying the selection across.
+        if (_rebuilding || (newValue is not null && oldValue?.Id == newValue.Id))
         {
             return;
         }
 
-        EditedName = value?.Name ?? string.Empty;
+        EditedName = newValue?.Name ?? string.Empty;
 
-        if (value is not null)
+        if (newValue is not null)
         {
-            _ = LoadPhotosAsync(value.Id);
+            _ = LoadPhotosAsync(newValue.Id);
         }
     }
 

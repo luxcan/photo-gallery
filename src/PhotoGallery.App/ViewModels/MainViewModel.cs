@@ -474,6 +474,14 @@ public sealed partial class MainViewModel : ObservableObject
         }
     }
 
+    /// <summary>The last visit to Albums, finished once its page has been read.</summary>
+    /// <remarks>
+    /// Internal so a test can wait for the whole visit rather than for the
+    /// album list alone: the open album's page is read after the list, and a
+    /// test that moved on at the list raced that read.
+    /// </remarks>
+    internal Task AlbumsReturned { get; private set; } = Task.CompletedTask;
+
     /// <summary>
     /// Reads the albums again on the way back to them, and then the open
     /// album's page if it was told it may be out of date.
@@ -3067,7 +3075,7 @@ public sealed partial class MainViewModel : ObservableObject
             // Rebuilt on every visit, like the two screens above: a photograph
             // put into an album from the viewer changes what belongs here.
             Albums.Reopened();
-            _ = ReturnToAlbumsAsync();
+            AlbumsReturned = ReturnToAlbumsAsync();
         }
         else if (ShowDuplicates)
         {

@@ -939,6 +939,7 @@ public sealed class ViewerGridFollowsTheViewerTests : IDisposable
             () => _main.Albums.Wall.Count == 2 && !_main.Albums.IsBusy,
             "the albums to be read",
             attempts: 1000);
+        await _main.AlbumsReturned;
     }
 
     private AlbumItem Card(string name) => _main.Albums.Wall.Single(album => album.Name == name);
