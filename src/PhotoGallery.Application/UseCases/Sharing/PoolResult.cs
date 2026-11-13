@@ -57,6 +57,16 @@ public sealed record PoolResult(
     public IReadOnlyList<string> FacesWaitFor { get; init; } = [];
 
     /// <summary>
+    /// How many other machines' answers could not be read this time, so could
+    /// not say how they land faces - and the faces wait for them too.
+    /// </summary>
+    /// <remarks>
+    /// Kept apart from <see cref="FacesWaitFor"/> because there is nobody to
+    /// name: usually a file caught being written, which comes good next time.
+    /// </remarks>
+    public int FacesWaitForUnreadable { get; init; }
+
+    /// <summary>
     /// What landing the answers that were waiting did, where something arrived
     /// for them to land on - or null where nothing did.
     /// </summary>
@@ -147,13 +157,19 @@ public sealed record PoolResult(
     /// </remarks>
     private string WaitingSentence()
     {
-        if (FacesWaitFor.Count == 0)
+        string[] waitingOn =
+        [
+            .. FacesWaitFor,
+            .. Enumerable.Repeat("a computer whose answers could not be read", FacesWaitForUnreadable),
+        ];
+
+        if (waitingOn.Length == 0)
         {
             return string.Empty;
         }
 
-        string who = string.Join(" and ", FacesWaitFor);
-        bool one = FacesWaitFor.Count == 1;
+        string who = string.Join(" and ", waitingOn);
+        bool one = waitingOn.Length == 1;
 
         return $" This computer's faces are not put there yet: {who} last synced from an "
              + "older copy of the app, which would add some faces twice. They follow once "
@@ -169,7 +185,8 @@ public sealed record PoolResult(
     /// can release them: somebody has to go to the laptop named and update it.
     /// Until this the only place it was written down was the scan log, so a
     /// laptop could hold everybody's faces back for good without anyone
-    /// knowing which.
+    /// knowing which. Answers that could not be read are left out: there is no
+    /// laptop to name, and the next scan usually reads them.
     /// </remarks>
     public string FacesWaitingNotice
     {

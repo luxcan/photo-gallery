@@ -681,6 +681,10 @@ public sealed class FaceVectorsTests : IDisposable
 
         Assert.False(File.Exists(VectorsOf(Mum)), "faces were left beside answers nobody could read");
         Assert.Contains("could not be read", given.Summary, StringComparison.Ordinal);
+
+        // But not put on screen: there is no laptop to tell anybody to update,
+        // and the next scan usually reads the file.
+        Assert.Empty(given.FacesWaitingNotice);
     }
 
     /// <summary>

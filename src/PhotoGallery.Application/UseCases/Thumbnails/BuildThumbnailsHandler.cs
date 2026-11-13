@@ -83,9 +83,10 @@ public sealed class BuildThumbnailsHandler
         CancellationToken cancellationToken = default)
     {
         var stopwatch = Stopwatch.StartNew();
+        var reachable = new ReachableSources(_availability);
 
         IReadOnlyList<PendingThumbnail> pending =
-            await FindPendingAsync(cancellationToken).ConfigureAwait(false);
+            await FindPendingAsync(reachable, cancellationToken).ConfigureAwait(false);
 
         if (pending.Count == 0)
         {
@@ -95,7 +96,6 @@ public sealed class BuildThumbnailsHandler
         int built = 0, failed = 0, done = 0;
         bool cancelled = false;
 
-        var lost = new LostSources(_availability);
 
         try
         {
@@ -118,7 +118,7 @@ public sealed class BuildThumbnailsHandler
                             // The turn the user asked for is reapplied here, so a
                             // photograph straightened once stays straight through
                             // every later pass.
-                            GeneratedThumbnail? generated = lost.IsLost(item.SourceRoot)
+                            GeneratedThumbnail? generated = reachable.IsLost(item.SourceRoot)
                                 ? null
                                 : await _generator
                                     .GenerateAsync(item.FullPath, item.Rotation, token)
@@ -130,7 +130,7 @@ public sealed class BuildThumbnailsHandler
                                 // is not opened again on every future pass - but
                                 // only once its source has answered. Otherwise it
                                 // is left for the next pass, uncounted.
-                                if (lost.StillAnswers(item.SourceRoot))
+                                if (reachable.StillAnswers(item.SourceRoot))
                                 {
                                     unreadable.Enqueue(item.AssetId);
                                     Interlocked.Increment(ref failed);
@@ -243,12 +243,10 @@ public sealed class BuildThumbnailsHandler
     /// that is switched off.
     /// </remarks>
     private async Task<IReadOnlyList<PendingThumbnail>> FindPendingAsync(
-        CancellationToken cancellationToken)
+        ReachableSources reachable, CancellationToken cancellationToken)
     {
         IReadOnlyList<PendingThumbnail> candidates =
             await _reader.GetThumbnailCandidatesAsync(cancellationToken).ConfigureAwait(false);
-
-        var reachable = new ReachableSources(_availability);
 
         return
         [

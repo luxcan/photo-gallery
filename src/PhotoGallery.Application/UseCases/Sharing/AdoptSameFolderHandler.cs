@@ -40,7 +40,8 @@ public sealed class AdoptSameFolderHandler
     /// <param name="mine">The shared identity of the folder just added.</param>
     /// <param name="theirs">The identity another computer uses for the same folder.</param>
     /// <exception cref="InvalidOperationException">
-    /// The folder is not this library's, or already has photographs.
+    /// The folder is not this library's, already has photographs, or another of
+    /// this library's folders already has that identity.
     /// </exception>
     public async Task HandleAsync(Guid mine, Guid theirs, CancellationToken cancellationToken = default)
     {
@@ -58,6 +59,12 @@ public sealed class AdoptSameFolderHandler
         if (mine == theirs)
         {
             return;
+        }
+
+        if (sources.Any(other => other.Id != source.Id && other.SharedId == theirs))
+        {
+            throw new InvalidOperationException(
+                "Another folder in this library already is that folder, so it cannot be taken twice.");
         }
 
         if (await _assets.CountAsync(source.Id, cancellationToken).ConfigureAwait(false) > 0)

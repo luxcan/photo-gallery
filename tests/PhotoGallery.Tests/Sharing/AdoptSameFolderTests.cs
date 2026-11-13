@@ -42,6 +42,18 @@ public sealed class AdoptSameFolderTests : IDisposable
     }
 
     [Fact]
+    public async Task AnIdentityAnotherFolderHereHas_IsRefused()
+    {
+        Dad.Unpair();
+        Guid theirs = _house.Mum.SharedSourceId;
+        Dad.Folder(@"\\192.168.50.103\PhotoGallery", theirs);
+        PhotoGallery.Domain.Library.PhotoSource mapped = Dad.Folder(@"Z:\PhotoGallery");
+
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => OnDad.HandleAsync(mapped.SharedId, theirs));
+    }
+
+    [Fact]
     public async Task AFolderThatIsNotThisLibrarys_IsRefused() =>
         await Assert.ThrowsAsync<InvalidOperationException>(
             () => OnDad.HandleAsync(Guid.NewGuid(), _house.Mum.SharedSourceId));

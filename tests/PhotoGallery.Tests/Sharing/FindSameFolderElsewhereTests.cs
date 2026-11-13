@@ -87,5 +87,22 @@ public sealed class FindSameFolderElsewhereTests : IDisposable
         Assert.Empty(found.Proposals);
     }
 
+    [Fact]
+    public async Task AFolderThisLibraryAlreadyHasUnderThatIdentity_IsNotOfferedAgain()
+    {
+        // Dad already has the share, paired with Mum's; now he adds it a second
+        // time by a mapped drive. Taking Mum's identity again would make his two
+        // folders one.
+        _house.Sharing();
+        Mum.Reaches(@"\\192.168.50.103\PhotoGallery");
+        await Mum.Publishing.HandleAsync();
+        Dad.Folder(@"\\192.168.50.103\PhotoGallery", Mum.SharedSourceId);
+        PhotoGallery.Domain.Library.PhotoSource mapped = Dad.Folder(@"Z:\PhotoGallery");
+
+        SameFolderElsewhere found = await OnDad.HandleAsync(mapped.SharedId);
+
+        Assert.Empty(found.Proposals);
+    }
+
     public void Dispose() => _house.Dispose();
 }

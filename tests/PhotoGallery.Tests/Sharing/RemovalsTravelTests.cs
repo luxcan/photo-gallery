@@ -91,6 +91,40 @@ public sealed class RemovalsTravelTests : IDisposable
         Assert.Empty(MembersOf(Dad, his));
     }
 
+    /// <summary>
+    /// A suggestion kept after it was thrown away elsewhere keeps its
+    /// photographs, on both computers.
+    /// </summary>
+    /// <remarks>
+    /// Throwing it away refuses every photograph in it at that moment. Those
+    /// refusals are the album's, which the later keep wins back - read as
+    /// photographs taken out, they emptied the album the keep had just won.
+    /// </remarks>
+    [Fact]
+    public async Task KeptAfterBeingThrownAwayElsewhere_ItKeepsItsPhotographs()
+    {
+        Album his = Dad.Suggestion("March 2019", Days, kept: false);
+        Dad.Put(his, Dad.Prepared(@"2019\a.jpg", "aaa.jpg"), Monday);
+        await Dad.Albums.DismissAsync(his.Id);
+        Dad.Db.ChangeTracker.Clear();
+
+        Album hers = Mum.Suggestion(
+            "March 2019", Days, kept: true, keptUtc: DateTime.UtcNow.AddHours(1));
+        Mum.Put(hers, Mum.Prepared(@"2019\a.jpg", "aaa.jpg"), Monday);
+
+        await Dad.Publishing.HandleAsync();
+        await Mum.Merging.HandleAsync();
+
+        Assert.Single(MembersOf(Mum, hers));
+
+        await Mum.Publishing.HandleAsync();
+        await Dad.Merging.HandleAsync();
+        Dad.Db.ChangeTracker.Clear();
+
+        Album back = Dad.Db.Albums.AsNoTracking().Single(album => album.ProposalKey == Days);
+        Assert.Single(MembersOf(Dad, back));
+    }
+
     [Fact]
     public async Task ARefusalOfAnotherAlbum_LeavesThisOneAlone()
     {

@@ -897,7 +897,15 @@ public sealed partial class MainViewModel : ObservableObject
             return;
         }
 
-        await AskAboutOtherComputersAsync(added, sharedId, isFirst: Sources.Count == 1);
+        if (!await AskAboutOtherComputersAsync(added, sharedId, isFirst: Sources.Count == 1))
+        {
+            // Stopped while the sync folder was being asked. The folder stays
+            // added and unscanned, as a scan stopped at once would leave it;
+            // its own Scan button carries on from here.
+            Append($"  stopped before scanning {added.Path}");
+            return;
+        }
+
         await RunRefreshAsync([added]);
     }
 
@@ -927,17 +935,21 @@ public sealed partial class MainViewModel : ObservableObject
     /// not answer within its deadline, or anything that goes wrong, the folder
     /// is scanned as it always was.</para>
     /// </remarks>
-    private async Task AskAboutOtherComputersAsync(
+    /// <returns>False when the user pressed Stop while the folder was asked.</returns>
+    private async Task<bool> AskAboutOtherComputersAsync(
         PhotoSourceItem added, Guid sharedId, bool isFirst)
     {
         if (AddFolderQuestions is not IAddFolderQuestions questions)
         {
-            return;
+            return true;
         }
 
         try
         {
-            SameFolderElsewhere elsewhere = await LookElsewhereAsync(added, sharedId);
+            if (await LookElsewhereAsync(added, sharedId) is not SameFolderElsewhere elsewhere)
+            {
+                return false;
+            }
 
             if (!elsewhere.SyncFolderChosen && isFirst
                 && questions.ChooseSyncFolderFirst() is string chosen)
@@ -950,10 +962,15 @@ public sealed partial class MainViewModel : ObservableObject
                     // user is, since the Sync screen that would say it is not
                     // on screen.
                     SourceError = Sharing.Status;
-                    return;
+                    return true;
                 }
 
-                elsewhere = await LookElsewhereAsync(added, sharedId);
+                if (await LookElsewhereAsync(added, sharedId) is not SameFolderElsewhere again)
+                {
+                    return false;
+                }
+
+                elsewhere = again;
             }
 
             if (elsewhere.Proposals.FirstOrDefault(questions.IsSameFolder) is PairingProposal same)
@@ -973,15 +990,29 @@ public sealed partial class MainViewModel : ObservableObject
             DiagnosticLog.Write("could not ask about the other computers", ex);
             Append($"  could not look for this folder on the other computers: {ex.Message}");
         }
+
+        return true;
     }
 
     /// <summary>
     /// Asks the sync folder which other computers keep a folder like this one,
     /// with the window covered and saying so while it waits.
     /// </summary>
-    private async Task<SameFolderElsewhere> LookElsewhereAsync(
+    /// <remarks>
+    /// Under the scan's own cancellation, because it is under the scan's own
+    /// overlay and Stop button: a Stop pressed here used to say "stopping..."
+    /// and stop nothing, and the scan the user had just tried to stop began.
+    /// </remarks>
+    /// <returns>Null when the user pressed Stop.</returns>
+    private async Task<SameFolderElsewhere?> LookElsewhereAsync(
         PhotoSourceItem added, Guid sharedId)
     {
+        // In place before the overlay goes up, so a Stop the moment it appears
+        // has something to stop.
+        using var cancellation = new CancellationTokenSource();
+        _refreshCancellation = cancellation;
+        CancellationToken token = cancellation.Token;
+
         IsRefreshing = true;
         OverlayTitle = "Checking the sync folder";
         OverlayTarget = added.Path;
@@ -994,10 +1025,19 @@ public sealed partial class MainViewModel : ObservableObject
             FindSameFolderElsewhereHandler handler =
                 scope.ServiceProvider.GetRequiredService<FindSameFolderElsewhereHandler>();
 
-            return await Task.Run(() => handler.HandleAsync(sharedId)).ConfigureAwait(true);
+            SameFolderElsewhere found = await Task
+                .Run(() => handler.HandleAsync(sharedId, token), CancellationToken.None)
+                .ConfigureAwait(true);
+
+            return token.IsCancellationRequested ? null : found;
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested)
+        {
+            return null;
         }
         finally
         {
+            _refreshCancellation = null;
             IsRefreshing = false;
             ClearOverlay();
         }
@@ -2125,8 +2165,10 @@ public sealed partial class MainViewModel : ObservableObject
             VideoStatus = VideosWaitingNote;
 
             // The one thing a scan holds back that only somebody at another
-            // laptop can release, so it is said here and not only in the log.
-            if (result.Given is { FacesWaitingNotice.Length: > 0 } given)
+            // laptop can release, so it is said here and not only in the log -
+            // but never over a question still waiting for an answer, which it
+            // would take away unanswered. The next scan says it again.
+            if (!NoticeAsks && result.Given is { FacesWaitingNotice.Length: > 0 } given)
             {
                 Say(given.FacesWaitingNotice);
             }

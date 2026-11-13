@@ -77,6 +77,15 @@ public sealed class FindSameFolderElsewhereHandler
         // another computer has already paired with a third is not news.
         SourceLink[] links = [.. mine.Links, .. fetched.Sets.SelectMany(set => set.Links)];
 
+        // An identity another of this library's folders already has is not
+        // offered. Taken, it would make two folders here one - the same share
+        // added twice, once by a mapped drive - and every photograph's answers
+        // would land on whichever copy happened to be read last.
+        HashSet<Guid> taken =
+        [
+            .. mine.Sources.Select(source => source.SharedId).Where(id => id != sharedSourceId),
+        ];
+
         return new SameFolderElsewhere(
             SyncFolderChosen: true,
             [
@@ -84,7 +93,7 @@ public sealed class FindSameFolderElsewhereHandler
                     .Where(them => them.Machine.Id != machine.Id)
                     .SelectMany(them => SourcePairing.Propose(
                         added, them.Sources, them.Machine.Name, links))
-                    .Where(proposal => proposal.CanPair)
+                    .Where(proposal => proposal.CanPair && !taken.Contains(proposal.Theirs.SharedId))
                     .OrderBy(proposal => proposal.Likeness),
             ]);
     }

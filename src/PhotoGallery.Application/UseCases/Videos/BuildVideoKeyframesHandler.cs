@@ -103,11 +103,12 @@ public sealed class BuildVideoKeyframesHandler
         CancellationToken cancellationToken = default)
     {
         var stopwatch = Stopwatch.StartNew();
+        var reachable = new ReachableSources(_availability);
 
         IReadOnlyList<PendingVideo> pending;
         try
         {
-            pending = await FindPendingAsync(cancellationToken).ConfigureAwait(false);
+            pending = await FindPendingAsync(reachable, cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
@@ -134,7 +135,6 @@ public sealed class BuildVideoKeyframesHandler
 
         var completed = new ConcurrentQueue<VideoKeyframeUpdate>();
         var unreadable = new ConcurrentQueue<int>();
-        var lost = new LostSources(_availability);
 
         // One writer at a time. These saves now happen while the rest of the
         // pass is still opening videos, and the index is SQLite behind a single
@@ -155,7 +155,7 @@ public sealed class BuildVideoKeyframesHandler
                 },
                 async (item, token) =>
                 {
-                    KeyframeReading reading = lost.IsLost(item.SourceRoot)
+                    KeyframeReading reading = reachable.IsLost(item.SourceRoot)
                         ? KeyframeReading.Unavailable
                         : await _extractor
                             .ExtractAsync(item.FullPath, token)
@@ -184,7 +184,7 @@ public sealed class BuildVideoKeyframesHandler
                         {
                             // Asked so that, if the whole source has gone, the
                             // clips still to come from it are not tried at all.
-                            lost.StillAnswers(item.SourceRoot);
+                            reachable.StillAnswers(item.SourceRoot);
                             Interlocked.Increment(ref skipped);
                         }
                     }
@@ -304,12 +304,10 @@ public sealed class BuildVideoKeyframesHandler
     /// switched off.</para>
     /// </remarks>
     private async Task<IReadOnlyList<PendingVideo>> FindPendingAsync(
-        CancellationToken cancellationToken)
+        ReachableSources reachable, CancellationToken cancellationToken)
     {
         IReadOnlyList<PendingVideo> candidates =
             await _reader.GetVideoCandidatesAsync(cancellationToken).ConfigureAwait(false);
-
-        var reachable = new ReachableSources(_availability);
 
         return
         [

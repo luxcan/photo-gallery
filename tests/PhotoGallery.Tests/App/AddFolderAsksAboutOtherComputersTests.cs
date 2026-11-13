@@ -114,6 +114,33 @@ public sealed class AddFolderAsksAboutOtherComputersTests : IDisposable
         Assert.NotEqual(mum.SharedSourceId, Source().SharedId);
     }
 
+    /// <summary>
+    /// Stop pressed while the sync folder is being asked stops: nothing is
+    /// asked and the folder is not scanned.
+    /// </summary>
+    /// <remarks>
+    /// The check runs under the scan's overlay and Stop button. It used to have
+    /// no cancellation, so Stop said "stopping..." and the scan began anyway.
+    /// </remarks>
+    [Fact]
+    public async Task StopWhileTheSyncFolderIsAsked_StopsBeforeTheScan()
+    {
+        _main.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(MainViewModel.OverlayTitle)
+                && _main.OverlayTitle == "Checking the sync folder")
+            {
+                _main.CancelPassCommand.Execute(null);
+            }
+        };
+
+        await AddAsync(_photos);
+
+        Assert.Empty(_questions.Asked);
+        Assert.Null(Source().LastScanUtc);
+        Assert.False(_main.IsRefreshing);
+    }
+
     [Fact]
     public async Task ASecondFolder_IsNotOfferedASyncFolderAgain()
     {

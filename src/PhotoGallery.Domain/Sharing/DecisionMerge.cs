@@ -1401,7 +1401,7 @@ public static class DecisionMerge
                 // another computer. Beaten like an earlier filing, so a
                 // photograph somebody took out is not put straight back by the
                 // computer that has not heard yet.
-                if (refusals.Since(placed, albums.Here(album) ?? theirs.GetValueOrDefault(membership.Album))
+                if (refusals.Since(placed, albums.Current(album, theirs.GetValueOrDefault(membership.Album)))
                     is not null)
                 {
                     continue;
@@ -1431,7 +1431,7 @@ public static class DecisionMerge
         foreach (SharedAlbumMembership standing in ours.Values)
         {
             if (winners.GetValueOrDefault(standing.Photo) == standing
-                && refusals.Since(standing, albums.Here(standing.Album))
+                && refusals.Since(standing, albums.Current(standing.Album, arriving: null))
                     is SharedAlbumRejection refused)
             {
                 winners.Remove(standing.Photo);
@@ -1472,6 +1472,16 @@ public static class DecisionMerge
     /// sync. A refusal later than a membership now beats it. Later only, and
     /// that is what makes putting a photograph back work: the refusal is never
     /// cleared, but a membership made after it is newer and stands.
+    ///
+    /// <para><strong>Not the refusals a throw-away writes.</strong> Throwing a
+    /// suggestion away refuses every photograph in it at the same moment, and
+    /// that is a decision about the album, which the album pass settles: a
+    /// keep made later wins the album back. Read here too, those refusals took
+    /// every photograph out of the album the keep had just won back, since its
+    /// photographs were filed when the suggestion was built. They are known by
+    /// their moment, which is the throw-away's own. Nor is a keep's date used
+    /// instead: renaming or re-covering a kept album re-dates the keep, and
+    /// would put back every photograph taken out of it before.</para>
     /// </remarks>
     private sealed class Refusals
     {
@@ -1480,11 +1490,18 @@ public static class DecisionMerge
         public static Refusals Of(DecisionSet mine, IEnumerable<DecisionSet> others)
         {
             var refusals = new Refusals();
+            DecisionSet[] sets = [mine, .. others];
 
-            foreach (SharedAlbumRejection rejection in
-                     mine.Rejections.Concat(others.SelectMany(them => them.Rejections)))
+            HashSet<(string Key, DateTime When)> thrownAway =
+            [
+                .. sets.SelectMany(set => set.Dismissals)
+                    .Select(dismissal => (dismissal.ProposalKey, dismissal.DismissedUtc)),
+            ];
+
+            foreach (SharedAlbumRejection rejection in sets.SelectMany(set => set.Rejections))
             {
-                if (AlbumRefusalKey.IsLocalOnly(rejection.ProposalKey))
+                if (AlbumRefusalKey.IsLocalOnly(rejection.ProposalKey)
+                    || thrownAway.Contains((rejection.ProposalKey, rejection.RejectedUtc)))
                 {
                     continue;
                 }
@@ -1628,8 +1645,24 @@ public static class DecisionMerge
             && (_settled.Lost.Contains(Identity(album))
                 || _settled.Standing.GetValueOrDefault(Identity(album))?.DeletedUtc is not null);
 
-        /// <summary>This library's album of that identity, if it has one.</summary>
-        public SharedAlbum? Here(Guid publicId) => _byPublicId.GetValueOrDefault(publicId);
+        /// <summary>
+        /// The album as this merge leaves it: what the album pass settled where
+        /// it settled anything, otherwise this library's own, otherwise the one
+        /// arriving.
+        /// </summary>
+        /// <remarks>
+        /// Settled first because a keep arriving in this merge is what dates
+        /// the album's photographs against a refusal - see
+        /// <see cref="Refusals.Since"/>.
+        /// </remarks>
+        public SharedAlbum? Current(Guid publicId, SharedAlbum? arriving)
+        {
+            SharedAlbum? known = _byPublicId.GetValueOrDefault(publicId) ?? arriving;
+
+            return known is null
+                ? null
+                : _settled.Standing.GetValueOrDefault(Identity(known)) ?? known;
+        }
 
         /// <summary>
         /// What this library would call the album a membership names, or why it

@@ -197,7 +197,7 @@ public sealed class ShareRenditionsHandler
                 return PoolResult.Stopped with { Offered = offered };
             }
 
-            (bool left, IReadOnlyList<string> behind) =
+            (bool left, IReadOnlyList<string> behind, int unreadable) =
                 await GiveFacesAsync(machine, progress, cancellationToken).ConfigureAwait(false);
 
             return PoolResult.Nothing with
@@ -205,6 +205,7 @@ public sealed class ShareRenditionsHandler
                 Offered = offered,
                 FacesLeft = left,
                 FacesWaitFor = behind,
+                FacesWaitForUnreadable = unreadable,
             };
         });
 
@@ -552,16 +553,17 @@ public sealed class ShareRenditionsHandler
     /// it is, because taking it away would not take back what was landed from
     /// it.</para>
     /// </remarks>
-    private async Task<(bool Left, IReadOnlyList<string> Behind)> GiveFacesAsync(
+    private async Task<(bool Left, IReadOnlyList<string> Behind, int Unreadable)> GiveFacesAsync(
         MachineIdentity machine,
         IProgress<MergeProgress>? progress,
         CancellationToken cancellationToken)
     {
-        IReadOnlyList<string> behind = await BehindAsync(cancellationToken).ConfigureAwait(false);
+        (IReadOnlyList<string> behind, int unreadable) =
+            await BehindAsync(cancellationToken).ConfigureAwait(false);
 
-        if (behind.Count > 0)
+        if (behind.Count > 0 || unreadable > 0)
         {
-            return (false, behind);
+            return (false, behind, unreadable);
         }
 
         progress?.Report(new MergeProgress("Faces for your other computers", 0, 0));
@@ -574,7 +576,7 @@ public sealed class ShareRenditionsHandler
 
         bool left = await _pool.PublishFacesAsync(mine, cancellationToken).ConfigureAwait(false);
 
-        return (left, []);
+        return (left, [], 0);
     }
 
     /// <summary>
@@ -588,20 +590,21 @@ public sealed class ShareRenditionsHandler
     /// more scan costs nothing, and the duplicates it would risk cannot be
     /// taken back.
     /// </remarks>
-    private async Task<IReadOnlyList<string>> BehindAsync(CancellationToken cancellationToken)
+    private async Task<(IReadOnlyList<string> Named, int Unreadable)> BehindAsync(
+        CancellationToken cancellationToken)
     {
         FetchedDecisions published =
             await _exchange.FetchAsync(cancellationToken).ConfigureAwait(false);
 
-        return
-        [
-            .. published.Sets
-                .Where(set => !set.LandsFacesByOverlap)
-                .Select(set => set.Machine.Name)
-                .Distinct(StringComparer.CurrentCultureIgnoreCase)
-                .Order(StringComparer.CurrentCultureIgnoreCase),
-            .. published.Unreadable.Select(_ => "a computer whose answers could not be read"),
-        ];
+        return (
+            [
+                .. published.Sets
+                    .Where(set => !set.LandsFacesByOverlap)
+                    .Select(set => set.Machine.Name)
+                    .Distinct(StringComparer.CurrentCultureIgnoreCase)
+                    .Order(StringComparer.CurrentCultureIgnoreCase),
+            ],
+            published.Unreadable.Count);
     }
 
     /// <summary>
