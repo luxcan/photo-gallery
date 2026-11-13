@@ -503,18 +503,6 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Commits the year of birth when the box is left, so a year typed and then
-    /// clicked away from is not quietly discarded.
-    /// </summary>
-    private void OnBirthYearCommitted(object sender, RoutedEventArgs e)
-    {
-        if (_viewModel.People.SetBirthYearCommand.CanExecute(null))
-        {
-            _viewModel.People.SetBirthYearCommand.Execute(null);
-        }
-    }
-
-    /// <summary>
     /// Which picture the top of the viewport is showing.
     /// </summary>
     /// <remarks>
@@ -726,6 +714,10 @@ public partial class MainWindow : Window
         {
             return;
         }
+
+        // Down before the question goes up: the menu it was chosen from would
+        // otherwise sit over the dialog's shade.
+        _viewModel.People.IsPersonMenuOpen = false;
 
         _confirming = true;
         try

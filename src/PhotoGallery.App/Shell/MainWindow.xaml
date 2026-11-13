@@ -3,6 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="clr-namespace:PhotoGallery.App.ViewModels"
         xmlns:shell="clr-namespace:PhotoGallery.App.Shell"
+        xmlns:people="clr-namespace:PhotoGallery.App.People"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
@@ -1619,40 +1620,17 @@
               <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
 
-            <!-- No heading row of its own: the actions sit on the same strip as
-                 the summary, which is what keeps the screen dense. -->
+            <!-- No heading row of its own: a slim strip with the summary, which
+                 is what keeps the screen dense. Finding faces, describing and
+                 placing pictures are phases of a scan, so no buttons for them
+                 sit here; the one that looks for named people sits under the
+                 list it acts on. -->
             <Grid Grid.Row="0" Grid.ColumnSpan="2" Margin="0,0,0,12">
               <StackPanel VerticalAlignment="Center" HorizontalAlignment="Left">
                 <TextBlock Style="{DynamicResource FieldLabel}"
                            Text="{Binding People.FacesCaption}" />
                 <TextBlock Style="{DynamicResource HintText}" MaxWidth="560"
                            Text="{Binding People.Status}" />
-              </StackPanel>
-
-              <StackPanel Orientation="Horizontal" HorizontalAlignment="Right"
-                          VerticalAlignment="Center">
-                <!-- Finding faces, describing pictures and placing them are all
-                     phases of a scan now, so the buttons that ran them are gone:
-                     between them they made this app a procedure to remember -
-                     scan, then find faces, then find where the photos were taken
-                     - with a half-made library and nothing on screen to say which
-                     step had been missed as the price of forgetting.
-
-                     Check everyone stays, and is a different kind of thing: it
-                     answers something the user has just done - named somebody -
-                     rather than finishing an import, and a scan has no way to
-                     know when that has happened. -->
-                <!-- Off until there is something to look through, and saying so
-                     on the button rather than in an answer afterwards. Pressed
-                     on an empty library it used to reply "nobody has been named
-                     yet", which reads as a refusal rather than as the wrong
-                     order of things - and it is the button somebody reaches for
-                     when what they actually want is the scan. -->
-                <Button Style="{DynamicResource PrimaryButton}" MinWidth="130" Margin="8,0,0,0"
-                        Content="Check everyone"
-                        ToolTip="{Binding RecheckHint}"
-                        ToolTipService.ShowOnDisabled="True"
-                        Command="{Binding RecheckPeopleCommand}" />
               </StackPanel>
             </Grid>
 
@@ -1715,6 +1693,25 @@
                         Command="{Binding People.AddPersonCommand}" />
               </Grid>
 
+              <!-- Under the list it acts on, and quiet: it looks for everybody
+                   named, so it does not belong beside one person, and it is
+                   not what somebody comes to this screen to do every time.
+                   It answers something the user has just done - named
+                   somebody - which a scan has no way to know about, so it is
+                   not a phase of the scan.
+
+                   Off until there is something to look through, and saying so
+                   on the button rather than in an answer afterwards. Pressed on
+                   an empty library it used to reply "nobody has been named
+                   yet", which reads as a refusal rather than the wrong order
+                   of things. -->
+              <Button DockPanel.Dock="Bottom" Style="{DynamicResource SecondaryButton}"
+                      Margin="0,10,0,0" HorizontalAlignment="Stretch"
+                      Content="{x:Static people:PeopleViewModel.FindMoreCaption}"
+                      ToolTip="{Binding RecheckHint}"
+                      ToolTipService.ShowOnDisabled="True"
+                      Command="{Binding RecheckPeopleCommand}" />
+
               <TextBlock DockPanel.Dock="Bottom" Style="{DynamicResource HintText}"
                          Margin="0,8,0,0"
                          Text="Nobody yet. Add a name above, then open a picture and switch Names on to point them out."
@@ -1773,7 +1770,7 @@
                 <TextBlock Style="{DynamicResource HintText}" Margin="0,4,0,0"
                            Text="Add a name on the left, then open a picture, switch Names on and click a face to say who it is." />
                 <TextBlock Style="{DynamicResource HintText}" Margin="0,10,0,0"
-                           Text="Choose Check everyone to find more pictures of the people you have named. You confirm or reject each one here." />
+                           Text="Choose Find these people in more photos, under the list, to find more pictures of them. You confirm each one here." />
               </StackPanel>
 
               <!-- One person, and what is settled about them: every picture
@@ -1782,64 +1779,207 @@
                    choosing to, rather than what a name opens onto. -->
               <DockPanel Visibility="{Binding People.ShowingPhotos,
                                       Converter={StaticResource BoolToVisibility}}">
-                <Grid DockPanel.Dock="Top" Margin="0,0,0,10">
-                  <StackPanel HorizontalAlignment="Left">
-                    <TextBlock Text="{Binding People.SelectedPersonName}" FontSize="16"
-                               FontWeight="SemiBold"
-                               Foreground="{DynamicResource Editor.Foreground}" />
-                    <TextBlock Style="{DynamicResource HintText}" Margin="0,2,0,0"
-                               Text="{Binding People.PhotoCaption}" />
+                <StackPanel DockPanel.Dock="Top" Margin="0,0,0,10">
 
-                    <!-- The year sits above the headings it controls, so typing
-                         it and the grid regrouping are one glance apart. -->
-                    <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                  <!-- Faces waiting for an answer, said above the name rather than
+                       left to a button: "Confirm photos (6)" said what to press
+                       without saying what was waiting or why. Absent, not
+                       empty, when nothing is. -->
+                  <Border Margin="0,0,0,12" Padding="12,8"
+                          Background="{DynamicResource Status.InfoBack}"
+                          BorderBrush="{DynamicResource Status.Info}" BorderThickness="1"
+                          CornerRadius="4"
+                          Visibility="{Binding People.HasPendingConfirm,
+                                       Converter={StaticResource BoolToVisibility}}">
+                    <Grid>
+                      <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                      </Grid.ColumnDefinitions>
+                      <TextBlock Grid.Column="0" Text="&#xE77B;" FontFamily="Segoe MDL2 Assets"
+                                 FontSize="14" VerticalAlignment="Center" Margin="0,0,10,0"
+                                 Foreground="{DynamicResource Status.Info}" />
+                      <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                        <TextBlock FontSize="13" FontWeight="SemiBold" TextWrapping="Wrap"
+                                   Foreground="{DynamicResource Editor.Foreground}"
+                                   Text="{Binding People.ReviewNotice}" />
+                        <TextBlock Style="{DynamicResource HintText}" TextWrapping="Wrap"
+                                   Text="{Binding People.ReviewHint}" />
+                      </StackPanel>
+                      <Button Grid.Column="2" Style="{DynamicResource PrimaryButton}"
+                              MinWidth="130" Margin="12,0,0,0" VerticalAlignment="Center"
+                              Content="{Binding People.ReviewCaption}"
+                              Command="{Binding People.OpenConfirmQueueCommand}" />
+                    </Grid>
+                  </Border>
+
+                  <!-- The name, and everything about the person rather than about
+                       their pictures behind one button: changing the year or the
+                       name is rare, and removing them un-names thousands of faces,
+                       so none of it sits beside the screen's one main action. -->
+                  <Grid x:Name="PersonHeading">
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width="Auto" />
+                      <ColumnDefinition Width="*" />
+                      <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <!-- Level with the name, not centred on the name and the
+                         line under it, where it read as belonging to neither. -->
+                    <Button Grid.Column="0" Style="{DynamicResource LinkButton}"
+                            VerticalAlignment="Top" Margin="0,3,10,0"
+                            AutomationProperties.Name="Back to everyone"
+                            ToolTip="Back to everyone"
+                            Command="{Binding People.ClearSelectionCommand}">
+                      <TextBlock Text="&#xE72B;" FontFamily="Segoe MDL2 Assets" FontSize="14" />
+                    </Button>
+
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                      <TextBlock Text="{Binding People.SelectedPersonName}" FontSize="16"
+                                 FontWeight="SemiBold"
+                                 Foreground="{DynamicResource Editor.Foreground}"
+                                 Visibility="{Binding People.IsRenaming,
+                                              Converter={StaticResource InverseBoolToVisibility}}" />
+
+                      <StackPanel Orientation="Horizontal"
+                                  Visibility="{Binding People.IsRenaming,
+                                               Converter={StaticResource BoolToVisibility}}">
+                        <TextBox Style="{DynamicResource InputTextBox}" Width="220"
+                                 AutomationProperties.Name="Name"
+                                 Text="{Binding People.RenameText,
+                                        UpdateSourceTrigger=PropertyChanged}">
+                          <TextBox.InputBindings>
+                            <KeyBinding Key="Return" Command="{Binding People.RenameCommand}" />
+                            <KeyBinding Key="Escape" Command="{Binding People.CancelRenameCommand}" />
+                          </TextBox.InputBindings>
+                        </TextBox>
+                        <Button Style="{DynamicResource PrimaryButton}" Margin="8,0,0,0"
+                                MinWidth="64" Content="Save"
+                                Command="{Binding People.RenameCommand}" />
+                        <Button Style="{DynamicResource LinkButton}" Margin="10,0,0,0"
+                                VerticalAlignment="Center" Content="Cancel"
+                                Command="{Binding People.CancelRenameCommand}" />
+                      </StackPanel>
+                      <TextBlock Style="{DynamicResource HintText}"
+                                 Foreground="{DynamicResource Status.Danger}"
+                                 Text="{Binding People.RenameError}"
+                                 Visibility="{Binding People.HasRenameError,
+                                              Converter={StaticResource BoolToVisibility}}" />
+
+                      <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
+                        <TextBlock Style="{DynamicResource HintText}"
+                                   Text="{Binding People.PersonSubtitle}" />
+                        <!-- Without a year the pictures cannot be grouped by age,
+                             so the way to add one is offered where it is
+                             missing rather than only in the menu. -->
+                        <Button Style="{DynamicResource LinkButton}" Margin="10,0,0,0"
+                                Content="Add year of birth"
+                                Command="{Binding People.EditBirthYearCommand}"
+                                Visibility="{Binding People.HasNoBirthYear,
+                                             Converter={StaticResource BoolToVisibility}}" />
+                      </StackPanel>
+                    </StackPanel>
+
+                    <Button x:Name="PersonMenuButton" Grid.Column="2"
+                            Style="{DynamicResource SecondaryButton}"
+                            VerticalAlignment="Center" MinWidth="0" Padding="10,4"
+                            AutomationProperties.Name="More for this person"
+                            ToolTip="More"
+                            Command="{Binding People.OpenPersonMenuCommand}">
+                      <TextBlock Text="&#xE712;" FontFamily="Segoe MDL2 Assets" FontSize="14" />
+                    </Button>
+
+                    <Popup IsOpen="{Binding People.IsPersonMenuOpen, Mode=TwoWay}"
+                           PlacementTarget="{Binding ElementName=PersonMenuButton}"
+                           Placement="Bottom" HorizontalOffset="-180" VerticalOffset="4"
+                           StaysOpen="False" AllowsTransparency="True">
+                      <Border Width="220" Background="{DynamicResource SideBar.Background}"
+                              BorderBrush="{DynamicResource Panel.Border}" BorderThickness="1"
+                              CornerRadius="{StaticResource Radius.Control}" Padding="4"
+                              SnapsToDevicePixels="True">
+                        <StackPanel>
+                          <Button Style="{DynamicResource SuggestionRow}"
+                                  Content="Change year of birth…"
+                                  Command="{Binding People.EditBirthYearCommand}" />
+                          <Button Style="{DynamicResource SuggestionRow}"
+                                  Content="Rename…"
+                                  Command="{Binding People.StartRenameCommand}" />
+                          <Border Height="1" Margin="2,4" Background="{DynamicResource Panel.Border}" />
+                          <!-- The DataContext is what keeps the confirmation
+                               dialog: the handler reads a PersonItem off the
+                               element it was raised from, and removing thousands
+                               of pictures worth of names must not become one
+                               unguarded click. -->
+                          <Button Style="{DynamicResource SuggestionRow}"
+                                  Foreground="{DynamicResource Status.Danger}"
+                                  Content="Remove this person…"
+                                  ToolTip="Forget the name. The faces stay and become unnamed again."
+                                  DataContext="{Binding People.SelectedPerson}"
+                                  Click="OnRemovePersonClicked" />
+                        </StackPanel>
+                      </Border>
+                    </Popup>
+                  </Grid>
+
+                  <!-- The year, typed only when asked for: it sits above the
+                       headings it controls, so typing it and the grid regrouping
+                       are one glance apart. -->
+                  <StackPanel Margin="0,10,0,0"
+                              Visibility="{Binding People.IsEditingBirthYear,
+                                           Converter={StaticResource BoolToVisibility}}">
+                    <StackPanel Orientation="Horizontal">
                       <TextBlock Text="Born" Style="{DynamicResource FieldLabel}"
                                  VerticalAlignment="Center" Margin="0,0,8,0" />
                       <TextBox Style="{DynamicResource InputTextBox}" Width="72" MaxLength="4"
                                AutomationProperties.Name="Year of birth"
                                Text="{Binding People.BirthYearText,
-                                      UpdateSourceTrigger=PropertyChanged}"
-                               LostFocus="OnBirthYearCommitted">
+                                      UpdateSourceTrigger=PropertyChanged}">
                         <TextBox.InputBindings>
-                          <KeyBinding Key="Return"
-                                      Command="{Binding People.SetBirthYearCommand}" />
+                          <KeyBinding Key="Return" Command="{Binding People.SetBirthYearCommand}" />
+                          <KeyBinding Key="Escape" Command="{Binding People.CancelBirthYearCommand}" />
                         </TextBox.InputBindings>
                       </TextBox>
+                      <Button Style="{DynamicResource PrimaryButton}" Margin="8,0,0,0"
+                              MinWidth="64" Content="Save"
+                              Command="{Binding People.SetBirthYearCommand}" />
+                      <Button Style="{DynamicResource LinkButton}" Margin="10,0,0,0"
+                              VerticalAlignment="Center" Content="Cancel"
+                              Command="{Binding People.CancelBirthYearCommand}" />
                     </StackPanel>
-                    <TextBlock Style="{DynamicResource HintText}" MaxWidth="520"
-                               Text="{Binding People.AgeNote}" />
                     <TextBlock Style="{DynamicResource HintText}"
                                Foreground="{DynamicResource Status.Danger}"
                                Text="{Binding People.BirthYearError}" />
                   </StackPanel>
-                  <StackPanel HorizontalAlignment="Right" VerticalAlignment="Top"
-                              Orientation="Horizontal">
-                    <!-- Absent, not disabled, when there is nothing waiting. -->
-                    <Button Style="{DynamicResource PrimaryButton}" MinWidth="150"
-                            Content="{Binding People.ConfirmCaption}"
-                            ToolTip="Go through the faces the app thinks are also them"
-                            Command="{Binding People.OpenConfirmQueueCommand}"
-                            Visibility="{Binding People.HasPendingConfirm,
-                                         Converter={StaticResource BoolToVisibility}}" />
-                    <!-- The DataContext is what keeps the confirmation dialog:
-                         the handler reads a PersonItem off the element it was
-                         raised from, and removing thousands of pictures worth of names
-                         must not become one unguarded click. -->
-                    <Button Style="{DynamicResource SecondaryButton}" MinWidth="130"
-                            Margin="8,0,0,0" Content="Remove this person"
-                            ToolTip="Forget the name. The faces stay and become unnamed again."
-                            DataContext="{Binding People.SelectedPerson}"
-                            Click="OnRemovePersonClicked" />
-                    <Button Style="{DynamicResource LinkButton}" Margin="14,0,0,0"
-                            Content="Back to the list"
-                            Command="{Binding People.ClearSelectionCommand}" />
+
+                  <!-- The same chips the Library has, saying the same thing. -->
+                  <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                    <ToggleButton Style="{DynamicResource FilterChip}" Content="All"
+                                  ToolTip="Photographs and videos"
+                                  IsChecked="{Binding People.ShowingAllKinds, Mode=OneWay}"
+                                  Command="{Binding People.ShowKindCommand}"
+                                  CommandParameter="all" />
+                    <ToggleButton Style="{DynamicResource FilterChip}" Content="Photos"
+                                  ToolTip="Only photographs"
+                                  IsChecked="{Binding People.ShowingPhotosOnly, Mode=OneWay}"
+                                  Command="{Binding People.ShowKindCommand}"
+                                  CommandParameter="photos" />
+                    <ToggleButton Style="{DynamicResource FilterChip}" Content="Videos"
+                                  ToolTip="Only videos"
+                                  IsChecked="{Binding People.ShowingVideosOnly, Mode=OneWay}"
+                                  Command="{Binding People.ShowKindCommand}"
+                                  CommandParameter="videos" />
                   </StackPanel>
-                </Grid>
+                </StackPanel>
 
                 <TextBlock DockPanel.Dock="Bottom" Style="{DynamicResource HintText}"
                            Text="No confirmed pictures of them yet. Open a picture, switch Names on, and point them out."
                            Visibility="{Binding People.HasPhotos,
                                         Converter={StaticResource InverseBoolToVisibility}}" />
+
+                <TextBlock DockPanel.Dock="Bottom" Style="{DynamicResource HintText}"
+                           Text="{Binding People.NothingOfKindNote}"
+                           Visibility="{Binding People.HasNothingOfKind,
+                                        Converter={StaticResource BoolToVisibility}}" />
 
                 <ListBox x:Name="PersonPhotoGrid" Style="{DynamicResource GalleryList}"
                          ItemsSource="{Binding People.PhotoRows}"

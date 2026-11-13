@@ -294,7 +294,7 @@ public sealed class FaceInspectionTests : IDisposable
         Assert.Equal(0, _repository.ErasReplaced);
         Assert.Equal(0, _repository.ProposalsCleared);
         Assert.Contains("1 kept", _people.Status, StringComparison.Ordinal);
-        Assert.Contains("Check everyone", _people.Status, StringComparison.Ordinal);
+        Assert.Contains(PeopleViewModel.FindMoreCaption, _people.Status, StringComparison.Ordinal);
     }
 
     [Fact]

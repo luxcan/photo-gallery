@@ -1997,7 +1997,7 @@ public sealed partial class MainViewModel : ObservableObject
 
     /// <summary>What that button does, or why it cannot yet.</summary>
     public string RecheckHint => Counts.Faces > 0
-        ? "Look through every picture again for the people you have named"
+        ? "Looks through every photo for faces that might be the people above. You confirm each one."
         : "Nothing has been looked at for faces yet - choose Find faces now first";
 
     [RelayCommand(CanExecute = nameof(CanRecheckPeople))]

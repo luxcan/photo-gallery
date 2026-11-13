@@ -114,7 +114,7 @@ public sealed class ScanToApplyTests : IDisposable
 
         Assert.True(_main.RecheckPeopleCommand.CanExecute(null));
         Assert.Contains(
-            "every picture again", _main.RecheckHint, StringComparison.Ordinal);
+            "every photo for faces", _main.RecheckHint, StringComparison.Ordinal);
     }
 
     /// <summary>Pretends those features' files are all present and proved.</summary>

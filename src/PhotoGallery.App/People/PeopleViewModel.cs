@@ -11,6 +11,7 @@ using PhotoGallery.App.Shell;
 using PhotoGallery.Application.Ports;
 using PhotoGallery.Application.UseCases.Gallery;
 using PhotoGallery.Application.UseCases.People;
+using PhotoGallery.Domain.Assets;
 using PhotoGallery.Domain.People;
 
 namespace PhotoGallery.App.People;
@@ -56,7 +57,7 @@ public sealed partial class PeopleViewModel : ObservableObject
     [NotifyCanExecuteChangedFor(nameof(ConfirmProposalsCommand), nameof(RejectProposalsCommand),
         nameof(AddPersonCommand), nameof(ForgetPersonCommand),
         nameof(OpenConfirmQueueCommand), nameof(BackToPhotosCommand),
-        nameof(SetBirthYearCommand))]
+        nameof(SetBirthYearCommand), nameof(RenameCommand))]
     private bool _isBusy;
 
     [ObservableProperty]
@@ -65,11 +66,54 @@ public sealed partial class PeopleViewModel : ObservableObject
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasSelectedPerson), nameof(ShowingPhotos),
-        nameof(ShowingConfirmQueue), nameof(HasPendingConfirm), nameof(ConfirmCaption))]
+        nameof(ShowingConfirmQueue), nameof(HasPendingConfirm), nameof(ReviewNotice),
+        nameof(ReviewHint), nameof(ReviewCaption), nameof(PersonSubtitle), nameof(HasNoBirthYear))]
     private PersonItem? _selectedPerson;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ReviewNotice), nameof(ReviewHint))]
     private string _selectedPersonName = string.Empty;
+
+    /// <summary>
+    /// Which of their pictures the grid shows: null for all, or only photographs
+    /// or only videos.
+    /// </summary>
+    /// <remarks>
+    /// Kept when another person is opened, so somebody going through everybody's
+    /// videos is not sent back to everything at each name.
+    /// </remarks>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowingAllKinds), nameof(ShowingPhotosOnly),
+        nameof(ShowingVideosOnly))]
+    private AssetKind? _kind;
+
+    /// <summary>How many of their pictures the grid shows under <see cref="Kind"/>.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasNothingOfKind), nameof(NothingOfKindNote))]
+    private int _shownCount;
+
+    /// <summary>Whether the ⋯ menu beside the name is open.</summary>
+    [ObservableProperty]
+    private bool _isPersonMenuOpen;
+
+    /// <summary>Whether the year of birth is being typed in, under the name.</summary>
+    [ObservableProperty]
+    private bool _isEditingBirthYear;
+
+    /// <summary>Whether the name is being typed in again, in place of the heading.</summary>
+    [ObservableProperty]
+    private bool _isRenaming;
+
+    /// <summary>What has been typed as their new name.</summary>
+    [ObservableProperty]
+    private string _renameText = string.Empty;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasRenameError))]
+    private string _renameError = string.Empty;
+
+    /// <summary>Whether there is a reason to show, so an empty line takes no room.</summary>
+    public bool HasRenameError => RenameError.Length > 0;
 
     /// <summary>
     /// True while the proposal queue is being answered rather than the person's
@@ -93,16 +137,9 @@ public sealed partial class PeopleViewModel : ObservableObject
     private string _birthYearError = string.Empty;
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasPhotos), nameof(PhotoCaption))]
+    [NotifyPropertyChangedFor(nameof(HasPhotos), nameof(PhotoCaption), nameof(PersonSubtitle),
+        nameof(HasNothingOfKind))]
     private int _photoCount;
-
-    /// <summary>
-    /// How many of the pictures on screen were placed by their file date rather
-    /// than a capture date, so an age read off them may be too old.
-    /// </summary>
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(AgeNote))]
-    private int _datedFromTheFile;
 
     /// <summary>A name being added by hand, before any face is attached to it.</summary>
     [ObservableProperty]
@@ -273,10 +310,26 @@ public sealed partial class PeopleViewModel : ObservableObject
     public bool HasPendingConfirm => SelectedPerson?.HasReview == true;
 
     /// <summary>
-    /// The button that opens the queue, counting the questions it will ask.
+    /// What the bar above their name says when faces are waiting for an answer.
     /// </summary>
-    public string ConfirmCaption =>
-        $"Confirm photos ({SelectedPerson?.AwaitingReview ?? 0:N0})";
+    /// <remarks>
+    /// A bar rather than a lone button, because "Confirm photos (6)" said what
+    /// to press without saying what was waiting or why.
+    /// </remarks>
+    public string ReviewNotice => (SelectedPerson?.AwaitingReview ?? 0) == 1
+        ? $"Photo Gallery identified 1 more face that might be {SelectedPersonName}"
+        : $"Photo Gallery identified {SelectedPerson?.AwaitingReview ?? 0:N0} more faces "
+          + $"that might be {SelectedPersonName}";
+
+    /// <summary>The line under <see cref="ReviewNotice"/>.</summary>
+    public string ReviewHint =>
+        "Say yes or no to each. Only the faces you confirm will be tagged as "
+        + $"{SelectedPersonName} and shown here.";
+
+    /// <summary>The bar's button, counting the questions it will ask.</summary>
+    public string ReviewCaption => (SelectedPerson?.AwaitingReview ?? 0) == 1
+        ? "Review 1 face"
+        : $"Review {SelectedPerson?.AwaitingReview ?? 0:N0} faces";
 
     public bool HasPhotos => PhotoCount > 0;
 
@@ -284,26 +337,41 @@ public sealed partial class PeopleViewModel : ObservableObject
         ? "1 picture"
         : $"{PhotoCount:N0} pictures";
 
+    /// <summary>The line under their name: how many pictures, and the year of birth.</summary>
+    public string PersonSubtitle => SelectedPerson?.Summary.BirthYear is int year
+        ? $"{PhotoCaption} · born {year}"
+        : PhotoCaption;
+
     /// <summary>
-    /// Said once, under the year of birth, rather than on every heading.
+    /// No year of birth yet, which is what keeps the pictures from being grouped
+    /// by age - so the way to add one is offered beside the subtitle.
     /// </summary>
-    public string AgeNote
-    {
-        get
-        {
-            if (SelectedPerson?.Summary.BirthYear is null)
-            {
-                return "Add the year they were born to group these by age.";
-            }
+    public bool HasNoBirthYear => SelectedPerson is not null && SelectedPerson.Summary.BirthYear is null;
 
-            string convention = "Ages are by year of birth, so they may be a year out.";
+    public bool ShowingAllKinds => Kind is null;
 
-            return DatedFromTheFile == 0
-                ? convention
-                : $"{convention} {DatedFromTheFile:N0} have no capture date, so their "
-                  + "age uses the file date.";
-        }
-    }
+    public bool ShowingPhotosOnly => Kind == AssetKind.Photo;
+
+    public bool ShowingVideosOnly => Kind == AssetKind.Video;
+
+    /// <summary>
+    /// They have pictures, and none of the kind chosen - said, so an empty grid
+    /// is not mistaken for nobody having been named.
+    /// </summary>
+    public bool HasNothingOfKind => HasPhotos && ShownCount == 0;
+
+    public string NothingOfKindNote => Kind == AssetKind.Video
+        ? $"No videos of {SelectedPersonName} yet."
+        : $"No photos of {SelectedPersonName} yet.";
+
+    /// <summary>
+    /// The button that looks through the library for the people named, on the
+    /// button and wherever the screen points at it.
+    /// </summary>
+    /// <remarks>
+    /// It was "Check everyone", which did not say what it checked or what for.
+    /// </remarks>
+    public const string FindMoreCaption = "Find these people in more photos";
 
     /// <summary>
     /// The name list for a face the app has guessed wrong.
@@ -531,9 +599,9 @@ public sealed partial class PeopleViewModel : ObservableObject
 
         _pictures = [.. page.Items];
         PhotoCount = page.TotalCount;
-        BirthYearText = SelectedPerson.Summary.BirthYear?.ToString(CultureInfo.CurrentCulture)
-            ?? string.Empty;
-        BirthYearError = string.Empty;
+        IsEditingBirthYear = false;
+        IsRenaming = false;
+        IsPersonMenuOpen = false;
 
         Regroup(fresh: true);
         await _photos.MarkPreparedAsync(CancellationToken.None).ConfigureAwait(true);
@@ -548,10 +616,13 @@ public sealed partial class PeopleViewModel : ObservableObject
     /// </summary>
     private void Regroup(bool fresh)
     {
-        IReadOnlyList<AgeGroup> groups =
-            PersonPhotoGrouping.Into(_pictures, SelectedPerson?.Summary.BirthYear);
+        IReadOnlyList<GalleryItem> shown =
+            Kind is AssetKind kind ? [.. _pictures.Where(picture => picture.Kind == kind)] : _pictures;
 
-        DatedFromTheFile = groups.Sum(group => group.DatedFromTheFile);
+        ShownCount = shown.Count;
+
+        IReadOnlyList<AgeGroup> groups =
+            PersonPhotoGrouping.Into(shown, SelectedPerson?.Summary.BirthYear);
 
         List<TileGroup> tiles = [.. groups.Select(group => new TileGroup(
             group.Heading,
@@ -569,8 +640,31 @@ public sealed partial class PeopleViewModel : ObservableObject
             // the screen and decode it all again for a change of heading.
             _photos.Regroup([.. Regrouped(tiles)]);
         }
+    }
 
-        OnPropertyChanged(nameof(AgeNote));
+    /// <summary>
+    /// Shows all their pictures, or only photographs, or only videos -
+    /// "photos", "videos", anything else for all, as the Library's chips say it.
+    /// </summary>
+    [RelayCommand]
+    private async Task ShowKindAsync(string? kind)
+    {
+        Kind = kind switch
+        {
+            "photos" => AssetKind.Photo,
+            "videos" => AssetKind.Video,
+            _ => null,
+        };
+
+        if (SelectedPerson is null)
+        {
+            return;
+        }
+
+        // Fresh, not regrouped: the tiles change, not only their headings.
+        Regroup(fresh: true);
+        await _photos.MarkPreparedAsync(CancellationToken.None).ConfigureAwait(true);
+        await _photos.ShowRangeAsync(0).ConfigureAwait(true);
     }
 
     /// <summary>
@@ -620,13 +714,14 @@ public sealed partial class PeopleViewModel : ObservableObject
             year = parsed;
         }
 
+        BirthYearError = string.Empty;
+        IsEditingBirthYear = false;
+
         if (year == person.Summary.BirthYear)
         {
-            BirthYearError = string.Empty;
             return;
         }
 
-        BirthYearError = string.Empty;
         using (IServiceScope scope = _scopeFactory.CreateScope())
         {
             await scope.ServiceProvider
@@ -637,7 +732,101 @@ public sealed partial class PeopleViewModel : ObservableObject
 
         person.RememberBirthYear(year);
         OnPropertyChanged(nameof(HasPendingConfirm));
+        OnPropertyChanged(nameof(PersonSubtitle));
+        OnPropertyChanged(nameof(HasNoBirthYear));
         Regroup(fresh: false);
+    }
+
+    /// <summary>Opens the ⋯ menu beside their name.</summary>
+    [RelayCommand]
+    private void OpenPersonMenu() => IsPersonMenuOpen = true;
+
+    /// <summary>Opens the year of birth for typing, under their name.</summary>
+    [RelayCommand]
+    private void EditBirthYear()
+    {
+        IsPersonMenuOpen = false;
+        BirthYearText = SelectedPerson?.Summary.BirthYear?.ToString(CultureInfo.CurrentCulture)
+            ?? string.Empty;
+        BirthYearError = string.Empty;
+        IsEditingBirthYear = true;
+    }
+
+    [RelayCommand]
+    private void CancelBirthYear()
+    {
+        BirthYearError = string.Empty;
+        IsEditingBirthYear = false;
+    }
+
+    /// <summary>Opens their name for typing, in place of the heading.</summary>
+    [RelayCommand]
+    private void StartRename()
+    {
+        IsPersonMenuOpen = false;
+        RenameText = SelectedPersonName;
+        RenameError = string.Empty;
+        IsRenaming = true;
+    }
+
+    [RelayCommand]
+    private void CancelRename()
+    {
+        RenameError = string.Empty;
+        IsRenaming = false;
+    }
+
+    /// <summary>
+    /// Records the new name, or says why it was not taken.
+    /// </summary>
+    /// <remarks>
+    /// A name another person already has is refused: two people of one name is
+    /// a list nobody can tell apart, and a face named one of them would be a
+    /// guess at which.
+    /// </remarks>
+    [RelayCommand(CanExecute = nameof(IsIdle))]
+    private async Task RenameAsync()
+    {
+        if (SelectedPerson is not PersonItem person)
+        {
+            return;
+        }
+
+        string name = RenameText.Trim();
+
+        if (name.Length == 0)
+        {
+            RenameError = "Type a name.";
+            return;
+        }
+
+        if (Named.Any(other => other.Id != person.Id
+                               && string.Equals(other.DisplayName, name, StringComparison.CurrentCultureIgnoreCase)))
+        {
+            RenameError = $"Somebody is already called {name}.";
+            return;
+        }
+
+        RenameError = string.Empty;
+        IsRenaming = false;
+
+        if (string.Equals(name, person.DisplayName, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        using (IServiceScope scope = _scopeFactory.CreateScope())
+        {
+            await scope.ServiceProvider
+                .GetRequiredService<IPeopleRepository>()
+                .RenamePersonAsync(person.Id, name)
+                .ConfigureAwait(true);
+        }
+
+        // Read again rather than patched, so the list re-sorts under the new
+        // name and every count beside it comes from the same read.
+        await ReloadAsync().ConfigureAwait(true);
+        LibraryChanged?.Invoke(this, EventArgs.Empty);
     }
 
     /// <summary>Goes to the questions, which is a place rather than the default.</summary>
@@ -910,13 +1099,12 @@ public sealed partial class PeopleViewModel : ObservableObject
     /// <para>That was tried and it read as nothing having happened: re-proposing
     /// refills the queue to its limit, so answering twelve faces and closing
     /// gave back a list the same length as before. Whether to go looking again
-    /// is a decision, and it already has a button - Check everyone - rather than
+    /// is a decision, and it already has a button - <see cref="FindMoreCaption"/> - rather than
     /// happening on the way out of a screen.</para>
     /// </remarks>
     private async Task SettleAsync(int kept, int leftOut, int moved)
     {
-        Status = $"{Answered(kept, leftOut, moved)}. Choose Check everyone to look through "
-                 + "the library again for them.";
+        Status = $"{Answered(kept, leftOut, moved)}. To look for more, choose {FindMoreCaption}.";
 
         await ReloadAsync().ConfigureAwait(true);
         await LeaveEmptyQueueAsync().ConfigureAwait(true);
