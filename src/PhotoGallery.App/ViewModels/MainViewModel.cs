@@ -1730,7 +1730,7 @@ public sealed partial class MainViewModel : ObservableObject
         if (await Sharing.LookForUpdatesAsync(LookPatience).ConfigureAwait(true)
             is string waiting)
         {
-            Ask(waiting, "Take them now", TakeSharedAnswersAsync, Sharing.Settled);
+            Ask(waiting, "Sync", TakeSharedAnswersAsync, Sharing.Settled);
         }
 
         if (releasesToo)

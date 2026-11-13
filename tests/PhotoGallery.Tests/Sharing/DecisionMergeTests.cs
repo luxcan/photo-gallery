@@ -1199,6 +1199,42 @@ public sealed class DecisionMergeTests
         Assert.Equal(270, Assert.Single(plan.Turns).Rotation);
     }
 
+    /// <summary>
+    /// A turn the file itself took records no rotation, and is still planned.
+    /// </summary>
+    /// <remarks>
+    /// The file holds the answer, so all that travels is the moment. Dropping it
+    /// as "a turn of nothing" left every other machine's pictures on their side.
+    /// </remarks>
+    [Fact]
+    public void ATurnTheFileTookIsPlannedThoughItRecordsNoRotation()
+    {
+        AssetKey photo = Pictures.Photo(@"2019\a.jpg");
+
+        MergePlan plan = Merge(
+            mine: new Machine("Dad"),
+            theirs: new Machine("Mum").Turns(photo, 0, Monday),
+            here: Pictures.Indexed(photo));
+
+        Assert.Equal(0, Assert.Single(plan.Turns).Rotation);
+    }
+
+    [Fact]
+    public void ATurnThisLibraryAlreadyRecordsIsNotPlannedAgain()
+    {
+        AssetKey photo = Pictures.Photo(@"2019\a.jpg");
+        Machine mum = new Machine("Mum").Turns(photo, 0, Monday);
+        PhotoTurn taken = Assert.Single(mum.Set().Turns);
+
+        MergePlan plan = DecisionMerge.Merge(
+            new Machine("Dad").Set() with { Turns = [taken] },
+            [mum.Set()],
+            Pictures.Indexed(photo),
+            Now);
+
+        Assert.Empty(plan.Turns);
+    }
+
     [Fact]
     public void ATurnForAPhotographThisLibraryHasNotIndexedWaits()
     {

@@ -421,11 +421,13 @@ public sealed partial class SharingViewModel : ObservableObject
     {
         ArgumentNullException.ThrowIfNull(update);
 
+        const string Question = "made some changes. Do you want to sync?";
+
         if (update.Machines.Count == 0)
         {
             return update.Unnamed == 1
-                ? "Another computer has answers this one has not taken yet."
-                : "Other computers have answers this one has not taken yet.";
+                ? $"Another computer has {Question}"
+                : $"Other computers have {Question}";
         }
 
         List<string> who = [.. update.Machines];
@@ -436,9 +438,8 @@ public sealed partial class SharingViewModel : ObservableObject
         }
 
         return who.Count == 1
-            ? $"{who[0]} has answers this computer has not taken yet."
-            : $"{string.Join(", ", who[..^1])} and {who[^1]} have answers this computer has not "
-              + "taken yet.";
+            ? $"{who[0]} has {Question}"
+            : $"{string.Join(", ", who[..^1])} and {who[^1]} have {Question}";
     }
 
     /// <summary>Reads the folder, who has shared, and what is waiting.</summary>

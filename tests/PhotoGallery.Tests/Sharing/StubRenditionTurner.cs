@@ -42,6 +42,21 @@ internal sealed class StubRenditionTurner : IRenditionTurner
         return this;
     }
 
+    private readonly Dictionary<string, int?> _behind = [];
+
+    /// <summary>
+    /// Says the original's file has been turned since this rendition was built,
+    /// by this much clockwise - or, given null, that it cannot be read.
+    /// </summary>
+    public StubRenditionTurner Behind(string thumbnailName, int? degrees)
+    {
+        _behind[thumbnailName] = degrees;
+        return this;
+    }
+
+    public int? DegreesBehindOriginal(string thumbnailName, string originalPath, int rotation) =>
+        _behind.TryGetValue(thumbnailName, out int? degrees) ? degrees : 0;
+
     public TurnedRendition? Turn(string thumbnailName, int degrees)
     {
         Turns.Add((thumbnailName, degrees));

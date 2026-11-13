@@ -849,14 +849,16 @@ public static class DecisionMerge
                     : turn;
         }
 
-        // A photograph nobody here has turned is upright as far as this library is
-        // concerned, so a turn of nothing from another machine changes nothing.
+        // Every turn from another machine that won, including one recording no
+        // rotation at all. That is what a turn the file itself took looks like -
+        // the tag is written and nothing is left for the app to hold - so a
+        // winner matching this library's rotation can still mean the original
+        // has changed under the pictures cached here. Recording it as this
+        // library's own is what stops the next merge asking again.
         return (
             [
                 .. winners.Values.Where(winner =>
-                    winner.Rotation != (ours.TryGetValue(winner.Photo, out PhotoTurn? was)
-                        ? was.Rotation
-                        : 0)),
+                    !ours.TryGetValue(winner.Photo, out PhotoTurn? was) || was != winner),
             ],
             held);
     }

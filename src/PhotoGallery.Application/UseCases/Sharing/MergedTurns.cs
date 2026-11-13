@@ -19,8 +19,14 @@ namespace PhotoGallery.Application.UseCases.Sharing;
 /// on every machine afterwards would queue four laptops for an exclusive write
 /// on one file on the share, and each that won would change its modified time -
 /// invalidating that photograph's rendition for everybody, repeatedly. The
-/// person who turned it has already told the file. Sharing carries only what the
-/// file would not take.</para>
+/// person who turned it has already told the file.</para>
+///
+/// <para><strong>But every machine's own pictures have to follow the
+/// file.</strong> Telling the file puts its dates back, so a machine that built
+/// its rendition earlier never sees a reason to rebuild it, and the turn it is
+/// sent records no rotation at all. Each merged turn therefore checks the cached
+/// picture against the original and turns it by whatever the file has moved,
+/// as well as by the app's own turn.</para>
 /// </remarks>
 public sealed class MergedTurns
 {
@@ -89,7 +95,21 @@ public sealed class MergedTurns
             }
 
             TurnTarget first = sharing.First();
-            int degrees = Quarter(theirs[0].Rotation - first.Rotation);
+
+            // The other machine may have told the file as well, which no scan
+            // here notices: the tag changes and the file's dates are put back.
+            // So the cached picture is checked against the original before the
+            // app's own turn is added on top.
+            if (_renditions.DegreesBehindOriginal(
+                    first.ThumbnailName!, first.FullPath, first.Rotation) is not int behind)
+            {
+                // The original could not be read. Recording the turn now would
+                // close the question for good, so it waits to be asked again.
+                waiting.AddRange(theirs);
+                continue;
+            }
+
+            int degrees = Quarter(behind + theirs[0].Rotation - first.Rotation);
 
             if (degrees != 0)
             {

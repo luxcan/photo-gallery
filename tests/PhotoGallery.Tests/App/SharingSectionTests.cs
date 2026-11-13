@@ -372,7 +372,7 @@ public sealed class SharingSectionTests
         // identifier as though they were copy, and cries wolf on both.
         foreach (string sentence in EveryNotice())
         {
-            Assert.Contains("has not taken yet.", sentence, StringComparison.Ordinal);
+            Assert.EndsWith("made some changes. Do you want to sync?", sentence, StringComparison.Ordinal);
             Assert.True(char.IsUpper(sentence[0]), $"the notice begins in lower case: {sentence}");
 
             foreach (string banned in Banned)

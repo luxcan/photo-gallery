@@ -1127,6 +1127,9 @@ public sealed class RefreshLibraryHandlerTests : IDisposable
     private sealed class NoRenditions : IRenditionTurner
     {
         public TurnedRendition? Turn(string thumbnailName, int degrees) => null;
+
+        public int? DegreesBehindOriginal(
+            string thumbnailName, string originalPath, int rotation) => 0;
     }
 
     /// <summary>

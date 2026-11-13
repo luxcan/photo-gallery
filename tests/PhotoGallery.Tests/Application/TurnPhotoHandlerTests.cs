@@ -331,6 +331,9 @@ public sealed class TurnPhotoHandlerTests : IDisposable
             Turns++;
             return Fails ? null : new TurnedRendition(800, 600);
         }
+
+        public int? DegreesBehindOriginal(
+            string thumbnailName, string originalPath, int rotation) => 0;
     }
 
     /// <summary>

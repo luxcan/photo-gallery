@@ -2,10 +2,11 @@ namespace PhotoGallery.Domain.Sharing;
 
 /// <summary>Somebody saying which way up a photograph goes.</summary>
 /// <remarks>
-/// Carried because the file would not take the answer. Where the EXIF tag can be
-/// written the turn reaches the other machines through the file itself and needs
-/// no sharing at all; this is for the pictures whose format has nowhere to put
-/// one.
+/// <paramref name="Rotation"/> is the app's own turn, for a file that would not
+/// take the answer. Where the EXIF tag could be written, the turn travels with
+/// rotation zero: the file holds the answer, and what travels is the moment,
+/// which tells every other machine to check its cached pictures against the
+/// file.
 ///
 /// <para>Merged before face answers, which is what lets a face be keyed on its
 /// box alone.</para>

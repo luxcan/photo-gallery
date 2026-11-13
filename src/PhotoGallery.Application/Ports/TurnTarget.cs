@@ -14,8 +14,13 @@ namespace PhotoGallery.Application.Ports;
 /// and the answer waits, rather than being recorded against a picture that will
 /// be generated the right way up later and then turned twice.
 /// </param>
+/// <param name="FullPath">
+/// Where the original is, so the cached picture can be checked against the tag
+/// another machine may have written into it.
+/// </param>
 public sealed record TurnTarget(
     AssetKey Photo,
     int AssetId,
     string? ThumbnailName,
-    int Rotation);
+    int Rotation,
+    string FullPath);

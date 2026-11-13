@@ -156,8 +156,12 @@ public sealed class SqliteDecisionReader : IDecisionReader
 
         var wanted = new HashSet<AssetKey>(photographs);
 
-        Dictionary<int, Guid> sources =
-            await SourceIdsAsync(cancellationToken).ConfigureAwait(false);
+        var sources = await _db.PhotoSources
+            .ToDictionaryAsync(
+                source => source.Id,
+                source => (source.SharedId, source.Path),
+                cancellationToken)
+            .ConfigureAwait(false);
 
         List<TurnTarget> targets = [];
 
@@ -175,14 +179,15 @@ public sealed class SqliteDecisionReader : IDecisionReader
 
         foreach (var row in rows)
         {
-            if (sources.TryGetValue(row.PhotoSourceId, out Guid source)
-                && wanted.Contains(new AssetKey(source, row.RelativePath)))
+            if (sources.TryGetValue(row.PhotoSourceId, out (Guid SharedId, string Path) source)
+                && wanted.Contains(new AssetKey(source.SharedId, row.RelativePath)))
             {
                 targets.Add(new TurnTarget(
-                    new AssetKey(source, row.RelativePath),
+                    new AssetKey(source.SharedId, row.RelativePath),
                     row.Id,
                     row.ThumbnailName,
-                    row.Rotation));
+                    row.Rotation,
+                    Path.Combine(source.Path, row.RelativePath)));
             }
         }
 

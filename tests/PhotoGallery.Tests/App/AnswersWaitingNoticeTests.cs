@@ -51,7 +51,7 @@ public sealed class AnswersWaitingNoticeTests : IDisposable
         await PublishedAgainAsync(Mum);
 
         Assert.Equal(
-            "Mum's laptop has answers this computer has not taken yet.",
+            "Mum's laptop has made some changes. Do you want to sync?",
             await NoticeAsync());
     }
 
@@ -61,7 +61,7 @@ public sealed class AnswersWaitingNoticeTests : IDisposable
         await Mum.Publishing.HandleAsync();
 
         Assert.Equal(
-            "Another computer has answers this one has not taken yet.",
+            "Another computer has made some changes. Do you want to sync?",
             await NoticeAsync());
     }
 
@@ -81,8 +81,7 @@ public sealed class AnswersWaitingNoticeTests : IDisposable
         await PublishedAgainAsync(ana);
 
         Assert.Equal(
-            "Ana's laptop, Gran's laptop and Mum's laptop have answers this computer has "
-            + "not taken yet.",
+            "Ana's laptop, Gran's laptop and Mum's laptop have made some changes. Do you want to sync?",
             await NoticeAsync());
     }
 
@@ -97,7 +96,7 @@ public sealed class AnswersWaitingNoticeTests : IDisposable
         await gran.Publishing.HandleAsync();
 
         Assert.Equal(
-            "Mum's laptop and another computer have answers this computer has not taken yet.",
+            "Mum's laptop and another computer have made some changes. Do you want to sync?",
             await NoticeAsync());
     }
 
@@ -110,7 +109,7 @@ public sealed class AnswersWaitingNoticeTests : IDisposable
         await gran.Publishing.HandleAsync();
 
         Assert.Equal(
-            "Other computers have answers this one has not taken yet.",
+            "Other computers have made some changes. Do you want to sync?",
             await NoticeAsync());
     }
 

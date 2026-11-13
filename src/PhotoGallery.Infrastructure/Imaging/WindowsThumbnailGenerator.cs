@@ -118,6 +118,30 @@ public sealed class WindowsThumbnailGenerator : IThumbnailGenerator
         }
     }
 
+    /// <summary>
+    /// The original as a rendition built now would show it, at no more than
+    /// <paramref name="maxEdge"/> pixels: the file's own orientation applied,
+    /// then the app's turn.
+    /// </summary>
+    /// <remarks>
+    /// The same steps <see cref="Generate"/> takes, for comparing a rendition
+    /// built earlier against what the file says today.
+    /// </remarks>
+    internal static BitmapSource? Upright(byte[] bytes, int maxEdge, int rotation)
+    {
+        using var probeStream = new MemoryStream(bytes, writable: false);
+        BitmapFrame probe = BitmapFrame.Create(
+            probeStream, BitmapCreateOptions.DelayCreation, BitmapCacheOption.None);
+
+        if (probe.PixelWidth <= 0 || probe.PixelHeight <= 0)
+        {
+            return null;
+        }
+
+        BitmapSource picture = Decode(bytes, probe.PixelWidth, probe.PixelHeight, maxEdge);
+        return Turn(ApplyOrientation(picture, ReadOrientation(probe)), rotation);
+    }
+
     private static BitmapSource Decode(byte[] bytes, int width, int height, int maxEdge)
     {
         using var stream = new MemoryStream(bytes, writable: false);
@@ -151,7 +175,7 @@ public sealed class WindowsThumbnailGenerator : IThumbnailGenerator
     /// computed after orientation has been applied, so a photo and its rotated
     /// copy do not read as different pictures.
     /// </remarks>
-    private static PerceptualHash ComputeHash(BitmapSource image)
+    internal static PerceptualHash ComputeHash(BitmapSource image)
     {
         var greyscale = new FormatConvertedBitmap(image, PixelFormats.Gray8, null, 0);
         greyscale.Freeze();
