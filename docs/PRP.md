@@ -141,6 +141,7 @@ before them. A number is a PRP's identity, not its turn.
 | 08 | Video | ◐ Posters ship | [08-video.md](prp/08-video.md) |
 | 12 | Sharing between machines — **called Sync on screen** | ✅ Done | [12-sharing.md](prp/12-sharing.md) |
 | 13 | Collections — shelves of albums | ✅ Done | [13-collections.md](prp/13-collections.md) |
+| 14 | Best of a burst — suggesting the copy worth keeping | 📝 Proposed | [14-best-of-a-burst.md](prp/14-best-of-a-burst.md) |
 
 **Location before models** deliberately. It needs no weights, it rides a read the
 app already does, and it is the one signal the album names cannot fake — an
