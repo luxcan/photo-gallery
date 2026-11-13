@@ -2124,6 +2124,13 @@ public sealed partial class MainViewModel : ObservableObject
             // way through them.
             VideoStatus = VideosWaitingNote;
 
+            // The one thing a scan holds back that only somebody at another
+            // laptop can release, so it is said here and not only in the log.
+            if (result.Given is { FacesWaitingNotice.Length: > 0 } given)
+            {
+                Say(given.FacesWaitingNotice);
+            }
+
             // The scan now finds the faces, so the screen that shows them has to
             // be told - it was only ever refreshed by the button that used to do
             // this, and without this People sits on the groupings it read when it

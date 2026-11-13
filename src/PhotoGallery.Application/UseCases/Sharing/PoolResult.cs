@@ -159,4 +159,31 @@ public sealed record PoolResult(
              + "older copy of the app, which would add some faces twice. They follow once "
              + $"{(one ? "it has" : "they have")} synced from an up-to-date copy.";
     }
+
+    /// <summary>
+    /// What to tell the user when this computer's faces are held back, or
+    /// nothing when they are not.
+    /// </summary>
+    /// <remarks>
+    /// Said on screen, not only in the log, because nothing on this computer
+    /// can release them: somebody has to go to the laptop named and update it.
+    /// Until this the only place it was written down was the scan log, so a
+    /// laptop could hold everybody's faces back for good without anyone
+    /// knowing which.
+    /// </remarks>
+    public string FacesWaitingNotice
+    {
+        get
+        {
+            if (FacesWaitFor.Count == 0)
+            {
+                return string.Empty;
+            }
+
+            bool one = FacesWaitFor.Count == 1;
+
+            return $"This computer's faces are not shared yet. Update Photo Gallery on "
+                 + $"{string.Join(" and ", FacesWaitFor)}, then sync {(one ? "it" : "them")} once.";
+        }
+    }
 }

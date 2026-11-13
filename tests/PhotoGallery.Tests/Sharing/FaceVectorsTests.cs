@@ -643,11 +643,19 @@ public sealed class FaceVectorsTests : IDisposable
         Assert.Contains("aa11.jpg", await Dad.Pool.NamesAsync());
         Assert.Contains("Dad's laptop", given.Summary, StringComparison.Ordinal);
 
+        // Said on screen too, naming the laptop to update, since nothing on
+        // this one can release them.
+        Assert.Equal(
+            "This computer's faces are not shared yet. Update Photo Gallery on Dad's laptop, "
+            + "then sync it once.",
+            given.FacesWaitingNotice);
+
         // He syncs from this build, and the faces follow on the next run.
         await Dad.Publishing.HandleAsync();
-        await Mum.Pooling.GiveAsync();
+        PoolResult after = await Mum.Pooling.GiveAsync();
 
         Assert.True(File.Exists(VectorsOf(Mum)), "faces were still held back");
+        Assert.Empty(after.FacesWaitingNotice);
     }
 
     /// <summary>
