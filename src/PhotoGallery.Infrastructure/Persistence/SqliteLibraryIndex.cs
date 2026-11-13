@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using PhotoGallery.Application.Ports;
 using PhotoGallery.Domain.Assets;
+using PhotoGallery.Domain.Duplicates;
 using PhotoGallery.Domain.Library;
 
 namespace PhotoGallery.Infrastructure.Persistence;
@@ -143,8 +144,20 @@ public sealed class SqliteLibraryIndex : ILibraryIndex
             .CountAsync(a => a.ThumbnailName != null, cancellationToken).ConfigureAwait(false);
         int faces = await _db.Faces.CountAsync(cancellationToken).ConfigureAwait(false);
         int people = await _db.People.CountAsync(cancellationToken).ConfigureAwait(false);
+        // The groups the Duplicates screen would show, by the rule it shows them
+        // by: two copies left at least, one of them the keeper. Deleting a copy
+        // anywhere else takes its membership row and leaves the group behind it
+        // unresolved, so counting every unresolved group kept one the screen had
+        // already stopped offering until the next duplicates pass. Counted rather
+        // than resolved, because a resolved group is a decision - its copies are
+        // never offered again - and nobody decided anything about these.
         int duplicateSets = await _db.DuplicateSets
-            .CountAsync(s => !s.IsResolved, cancellationToken).ConfigureAwait(false);
+            .CountAsync(
+                s => !s.IsResolved
+                     && s.Members.Count > 1
+                     && s.Members.Any(member => member.Role == DuplicateRole.Keeper),
+                cancellationToken)
+            .ConfigureAwait(false);
 
         // What the two optional passes still have to look at, on the same terms
         // their own candidate queries use. Counted here so the screens can say

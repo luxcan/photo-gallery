@@ -1,5 +1,4 @@
 using System.Windows.Media;
-using System.Windows.Media.Imaging;
 using PhotoGallery.App.Imaging;
 using PhotoGallery.Application.Ports;
 using PhotoGallery.Domain.Assets;
@@ -89,7 +88,7 @@ public sealed class TileImageLoaderTests : IDisposable
         ImageSource? image = TileImageLoader.LoadTile(_store, name);
         Assert.NotNull(image);
 
-        await File.WriteAllBytesAsync(_store.ResolveTilePath(name), Jpeg(64, 64));
+        await File.WriteAllBytesAsync(_store.ResolveTilePath(name), TestJpeg.Bytes(64, 64));
     }
 
     [Fact]
@@ -119,33 +118,13 @@ public sealed class TileImageLoaderTests : IDisposable
 
     private async Task<string> SaveAsync(string seed) =>
         await _store.SaveAsync(new GeneratedThumbnail(
-            Jpeg(80, 60),
-            Jpeg(200, 150),
+            TestJpeg.Bytes(80, 60),
+            TestJpeg.Bytes(200, 150),
             1600,
             1200,
             null,
             new PerceptualHash(0),
             seed.PadRight(32, '0')));
-
-    /// <summary>A real JPEG, so the codec is genuinely exercised.</summary>
-    private static byte[] Jpeg(int width, int height)
-    {
-        byte[] pixels = new byte[width * height * 3];
-        for (int i = 0; i < pixels.Length; i++)
-        {
-            pixels[i] = (byte)(i % 251);
-        }
-
-        BitmapSource source = BitmapSource.Create(
-            width, height, 96, 96, PixelFormats.Rgb24, null, pixels, width * 3);
-
-        var encoder = new JpegBitmapEncoder { QualityLevel = 80 };
-        encoder.Frames.Add(BitmapFrame.Create(source));
-
-        using var output = new MemoryStream();
-        encoder.Save(output);
-        return output.ToArray();
-    }
 
     public void Dispose()
     {

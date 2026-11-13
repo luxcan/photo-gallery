@@ -25,7 +25,7 @@ namespace PhotoGallery.App.Albums;
 /// originals on disk is a separate confirmed action available only after an
 /// album is the user's own.</para>
 /// </remarks>
-public sealed partial class AlbumsViewModel : ObservableObject
+public sealed partial class AlbumsViewModel : ObservableObject, IViewerGrid
 {
     /// <summary>How many covers are decoded at once, as elsewhere.</summary>
     private const int DecodeParallelism = 4;
@@ -51,6 +51,28 @@ public sealed partial class AlbumsViewModel : ObservableObject
     /// themselves every time the screen refreshed.
     /// </remarks>
     private bool _rebuilding;
+
+    /// <summary>
+    /// Whether the open album's photographs may be out of date, because the
+    /// library changed while another section was showing.
+    /// </summary>
+    /// <remarks>
+    /// An album left open while somebody went to Library and deleted or filed a
+    /// batch kept its old grid on the way back: coming back reads the albums
+    /// again, but finds the open one under the guard that stops a re-read from
+    /// counting as opening it, so its photographs were never read. Remembered
+    /// rather than read at once, the way the library's own wall is, because the
+    /// section that changed is the one being looked at and this one is not.
+    ///
+    /// <para>Also set when a proposal opened from the strip is filed into the
+    /// album open now, through the viewer's own album list: the strip lets go of
+    /// it, and nothing else would put it on the page behind.</para>
+    ///
+    /// <para>Only ever acted on by <see cref="ReadStalePhotosAsync"/>, which the
+    /// shell calls when no viewer can be open over the page. A re-read under an
+    /// open viewer replaced the tile it was on, and its arrows went dead.</para>
+    /// </remarks>
+    private bool _photosStale;
 
     /// <summary>
     /// Which request to open the description panel is the current one.
@@ -222,6 +244,7 @@ public sealed partial class AlbumsViewModel : ObservableObject
         _store = store;
         _photos = new TileWindow(store);
         _suggestionGrid = new TileWindow(store);
+        SuggestionStrip = new ProposalStrip(this);
         Collections = new CollectionsViewModel(scopeFactory, store);
         Collections.Changed += OnCollectionsChanged;
         Collections.PropertyChanged += OnCollectionsPropertyChanged;
@@ -304,6 +327,93 @@ public sealed partial class AlbumsViewModel : ObservableObject
 
     /// <summary>What the viewer walks when a proposal is opened from the strip.</summary>
     public TileWindow SuggestionGrid => _suggestionGrid;
+
+    /// <summary>
+    /// The proposals as the viewer opens them, so that a proposal changed in the
+    /// viewer is checked against the strip once the viewer moves off it.
+    /// </summary>
+    public IViewerGrid SuggestionStrip { get; }
+
+    TileWindow IViewerGrid.Window => _photos;
+
+    /// <summary>
+    /// Which of these photographs the album open now still holds.
+    /// </summary>
+    /// <remarks>
+    /// The album open now, not the one the photograph was opened from: the page
+    /// is one grid reused for every album. With none open there is no page to
+    /// put right, and opening one reads its photographs afresh.
+    /// </remarks>
+    async Task<IReadOnlySet<int>> IViewerGrid.StillShowingAsync(IReadOnlyList<int> assetIds)
+    {
+        if (Selected is not AlbumItem album)
+        {
+            return assetIds.ToHashSet();
+        }
+
+        using IServiceScope scope = _scopeFactory.CreateScope();
+        IAlbumRepository albums = scope.ServiceProvider.GetRequiredService<IAlbumRepository>();
+        HashSet<int> held = [];
+
+        foreach (int assetId in assetIds)
+        {
+            AlbumSummary? holding = await albums.FindForAssetAsync(assetId).ConfigureAwait(true);
+
+            if (holding?.Id == album.Id)
+            {
+                held.Add(assetId);
+            }
+        }
+
+        return held;
+    }
+
+    void IViewerGrid.Dropped(GalleryTile tile)
+    {
+        OnPropertyChanged(nameof(PhotoCount));
+        OnPropertyChanged(nameof(HasPhotos));
+    }
+
+    /// <summary>
+    /// Says that the open album's photographs may have changed while another
+    /// section was showing, so the next visit reads them again.
+    /// </summary>
+    public void MarkPhotosStale() => _photosStale = true;
+
+    /// <summary>
+    /// Reads the open album's photographs again if something said they may have
+    /// changed, and puts the page right only if they did.
+    /// </summary>
+    /// <remarks>
+    /// For the shell to call on the way back to this section and when the
+    /// viewer closes over it - the two moments no viewer can be open over the
+    /// page. It used to run inside every reload, so a reload asked for by a turn
+    /// or a filing made in the viewer could refill the page underneath it.
+    ///
+    /// <para>Left alone when the album holds exactly what the page shows. Most
+    /// changes made elsewhere - a face named, a photograph turned - do not touch
+    /// an album at all, and refilling the page put a reader who had scrolled
+    /// down through it back at the top for nothing.</para>
+    ///
+    /// <para>Outside the busy guard, as opening an album is: the page decoding
+    /// is no reason to turn away a reload or switch off the buttons.</para>
+    /// </remarks>
+    public async Task ReadStalePhotosAsync()
+    {
+        if (!_photosStale)
+        {
+            return;
+        }
+
+        // Cleared whether or not an album is open: one opened later reads its
+        // photographs anyway.
+        _photosStale = false;
+
+        if (Selected is AlbumItem open)
+        {
+            await LoadPhotosAsync(open.Id, onlyIfChanged: true).ConfigureAwait(true);
+        }
+    }
 
     /// <summary>The rows of pictures the open album is showing.</summary>
     public System.Collections.ObjectModel.ObservableCollection<GalleryRow> PhotoRows =>
@@ -1265,12 +1375,27 @@ public sealed partial class AlbumsViewModel : ObservableObject
             return false;
         }
 
+        LetGoOfSuggestion(tile);
+
+        return true;
+    }
+
+    /// <summary>
+    /// Takes one proposal out of the strip, and says how many are left.
+    /// </summary>
+    /// <remarks>
+    /// One place for an answer given in the viewer and for a proposal that
+    /// stopped fitting while it was open - filed into another album, or deleted.
+    /// The second used to stay in the strip, so keeping the ones still switched
+    /// on put a photograph somewhere it had just been moved away from, or handed
+    /// the album an id the library no longer had.
+    /// </remarks>
+    private void LetGoOfSuggestion(GalleryTile tile)
+    {
         Suggestions.Remove(tile);
         _suggestionGrid.Fill(Suggestions);
         RetellSuggestions();
         OnPropertyChanged(nameof(HasSuggestions));
-
-        return true;
     }
 
     /// <summary>
@@ -2012,7 +2137,13 @@ public sealed partial class AlbumsViewModel : ObservableObject
     /// file exceptions, so a locked or unreachable library went past them and
     /// closed the app.
     /// </remarks>
-    private async Task LoadPhotosAsync(int albumId)
+    /// <param name="albumId">The album whose photographs to read.</param>
+    /// <param name="onlyIfChanged">
+    /// True to leave the page exactly as it is when it already shows what the
+    /// album holds, in the same order - where it is scrolled to and every
+    /// picture already decoded.
+    /// </param>
+    private async Task LoadPhotosAsync(int albumId, bool onlyIfChanged = false)
     {
         try
         {
@@ -2043,6 +2174,12 @@ public sealed partial class AlbumsViewModel : ObservableObject
             }
 
             if (Selected?.Id != albumId)
+            {
+                return;
+            }
+
+            if (onlyIfChanged
+                && page.Items.Select(item => item.Id).SequenceEqual(_photos.Tiles.Select(tile => tile.Item.Id)))
             {
                 return;
             }
@@ -2134,5 +2271,81 @@ public sealed partial class AlbumsViewModel : ObservableObject
         {
             _rebuilding = false;
         }
+    }
+
+    /// <summary>
+    /// The strip of proposals, as a grid the viewer can be opened from.
+    /// </summary>
+    /// <remarks>
+    /// Its own object because the album page is the other grid this screen
+    /// owns, and the two ask different questions: the page asks whether the
+    /// album holds a photograph, the strip whether the album would still offer
+    /// it.
+    /// </remarks>
+    private sealed class ProposalStrip : IViewerGrid
+    {
+        private readonly AlbumsViewModel _owner;
+
+        public ProposalStrip(AlbumsViewModel owner) => _owner = owner;
+
+        public TileWindow Window => _owner._suggestionGrid;
+
+        /// <summary>
+        /// Which of these photographs the open album's rule would still offer.
+        /// </summary>
+        /// <remarks>
+        /// The same question the strip was filled from, rather than "is it in no
+        /// album": a photograph the app swept into one of its own suggestions is
+        /// offered anyway, and asking the narrower question would take one that
+        /// is still on offer out of the strip merely because it had been opened.
+        ///
+        /// <para>Off the UI thread, as the Suggest button runs it, because it is
+        /// the same search of the whole library and SQLite's asynchronous
+        /// methods are synchronous underneath. Run on the dispatcher, it froze
+        /// the viewer after the arrow press that left a changed proposal.</para>
+        ///
+        /// <para>A proposal no longer offered because it is now in this very
+        /// album - filed there through the viewer's album list - marks the page
+        /// to be read again, or it would be in neither place on screen.</para>
+        /// </remarks>
+        public async Task<IReadOnlySet<int>> StillShowingAsync(IReadOnlyList<int> assetIds)
+        {
+            if (_owner.Selected is not AlbumItem album)
+            {
+                return assetIds.ToHashSet();
+            }
+
+            int albumId = album.Id;
+            IServiceScopeFactory scopeFactory = _owner._scopeFactory;
+
+            (HashSet<int> offered, bool joined) = await Task.Run(async () =>
+            {
+                using IServiceScope scope = scopeFactory.CreateScope();
+                IAlbumRepository albums = scope.ServiceProvider
+                    .GetRequiredService<IAlbumRepository>();
+
+                HashSet<int> stillOffered = (await albums.SuggestAsync(albumId).ConfigureAwait(false))
+                    .Intersect(assetIds)
+                    .ToHashSet();
+
+                bool anyJoined = false;
+                foreach (int assetId in assetIds.Where(id => !stillOffered.Contains(id)))
+                {
+                    AlbumSummary? holding = await albums.FindForAssetAsync(assetId).ConfigureAwait(false);
+                    anyJoined |= holding?.Id == albumId;
+                }
+
+                return (stillOffered, anyJoined);
+            }).ConfigureAwait(true);
+
+            if (joined)
+            {
+                _owner.MarkPhotosStale();
+            }
+
+            return offered;
+        }
+
+        public void Dropped(GalleryTile tile) => _owner.LetGoOfSuggestion(tile);
     }
 }

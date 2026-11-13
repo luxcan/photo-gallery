@@ -63,7 +63,7 @@ public sealed class ViewerSteppingTests : IDisposable
     public async Task Next_StepsThroughTheGridThePictureCameFrom()
     {
         await _gallery.LoadAsync();
-        _gallery.OpenFrom(_elsewhere, _elsewhere[0]);
+        _gallery.OpenFrom(new PlainGrid(_elsewhere), _elsewhere[0]);
 
         Assert.True(_gallery.NextPhotoCommand.CanExecute(null));
         _gallery.NextPhotoCommand.Execute(null);
@@ -75,7 +75,7 @@ public sealed class ViewerSteppingTests : IDisposable
     public async Task Previous_StepsBackThroughThatSameGrid()
     {
         await _gallery.LoadAsync();
-        _gallery.OpenFrom(_elsewhere, _elsewhere[2]);
+        _gallery.OpenFrom(new PlainGrid(_elsewhere), _elsewhere[2]);
 
         Assert.True(_gallery.PreviousPhotoCommand.CanExecute(null));
         _gallery.PreviousPhotoCommand.Execute(null);
@@ -89,7 +89,7 @@ public sealed class ViewerSteppingTests : IDisposable
         // The library holds more pictures than the person does. Reading the
         // limit off the wrong one walks past the end of what is on screen.
         await _gallery.LoadAsync();
-        _gallery.OpenFrom(_elsewhere, _elsewhere[2]);
+        _gallery.OpenFrom(new PlainGrid(_elsewhere), _elsewhere[2]);
 
         Assert.False(_gallery.NextPhotoCommand.CanExecute(null));
     }
@@ -98,7 +98,7 @@ public sealed class ViewerSteppingTests : IDisposable
     public async Task Previous_IsRefusedOnTheFirstPictureOfTheOtherGrid()
     {
         await _gallery.LoadAsync();
-        _gallery.OpenFrom(_elsewhere, _elsewhere[0]);
+        _gallery.OpenFrom(new PlainGrid(_elsewhere), _elsewhere[0]);
 
         Assert.False(_gallery.PreviousPhotoCommand.CanExecute(null));
     }
@@ -109,7 +109,7 @@ public sealed class ViewerSteppingTests : IDisposable
         // Or the next picture opened from the grid would still step through
         // whichever screen was looked at last.
         await _gallery.LoadAsync();
-        _gallery.OpenFrom(_elsewhere, _elsewhere[0]);
+        _gallery.OpenFrom(new PlainGrid(_elsewhere), _elsewhere[0]);
         _gallery.ClosePhoto();
 
         _gallery.OpenPhotoCommand.Execute(_gallery.Rows[0].Tiles[0]);
@@ -157,7 +157,7 @@ public sealed class ViewerSteppingTests : IDisposable
         // Opened the way the People screen and an album open one: through their
         // own grid, so the viewer steps through theirs rather than the library's.
         _elsewhere.Fill([going]);
-        _gallery.OpenFrom(_elsewhere, going);
+        _gallery.OpenFrom(new PlainGrid(_elsewhere), going);
 
         Forget(id);
 

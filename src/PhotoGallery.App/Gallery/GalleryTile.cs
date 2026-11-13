@@ -23,7 +23,21 @@ public sealed partial class GalleryTile : ObservableObject
         ArgumentNullException.ThrowIfNull(item);
         Item = item;
         ThumbnailName = item.ThumbnailName;
+        IsTurnedInAppOnly = item.IsTurnedInAppOnly;
     }
+
+    /// <summary>
+    /// Whether this picture is only upright inside this app, as last known.
+    /// </summary>
+    /// <remarks>
+    /// Starts from the row the tile was read from, and is moved by a turn made
+    /// while the tile is on screen. The row is fixed for the life of the tile, so
+    /// reading it alone meant the viewer's "turned here only" line vanished the
+    /// moment somebody stepped away and back - until the whole grid was read
+    /// again, which for the library's own wall is not even on the next visit.
+    /// </remarks>
+    [ObservableProperty]
+    private bool _isTurnedInAppOnly;
 
     /// <summary>
     /// Whether this one is switched on, where the grid is asking a question.

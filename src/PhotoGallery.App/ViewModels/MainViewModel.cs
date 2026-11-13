@@ -358,6 +358,16 @@ public sealed partial class MainViewModel : ObservableObject
                 _decidedSuggestions = false;
                 _ = Albums.SettleAfterDecidingAsync();
             }
+
+            // The album page itself, once the viewer is out of the way: a
+            // proposal filed into the open album through the viewer's album
+            // list leaves the strip, and only this puts it on the page.
+            if (e.PropertyName == nameof(GalleryViewModel.IsViewerOpen)
+                && !Gallery.IsViewerOpen
+                && ShowAlbums)
+            {
+                _ = ReadStaleAlbumPageAsync();
+            }
         };
 
         // The status bar counts what the library holds, and until now only a
@@ -398,9 +408,14 @@ public sealed partial class MainViewModel : ObservableObject
             // Only for changes the viewer reported: People rebuilds itself after
             // its own, and starting a second reload underneath the first would
             // be turned away by the busy guard and lost.
+            //
+            // The list and its counts only, while the viewer is still open over
+            // somebody's pictures. Refilling the page under it replaced the very
+            // tile the viewer was on, and its arrows went dead; the viewer takes
+            // a picture off the page itself once it moves on.
             if (ShowPeople && sender is GalleryViewModel)
             {
-                await People.ReloadAsync();
+                await People.ReloadAsync(refillPhotos: !Gallery.IsViewerOpen);
             }
 
             // The same hole, one screen along. Which picture an album shows for
@@ -416,6 +431,16 @@ public sealed partial class MainViewModel : ObservableObject
             if (ShowAlbums && sender is GalleryViewModel)
             {
                 await Albums.ReloadAsync();
+            }
+
+            // An album left open behind another section is read again on the way
+            // back only if it is told something changed: coming back finds it
+            // open and keeps the grid it had. Marked here and read on the way
+            // back, never inside the reload above, so a page the viewer is open
+            // over is not refilled underneath it.
+            if (!ShowAlbums)
+            {
+                Albums.MarkPhotosStale();
             }
 
             // The same hole once more, and this time the mirror image of the two
@@ -440,10 +465,83 @@ public sealed partial class MainViewModel : ObservableObject
                     await ShowGalleryAsync();
                 }
             }
+
+            // Last, so a source count that cannot be read never stands between
+            // a screen and the reload above.
+            await RefreshSourceCountsAsync();
         }
         catch (Exception ex) when (LibraryFailure.IsExpected(ex))
         {
             DiagnosticLog.Write("could not re-read the library counts", ex);
+        }
+    }
+
+    /// <summary>
+    /// Reads the albums again on the way back to them, and then the open
+    /// album's page if it was told it may be out of date.
+    /// </summary>
+    /// <remarks>
+    /// The page after the albums, and whether or not that reload ran: one
+    /// already running turns this visit's away, and the page used to be read
+    /// only from inside a reload that got past that guard - so the flag
+    /// survived into the visit and was acted on by the next reload, which can
+    /// be one asked for with the viewer open over the page.
+    /// </remarks>
+    private async Task ReturnToAlbumsAsync()
+    {
+        await Albums.ReloadAsync();
+        await Albums.ReadStalePhotosAsync();
+    }
+
+    /// <summary>
+    /// Reads the open album's page again once the viewer over it has closed and
+    /// every photograph it left has been checked.
+    /// </summary>
+    /// <remarks>
+    /// After the checks, because it is one of them - the proposal strip's -
+    /// that says the page is out of date. Nobody awaits this, so a failure is
+    /// caught and logged here rather than left unobserved.
+    /// </remarks>
+    private async Task ReadStaleAlbumPageAsync()
+    {
+        try
+        {
+            await Gallery.WallSettled;
+            await Albums.ReadStalePhotosAsync();
+        }
+        catch (Exception ex) when (LibraryFailure.IsExpected(ex))
+        {
+            DiagnosticLog.Write("could not read the open album again after the viewer closed", ex);
+        }
+    }
+
+    /// <summary>
+    /// Reads again how many photographs each source holds.
+    /// </summary>
+    /// <remarks>
+    /// The Photo sources table was told its counts only when the library opened
+    /// and when a scan finished, so every photograph deleted in between left the
+    /// row claiming one more than the source holds - until the next rescan or
+    /// restart. Read here, on the way through every change a screen reports.
+    /// </remarks>
+    private async Task RefreshSourceCountsAsync()
+    {
+        if (Sources.Count == 0)
+        {
+            return;
+        }
+
+        Dictionary<int, int> counts;
+        using (IServiceScope scope = _scopeFactory.CreateScope())
+        {
+            counts = await scope.ServiceProvider
+                .GetRequiredService<IAssetRepository>()
+                .GetCountsBySourceAsync();
+        }
+
+        foreach (PhotoSourceItem source in Sources)
+        {
+            source.PhotoCount = counts.GetValueOrDefault(source.Id);
         }
     }
 
@@ -1978,16 +2076,30 @@ public sealed partial class MainViewModel : ObservableObject
     /// and every one of those is already drawn somewhere. The screens reload
     /// themselves on their next visit, so this only has to catch the one the
     /// reader is looking at now.
+    ///
+    /// <para>A person's pictures are left as they are while the viewer is open
+    /// over them, for the reason the shell gives when the viewer itself reports
+    /// a change: refilling the page replaced the tile the viewer was on, so its
+    /// arrows went dead and the page jumped back to the top behind it.</para>
+    ///
+    /// <para>Internal so a test can land a merge without running one.</para>
     /// </remarks>
-    private void LibraryChangedByShare()
+    internal void LibraryChangedByShare()
     {
         if (_galleryLoaded)
         {
             _ = Gallery.LoadAsync();
         }
 
-        _ = People.ReloadAsync();
+        _ = People.ReloadAsync(refillPhotos: !Gallery.IsViewerOpen);
         _ = Albums.ReloadAsync();
+
+        // The viewer is drawn over all of these, and what it says beside the
+        // open photograph - its album, its names - was read when it was opened.
+        if (Gallery.IsViewerOpen)
+        {
+            _ = Gallery.RereadOpenPhotoAsync();
+        }
     }
 
     /// <summary>
@@ -2785,7 +2897,7 @@ public sealed partial class MainViewModel : ObservableObject
     /// nothing at all.
     /// </remarks>
     [RelayCommand]
-    private void OpenPersonPhoto(GalleryTile? tile) => Gallery.OpenFrom(People.Photos, tile);
+    private void OpenPersonPhoto(GalleryTile? tile) => Gallery.OpenFrom(People, tile);
 
     /// <summary>
     /// Opens one of an album's photographs, stepping through that album.
@@ -2797,7 +2909,7 @@ public sealed partial class MainViewModel : ObservableObject
     /// </remarks>
     [RelayCommand]
     private void OpenAlbumPhoto(GalleryTile? tile) =>
-        Gallery.OpenFrom(Albums.Photos, tile);
+        Gallery.OpenFrom(Albums, tile);
 
     /// <summary>
     /// Opens one of an album's proposals, stepping through the proposals.
@@ -2809,7 +2921,7 @@ public sealed partial class MainViewModel : ObservableObject
     /// </remarks>
     [RelayCommand]
     private void OpenSuggestedPhoto(GalleryTile? tile) =>
-        Gallery.OpenSuggestion(Albums.SuggestionGrid, tile);
+        Gallery.OpenSuggestion(Albums.SuggestionStrip, tile);
 
     /// <summary>Puts the proposal on screen into the album.</summary>
     [RelayCommand]
@@ -2854,7 +2966,7 @@ public sealed partial class MainViewModel : ObservableObject
         }
 
         Gallery.OpenSuggestion(
-            Albums.SuggestionGrid,
+            Albums.SuggestionStrip,
             Albums.SuggestionGrid[
                 Math.Clamp(at, 0, Albums.SuggestionGrid.Count - 1)]);
     }
@@ -2896,6 +3008,14 @@ public sealed partial class MainViewModel : ObservableObject
         // so it survives a section change and overlaps whatever loads behind it.
         Gallery.ClosePhoto();
 
+        // The same for the copy being inspected on Duplicates. Left open, it came
+        // back on the next visit showing a copy that may have been deleted or
+        // turned somewhere else in the meantime, and nothing re-read it.
+        if (!ShowDuplicates)
+        {
+            Duplicates.CloseInspectCommand.Execute(null);
+        }
+
         OnPropertyChanged(nameof(ShowSources));
         OnPropertyChanged(nameof(ShowLibrary));
         OnPropertyChanged(nameof(ShowSettings));
@@ -2922,7 +3042,7 @@ public sealed partial class MainViewModel : ObservableObject
             // Rebuilt on every visit, like the two screens above: a photograph
             // put into an album from the viewer changes what belongs here.
             Albums.Reopened();
-            _ = Albums.ReloadAsync();
+            _ = ReturnToAlbumsAsync();
         }
         else if (ShowDuplicates)
         {

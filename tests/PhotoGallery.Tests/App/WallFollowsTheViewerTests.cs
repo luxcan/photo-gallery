@@ -205,7 +205,7 @@ public sealed class WallFollowsTheViewerTests : IDisposable
         // grid, holding their own tile for it.
         var elsewhere = new TileWindow(_services.GetRequiredService<IThumbnailStore>());
         elsewhere.Fill([new GalleryTile(ItemFor(filedId))]);
-        _gallery.OpenFrom(elsewhere, elsewhere[0]);
+        _gallery.OpenFrom(new PlainGrid(elsewhere), elsewhere[0]);
         await TestWait.ForAsync(
             () => _gallery.OpenPhotoAlbum is not null,
             "its album to be read",
@@ -244,7 +244,7 @@ public sealed class WallFollowsTheViewerTests : IDisposable
         // The person moves on first; the write lands afterwards.
         _gallery.NextPhotoCommand.Execute(null);
         await FileDirectlyAsync("2.jpg", "Bali");
-        _gallery.ChangedWhileOpen(filed.Item.Id);
+        _gallery.ChangedWhileOpen(filed.Item.Id, from: null);
         await _gallery.WallSettled;
 
         Assert.DoesNotContain(filed, Wall());

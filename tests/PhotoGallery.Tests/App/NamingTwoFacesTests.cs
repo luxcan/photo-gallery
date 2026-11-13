@@ -148,7 +148,7 @@ public sealed class NamingTwoFacesTests : IDisposable
         var grid = new TileWindow(_thumbnails);
 
         _gallery.ShowFaceNames = true;
-        _gallery.OpenFrom(grid, Tile());
+        _gallery.OpenFrom(new PlainGrid(grid), Tile());
 
         await TestWait.ForAsync(() => _gallery.OpenFaces.Count == 2, "the faces to be drawn");
     }

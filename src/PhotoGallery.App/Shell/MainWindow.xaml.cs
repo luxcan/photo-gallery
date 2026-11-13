@@ -591,7 +591,7 @@ public partial class MainWindow : Window
 
     private void OnFolderSelected(object sender, RoutedPropertyChangedEventArgs<object> e)
     {
-        if (e.NewValue is not FolderNode folder)
+        if (e.NewValue is not FolderItem folder)
         {
             return;
         }

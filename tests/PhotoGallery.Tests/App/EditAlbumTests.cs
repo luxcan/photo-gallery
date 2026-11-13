@@ -1,5 +1,3 @@
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
 using System.Xml.Linq;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
@@ -58,7 +56,7 @@ public sealed class EditAlbumTests : IDisposable
         workingFolder.EnsureCreated();
 
         string cover = Path.Combine(_root, "cover.jpg");
-        File.WriteAllBytes(cover, Jpeg());
+        File.WriteAllBytes(cover, TestJpeg.Bytes(8, 8));
         _covers = new HeldCover(new FileSystemThumbnailStore(workingFolder), cover);
 
         _services = new ServiceCollection()
@@ -769,20 +767,6 @@ public sealed class EditAlbumTests : IDisposable
         _albums.Selected = _albums.Showing.Single(item => item.Id == albumId);
 
         await _albums.EditCommand.ExecuteAsync(null);
-    }
-
-    /// <summary>A real JPEG, because the cover is genuinely decoded.</summary>
-    private static byte[] Jpeg()
-    {
-        BitmapSource source = BitmapSource.Create(
-            8, 8, 96, 96, PixelFormats.Rgb24, null, new byte[8 * 8 * 3], 8 * 3);
-
-        var encoder = new JpegBitmapEncoder();
-        encoder.Frames.Add(BitmapFrame.Create(source));
-
-        using var output = new MemoryStream();
-        encoder.Save(output);
-        return output.ToArray();
     }
 
     public void Dispose()

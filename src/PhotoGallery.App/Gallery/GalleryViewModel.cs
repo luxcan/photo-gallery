@@ -56,7 +56,7 @@ public sealed partial class GalleryViewModel : ObservableObject
     private bool _showFolders;
 
     [ObservableProperty]
-    private FolderNode? _selectedFolder;
+    private FolderItem? _selectedFolder;
 
     /// <summary>Whose pictures the grid is restricted to, if anyone's.</summary>
     [ObservableProperty]
@@ -197,7 +197,7 @@ public sealed partial class GalleryViewModel : ObservableObject
 
     public ObservableCollection<GalleryRow> Rows => _window.Rows;
 
-    public ObservableCollection<FolderNode> Folders { get; } = [];
+    public ObservableCollection<FolderItem> Folders { get; } = [];
 
     public bool IsFolderViewVisible => ShowFolders;
 
@@ -902,15 +902,22 @@ public sealed partial class GalleryViewModel : ObservableObject
     /// with a photograph, whichever kind of change it was - and it keeps the line
     /// saying what was just done on screen beside the photograph it was done
     /// to.</para>
+    ///
+    /// <para>Each one carries the grid it was opened from when the change was
+    /// written, or null for the library's own wall, so it is settled against
+    /// that grid as well as the wall. The grid is the one captured before the
+    /// write rather than whichever the viewer holds by the time it lands: the
+    /// viewer may have been closed, or opened again from somewhere else, while
+    /// the write was running.</para>
     /// </remarks>
-    private readonly HashSet<int> _changedWhileOpen = [];
+    private readonly Dictionary<int, IViewerGrid?> _changedWhileOpen = [];
 
     /// <summary>Every check started on leaving a photograph, still running or done.</summary>
     private Task _settling = Task.CompletedTask;
 
     /// <summary>
     /// Finishes once every photograph left so far has been checked against the
-    /// wall.
+    /// wall, and against the grid it was opened from.
     /// </summary>
     /// <remarks>
     /// The checks run on their own, because leaving a photograph is a key press
@@ -938,16 +945,32 @@ public sealed partial class GalleryViewModel : ObservableObject
     /// <para>Internal so a test can land a write after the leave without racing a
     /// real one.</para>
     /// </remarks>
-    internal void ChangedWhileOpen(int assetId)
+    /// <param name="from">
+    /// The grid the photograph was opened from when the write began, or null
+    /// for the library's own wall.
+    /// </param>
+    internal void ChangedWhileOpen(int assetId, IViewerGrid? from)
     {
         if (OpenTile?.Item.Id == assetId)
         {
-            _changedWhileOpen.Add(assetId);
+            MarkForLeaving(assetId, from);
             return;
         }
 
-        Settle(assetId);
+        Settle(assetId, from);
     }
+
+    /// <summary>
+    /// Holds a photograph back to be settled when the viewer leaves it.
+    /// </summary>
+    /// <remarks>
+    /// A grid already recorded is never replaced by none. The wall's own check
+    /// re-marks the open photograph with no grid, and it can do that after the
+    /// write that named the grid - so overwriting would quietly forget the album
+    /// or person the photograph was opened from, and its page would keep it.
+    /// </remarks>
+    private void MarkForLeaving(int assetId, IViewerGrid? from) =>
+        _changedWhileOpen[assetId] = from ?? _changedWhileOpen.GetValueOrDefault(assetId);
 
     partial void OnOpenTileChanged(GalleryTile? oldValue, GalleryTile? newValue)
     {
@@ -959,15 +982,68 @@ public sealed partial class GalleryViewModel : ObservableObject
             return;
         }
 
-        if (_changedWhileOpen.Remove(oldValue.Item.Id))
+        if (_changedWhileOpen.Remove(oldValue.Item.Id, out IViewerGrid? from))
         {
-            Settle(oldValue.Item.Id);
+            Settle(oldValue.Item.Id, from);
         }
     }
 
-    /// <summary>Starts checking one photograph against the wall, alongside any already running.</summary>
-    private void Settle(int assetId) =>
-        _settling = Task.WhenAll(_settling, SettleOnTheWallAsync(assetId));
+    /// <summary>
+    /// Starts checking one photograph against the wall, and against the grid it
+    /// was opened from, alongside any checks already running.
+    /// </summary>
+    private void Settle(int assetId, IViewerGrid? from) =>
+        _settling = Task.WhenAll(
+            _settling,
+            SettleOnTheWallAsync(assetId),
+            from is null ? Task.CompletedTask : SettleInGridAsync(assetId, from));
+
+    /// <summary>
+    /// Takes a photograph, and every copy of it, off the grid it was opened from
+    /// once that screen's question no longer has it in the answer.
+    /// </summary>
+    /// <remarks>
+    /// Only ever takes off. A photograph that has newly come to belong on that
+    /// screen cannot have done so from inside it, apart from a copy that a name
+    /// was widened to - and that copy is read the next time the page is opened,
+    /// rather than slotted into an order that is the screen's own to decide.
+    ///
+    /// <para>The copies for the reason the wall settles them: a name given on
+    /// one copy is given on all of them, so a person's page loses them
+    /// together.</para>
+    /// </remarks>
+    private async Task SettleInGridAsync(int assetId, IViewerGrid grid)
+    {
+        try
+        {
+            IReadOnlyList<GalleryTile> tiles = grid.Window.Tiles;
+            GalleryTile? shown = tiles.FirstOrDefault(tile => tile.Item.Id == assetId);
+
+            if (shown is null)
+            {
+                return;
+            }
+
+            List<GalleryTile> settling = shown.ThumbnailName is string picture
+                ? [shown, .. tiles.Where(tile => tile.Item.Id != assetId && tile.ThumbnailName == picture)]
+                : [shown];
+
+            IReadOnlySet<int> still = await grid
+                .StillShowingAsync([.. settling.Select(tile => tile.Item.Id)])
+                .ConfigureAwait(true);
+
+            foreach (GalleryTile tile in settling.Where(tile => !still.Contains(tile.Item.Id)))
+            {
+                DropUnlessOpen(tile, grid);
+            }
+        }
+        catch (Exception ex) when (LibraryFailure.IsExpected(ex))
+        {
+            // The grid stays as it was, which is what it showed before this
+            // existed; opening the page again reads it afresh.
+            DiagnosticLog.Write($"could not tell whether asset {assetId} still belongs on the grid it was opened from", ex);
+        }
+    }
 
     /// <summary>
     /// Takes a photograph off the wall if what was done to it means the wall no
@@ -996,7 +1072,7 @@ public sealed partial class GalleryViewModel : ObservableObject
 
             if (!belongs && shown is not null)
             {
-                DropUnlessOpen(shown);
+                DropUnlessOpen(shown, grid: null);
             }
             else if (belongs && shown is null)
             {
@@ -1012,7 +1088,7 @@ public sealed partial class GalleryViewModel : ObservableObject
             {
                 if (!await BelongsOnTheWallAsync(copy.Item.Id).ConfigureAwait(true))
                 {
-                    DropUnlessOpen(copy);
+                    DropUnlessOpen(copy, grid: null);
                 }
             }
         }
@@ -1025,25 +1101,46 @@ public sealed partial class GalleryViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Takes a tile off the wall, unless the viewer is showing it right now.
+    /// Takes a tile off the wall, or off the grid named, unless the viewer is
+    /// showing it right now.
     /// </summary>
     /// <remarks>
     /// A copy can be the photograph on screen - two copies of one picture sit
     /// side by side, so "name it, next" lands on the other - and so can a
     /// photograph somebody stepped straight back onto while its check was still
     /// running. Taking the open tile off would strand the viewer: it steps by
-    /// the tile's place on the wall, and a tile that is not on the wall has no
+    /// the tile's place on the grid, and a tile that is not on the grid has no
     /// next. It waits for the viewer to move off it instead, like any other.
     /// </remarks>
-    private void DropUnlessOpen(GalleryTile tile)
+    /// <param name="grid">The grid to take it off, or null for the wall.</param>
+    private void DropUnlessOpen(GalleryTile tile, IViewerGrid? grid)
     {
         if (OpenTile?.Item.Id == tile.Item.Id)
         {
-            _changedWhileOpen.Add(tile.Item.Id);
+            MarkForLeaving(tile.Item.Id, grid);
             return;
         }
 
-        Drop(tile);
+        if (grid is null)
+        {
+            Drop(tile);
+        }
+        else
+        {
+            DropFromGrid(tile, grid);
+        }
+    }
+
+    /// <summary>
+    /// Takes one tile off another screen's grid and lets that screen put its
+    /// counts and headings right.
+    /// </summary>
+    private static void DropFromGrid(GalleryTile tile, IViewerGrid grid)
+    {
+        if (grid.Window.Remove(tile))
+        {
+            grid.Dropped(tile);
+        }
     }
 
     /// <summary>
@@ -1130,29 +1227,47 @@ public sealed partial class GalleryViewModel : ObservableObject
         OpenPhotoAlbum = null;
         AlbumNotice = string.Empty;
         Albums.Close();
-        if (value is not null)
-        {
-            _ = LoadOpenAlbumAsync(value.Item.Id);
-        }
-
-        TurnNotice = value?.Item.IsTurnedInAppOnly == true ? TurnNotices.HereOnly : null;
-        TurnNoticeTip = value?.Item.IsTurnedInAppOnly == true ? TurnNotices.HereOnlyTip : null;
 
         OpenDetails = null;
-        if (value is not null)
-        {
-            _ = LoadOpenDetailsAsync(value.Item.Id);
-        }
-
 
         OpenFaces.Clear();
         FacingBeingNamed = null;
         OnPropertyChanged(nameof(OpenFaceCount));
 
-        if (ShowFaceNames && value is not null)
+        _ = RereadOpenPhotoAsync();
+    }
+
+    /// <summary>
+    /// Reads again everything the viewer says about the open photograph: its
+    /// album, its details, whether it is turned here only, and its faces.
+    /// </summary>
+    /// <remarks>
+    /// One method for opening a photograph and for the library changing under
+    /// one already open. Merging another computer's answers renames people and
+    /// moves photographs between albums, and the viewer went on showing the
+    /// album and the names it read when the photograph was opened until
+    /// somebody stepped to another one. Each read keeps its own guard against a
+    /// photograph that is no longer the open one by the time it returns.
+    ///
+    /// <para>Internal so the shell can ask for it after a merge, and a test can
+    /// wait for it.</para>
+    /// </remarks>
+    internal Task RereadOpenPhotoAsync()
+    {
+        GalleryTile? open = OpenTile;
+
+        TurnNotice = open?.IsTurnedInAppOnly == true ? TurnNotices.HereOnly : null;
+        TurnNoticeTip = open?.IsTurnedInAppOnly == true ? TurnNotices.HereOnlyTip : null;
+
+        if (open is null)
         {
-            _ = LoadOpenFacesAsync(value.Item.Id);
+            return Task.CompletedTask;
         }
+
+        return Task.WhenAll(
+            LoadOpenAlbumAsync(open.Item.Id),
+            LoadOpenDetailsAsync(open.Item.Id),
+            ShowFaceNames ? LoadOpenFacesAsync(open.Item.Id) : Task.CompletedTask);
     }
 
     /// <summary>Reads which album the open photograph is in.</summary>
@@ -1308,6 +1423,7 @@ public sealed partial class GalleryViewModel : ObservableObject
     private async Task PlaceAsync(string name)
     {
         IReadOnlyList<int> placing = _placing;
+        IViewerGrid? from = _viewerSource;
 
         try
         {
@@ -1347,7 +1463,7 @@ public sealed partial class GalleryViewModel : ObservableObject
 
                 foreach (int filed in placing)
                 {
-                    ChangedWhileOpen(filed);
+                    ChangedWhileOpen(filed, from);
                 }
             }
 
@@ -1432,6 +1548,7 @@ public sealed partial class GalleryViewModel : ObservableObject
         }
 
         Albums.Close();
+        IViewerGrid? from = _viewerSource;
 
         try
         {
@@ -1455,7 +1572,7 @@ public sealed partial class GalleryViewModel : ObservableObject
                 OpenPhotoAlbum = null;
             }
 
-            ChangedWhileOpen(tile.Item.Id);
+            ChangedWhileOpen(tile.Item.Id, from);
             LibraryChanged?.Invoke(this, EventArgs.Empty);
         }
         catch (Exception ex) when (ex is IOException or InvalidOperationException)
@@ -1694,6 +1811,7 @@ public sealed partial class GalleryViewModel : ObservableObject
         }
 
         int? assetId = OpenTile?.Item.Id;
+        IViewerGrid? from = _viewerSource;
 
         try
         {
@@ -1714,8 +1832,17 @@ public sealed partial class GalleryViewModel : ObservableObject
         {
             // Setting a face aside can take a name off it, which a wall showing
             // one person - or nobody named - may care about.
-            ChangedWhileOpen(id);
-            await LoadOpenFacesAsync(id).ConfigureAwait(true);
+            ChangedWhileOpen(id, from);
+        }
+
+        // Setting a face aside takes its name off and its proposals with it, so
+        // the People screen behind the viewer is counting faces and questions
+        // that are no longer there - the same reason naming one says so.
+        LibraryChanged?.Invoke(this, EventArgs.Empty);
+
+        if (assetId is int open)
+        {
+            await LoadOpenFacesAsync(open).ConfigureAwait(true);
         }
     }
 
@@ -1734,6 +1861,7 @@ public sealed partial class GalleryViewModel : ObservableObject
         }
 
         int? assetId = OpenTile?.Item.Id;
+        IViewerGrid? from = _viewerSource;
 
         // The screen first, the database after. Naming a face is not a small
         // write - it confirms this face and then offers the same person to
@@ -1807,7 +1935,7 @@ public sealed partial class GalleryViewModel : ObservableObject
         // so the rest of the faces in a group shot can still be named.
         if (assetId is int photo)
         {
-            ChangedWhileOpen(photo);
+            ChangedWhileOpen(photo, from);
         }
 
         // Naming a face here can create somebody who did not exist a moment ago,
@@ -2439,11 +2567,9 @@ public sealed partial class GalleryViewModel : ObservableObject
                 .HandleAsync(cancellationToken);
         }
 
-        Folders.Clear();
-        foreach (FolderNode folder in folders)
-        {
-            Folders.Add(folder);
-        }
+        // Brought into line rather than replaced, so the tree on screen keeps
+        // which folders are open and which one is chosen.
+        FolderItem.Reconcile(Folders, folders);
     }
 
     /// <summary>
@@ -2561,11 +2687,15 @@ public sealed partial class GalleryViewModel : ObservableObject
     /// The People screen shows its own grid of one person's pictures in this
     /// same viewer. Without this, next and previous walked the library instead -
     /// and since the open tile was not in it, they found nothing to walk at all.
+    ///
+    /// <para>The screen that owns the grid rather than the grid alone, so that a
+    /// photograph changed in the viewer can be checked against that screen's own
+    /// question once the viewer moves off it.</para>
     /// </remarks>
-    private TileWindow? _viewerSource;
+    private IViewerGrid? _viewerSource;
 
     /// <summary>What next and previous step through.</summary>
-    private TileWindow ViewerGrid => _viewerSource ?? _window;
+    private TileWindow ViewerGrid => _viewerSource?.Window ?? _window;
 
     [RelayCommand]
     private void OpenPhoto(GalleryTile? tile)
@@ -2746,7 +2876,7 @@ public sealed partial class GalleryViewModel : ObservableObject
     /// Opens a picture belonging to another screen's grid, so the viewer steps
     /// through that one.
     /// </summary>
-    public void OpenFrom(TileWindow source, GalleryTile? tile)
+    public void OpenFrom(IViewerGrid source, GalleryTile? tile)
     {
         ArgumentNullException.ThrowIfNull(source);
 
@@ -2766,7 +2896,7 @@ public sealed partial class GalleryViewModel : ObservableObject
     /// tile, so deciding meant closing the viewer and finding that tile again
     /// among two hundred others.
     /// </remarks>
-    public void OpenSuggestion(TileWindow source, GalleryTile? tile)
+    public void OpenSuggestion(IViewerGrid source, GalleryTile? tile)
     {
         ArgumentNullException.ThrowIfNull(source);
 
@@ -2857,20 +2987,67 @@ public sealed partial class GalleryViewModel : ObservableObject
             return;
         }
 
+        OpenPicture = TileImageLoader.LoadPreview(_thumbnails, tile.ThumbnailName);
+        RepaintTurned(tile, result.CachedOnlyAssets);
+
         // Said outright, because "the file itself now knows" and "only this app
         // knows" are different situations and the difference is invisible until
-        // the user opens the picture somewhere else.
-        bool hereOnly = result.CachedOnly > 0 && result.OriginalsTold == 0;
-        TurnNotice = hereOnly ? TurnNotices.HereOnly : null;
-        TurnNoticeTip = hereOnly ? TurnNotices.HereOnlyTip : null;
+        // the user opens the picture somewhere else. Of the open photograph's own
+        // file, as stepping back onto it reads it.
+        TurnNotice = tile.IsTurnedInAppOnly ? TurnNotices.HereOnly : null;
+        TurnNoticeTip = tile.IsTurnedInAppOnly ? TurnNotices.HereOnlyTip : null;
 
-        OpenPicture = TileImageLoader.LoadPreview(_thumbnails, tile.ThumbnailName);
-        tile.Picture = TileImageLoader.LoadTile(_thumbnails, tile.ThumbnailName);
+        // Album cards, the shelves' mosaics and the faces on People are all cut
+        // from this same picture, and each of those screens redraws only when it
+        // is told the library changed.
+        LibraryChanged?.Invoke(this, EventArgs.Empty);
 
         // The boxes have moved on record; this is what re-reads them.
         if (ShowFaceNames)
         {
             await LoadOpenFacesAsync(tile.Item.Id).ConfigureAwait(true);
+        }
+    }
+
+    /// <summary>
+    /// Redraws every tile showing the picture just turned, on the wall and on
+    /// the grid the viewer was opened from.
+    /// </summary>
+    /// <remarks>
+    /// Every tile, not only the open one. The turn is made to the rendition, and
+    /// copies of a photograph share one - so a copy beside it on the wall, or the
+    /// wall's own tile for a photograph opened from an album, stayed upside down
+    /// until the whole wall was read again.
+    ///
+    /// <para>A tile with no picture decoded is left without one: it reads the
+    /// turned rendition when it scrolls into view, and giving it a picture now
+    /// would hold memory the window never releases.</para>
+    ///
+    /// <para>Each copy is told whether its own file could be turned. Copies
+    /// share a picture but not a file, and one can take the tag while the other
+    /// cannot - so the verdict for the whole turn said the wrong thing about one
+    /// of them when the viewer stepped onto it.</para>
+    /// </remarks>
+    /// <param name="open">The tile the turn was made from.</param>
+    /// <param name="cachedOnly">The photographs whose file could not be told.</param>
+    private void RepaintTurned(GalleryTile open, IReadOnlyList<int> cachedOnly)
+    {
+        ImageSource? turned = TileImageLoader.LoadTile(_thumbnails, open.ThumbnailName);
+
+        IEnumerable<GalleryTile> showing = _window.Tiles
+            .Concat(ViewerGrid.Tiles)
+            .Append(open)
+            .Where(tile => tile.ThumbnailName == open.ThumbnailName)
+            .Distinct();
+
+        foreach (GalleryTile tile in showing)
+        {
+            tile.IsTurnedInAppOnly = cachedOnly.Contains(tile.Item.Id);
+
+            if (ReferenceEquals(tile, open) || tile.Picture is not null)
+            {
+                tile.Picture = turned;
+            }
         }
     }
 
@@ -2972,7 +3149,33 @@ public sealed partial class GalleryViewModel : ObservableObject
         if (result.Deleted > 0)
         {
             LibraryChanged?.Invoke(this, EventArgs.Empty);
+            await LoadFoldersAfterDeletingAsync().ConfigureAwait(true);
             await LoadAsync().ConfigureAwait(true);
+        }
+    }
+
+    /// <summary>
+    /// Reads the folder tree again once photographs have been deleted.
+    /// </summary>
+    /// <remarks>
+    /// Every folder in the tree carries how many photographs it holds, and only
+    /// a scan or a change of sources read them again - so a folder emptied in
+    /// the viewer went on claiming what it had held until the app was restarted.
+    ///
+    /// <para>A tree that cannot be read is left as it was and logged. The
+    /// photographs are already gone, and failing the rest of the catching up
+    /// over a count would leave a wall showing pictures that no longer
+    /// exist.</para>
+    /// </remarks>
+    private async Task LoadFoldersAfterDeletingAsync()
+    {
+        try
+        {
+            await LoadFoldersAsync().ConfigureAwait(true);
+        }
+        catch (Exception ex) when (LibraryFailure.IsExpected(ex))
+        {
+            DiagnosticLog.Write("could not read the folder tree again after deleting", ex);
         }
     }
 
@@ -3003,13 +3206,19 @@ public sealed partial class GalleryViewModel : ObservableObject
             return;
         }
 
+        // Captured before anything is awaited, for the reason every write in
+        // the viewer captures it: the grid is the one the photograph was open
+        // from when it was deleted, not whichever holds the viewer by the end.
+        IViewerGrid? grid = _viewerSource;
+
         LibraryChanged?.Invoke(this, EventArgs.Empty);
+        await LoadFoldersAfterDeletingAsync().ConfigureAwait(true);
 
         // Only the library's own grid can be STEPPED THROUGH from here. A
-        // picture opened from somebody's photographs belongs to the People
-        // screen, which rebuilds itself on hearing the line above - so the
-        // viewer stands down rather than stepping onto a tile that is about to
-        // be replaced.
+        // picture opened from another screen's grid belongs to that screen, so
+        // the viewer stands down and takes the tile off that grid itself - the
+        // People screen is no longer rebuilt under an open viewer, and an
+        // album's page never was, so neither would otherwise lose it.
         //
         // It closed on that path before as well, but by accident: the index
         // below was read from the library's grid whatever the viewer had been
@@ -3024,9 +3233,14 @@ public sealed partial class GalleryViewModel : ObservableObject
         // screen deleted it. Left there, the tile opens onto a cached thumbnail
         // with nothing behind it - no album, no name, no file - because every
         // fact about a photograph is read by an id the index no longer has.
-        if (!ReferenceEquals(ViewerGrid, _window))
+        if (grid is not null)
         {
             ClosePhoto();
+
+            // No question to ask: the photograph is gone, so it belongs on no
+            // screen at all.
+            DropFromGrid(tile, grid);
+
             await LoadAsync().ConfigureAwait(true);
             return;
         }
@@ -3099,7 +3313,7 @@ public sealed partial class GalleryViewModel : ObservableObject
         }
     }
 
-    partial void OnSelectedFolderChanged(FolderNode? value)
+    partial void OnSelectedFolderChanged(FolderItem? value)
     {
         // Choosing a folder answers a different question from choosing a person
         // or a place, and quietly combining them would show "every photo of my

@@ -122,7 +122,7 @@ public sealed class TurnPhotoHandler
         await _assets.SetRotationAsync(told, 0, cancellationToken).ConfigureAwait(false);
         await _assets.TurnAsync(cachedOnly, degrees, cancellationToken).ConfigureAwait(false);
 
-        return new TurnedPhoto(true, told.Count, cachedOnly.Count, []);
+        return new TurnedPhoto(true, told.Count, cachedOnly, []);
     }
 }
 
@@ -131,25 +131,32 @@ public sealed class TurnPhotoHandler
 /// How many of the files themselves now say which way up they go, and so look
 /// right in every other program too.
 /// </param>
-/// <param name="CachedOnly">
-/// How many could only be corrected in this app's copies, because their file has
-/// no orientation tag and no room to add one.
+/// <param name="CachedOnlyAssets">
+/// The photographs that could only be corrected in this app's copies, because
+/// their file has no orientation tag and no room to add one. Named rather than
+/// counted, because copies sharing one picture can come out differently, and
+/// each copy's "turned here only" line has to say what happened to its own file.
 /// </param>
 /// <param name="UnreachableSources">
 /// The sources that could not be reached, when that is why nothing happened.
-/// Empty on every other outcome. Distinct from <paramref name="CachedOnly"/> on
+/// Empty on every other outcome. Distinct from <paramref name="CachedOnlyAssets"/> on
 /// purpose: that one means the file was asked and said no, this one means the
 /// file was never asked.
 /// </param>
 public readonly record struct TurnedPhoto(
     bool Turned,
     int OriginalsTold,
-    int CachedOnly,
+    IReadOnlyList<int> CachedOnlyAssets,
     IReadOnlyList<string> UnreachableSources)
 {
-    public static TurnedPhoto Nothing => new(false, 0, 0, []);
+    public static TurnedPhoto Nothing => new(false, 0, [], []);
+
+    /// <summary>
+    /// How many could only be corrected in this app's copies.
+    /// </summary>
+    public int CachedOnly => CachedOnlyAssets.Count;
 
     /// <summary>Nothing was turned, because these sources are away.</summary>
     public static TurnedPhoto OutOfReach(IReadOnlyList<string> sources) =>
-        new(false, 0, 0, sources);
+        new(false, 0, [], sources);
 }

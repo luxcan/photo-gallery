@@ -25,7 +25,7 @@ namespace PhotoGallery.App.People;
 /// of the library they account for, answer what has been proposed, remove a name
 /// that was a mistake.
 /// </remarks>
-public sealed partial class PeopleViewModel : ObservableObject
+public sealed partial class PeopleViewModel : ObservableObject, IViewerGrid
 {
     /// <summary>
     /// How many crops are decoded at once. The same figure the gallery uses:
@@ -301,6 +301,50 @@ public sealed partial class PeopleViewModel : ObservableObject
     /// </summary>
     public TileWindow Photos => _photos;
 
+    TileWindow IViewerGrid.Window => _photos;
+
+    /// <summary>
+    /// Which of these photographs the person open now is still named in.
+    /// </summary>
+    /// <remarks>
+    /// The question their page was read with, narrowed to these photographs, so
+    /// it cannot drift from what opening the page again would show. Every kind,
+    /// whatever the chips say: the count under the name is of everything they
+    /// are in, and the chips only choose which of those are drawn.
+    /// </remarks>
+    async Task<IReadOnlySet<int>> IViewerGrid.StillShowingAsync(IReadOnlyList<int> assetIds)
+    {
+        if (SelectedPerson is not PersonItem person)
+        {
+            return assetIds.ToHashSet();
+        }
+
+        using IServiceScope scope = _scopeFactory.CreateScope();
+        GalleryPage page = await scope.ServiceProvider
+            .GetRequiredService<QueryGalleryHandler>()
+            .HandleAsync(new GalleryQuery(PersonId: person.Id, RankedAssetIds: assetIds))
+            .ConfigureAwait(true);
+
+        return page.Items.Select(item => item.Id).ToHashSet();
+    }
+
+    /// <summary>
+    /// Forgets a picture the viewer has taken off this page, and puts the count
+    /// and the headings right.
+    /// </summary>
+    /// <remarks>
+    /// The headings carry how many pictures each age holds, and taking a tile off
+    /// the window leaves them as they were. The picture leaves the list the page
+    /// is cut from as well, or the next change of chip or of year would put it
+    /// straight back.
+    /// </remarks>
+    void IViewerGrid.Dropped(GalleryTile tile)
+    {
+        _pictures = [.. _pictures.Where(picture => picture.Id != tile.Item.Id)];
+        PhotoCount = Math.Max(0, PhotoCount - 1);
+        Regroup(fresh: false);
+    }
+
     /// <summary>The pictures that are settled, not the questions.</summary>
     public bool ShowingPhotos => HasSelectedPerson && !IsConfirming;
 
@@ -447,7 +491,15 @@ public sealed partial class PeopleViewModel : ObservableObject
     /// being awaited, so an exception would go unobserved and leave the screen
     /// permanently busy.</para>
     /// </remarks>
-    public async Task ReloadAsync()
+    /// <param name="refillPhotos">
+    /// False to leave the open person's pictures as they are. The shell asks for
+    /// that while the photo viewer is open over them: refilling replaced every
+    /// tile, so the viewer's arrows lost the one they were on and went dead, and
+    /// the page jumped back to the top behind it. The viewer takes a picture off
+    /// this page itself once it moves on, so nothing is left stale - except a
+    /// copy newly named, which appears the next time the page is opened.
+    /// </param>
+    public async Task ReloadAsync(bool refillPhotos = true)
     {
         if (IsBusy)
         {
@@ -469,7 +521,7 @@ public sealed partial class PeopleViewModel : ObservableObject
 
             Apply(board);
 
-            if (SelectedPerson is not null)
+            if (refillPhotos && SelectedPerson is not null)
             {
                 await LoadPersonAsync(SelectedPerson.Id).ConfigureAwait(true);
             }
@@ -481,8 +533,7 @@ public sealed partial class PeopleViewModel : ObservableObject
             // It returns immediately when they are all already there.
             await LoadCoversAsync().ConfigureAwait(true);
         }
-        catch (Exception ex) when (ex is IOException or InvalidOperationException
-                                      or UnauthorizedAccessException)
+        catch (Exception ex) when (LibraryFailure.IsExpected(ex))
         {
             Status = $"The people could not be loaded: {ex.Message}";
         }
