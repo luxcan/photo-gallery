@@ -98,6 +98,10 @@ public sealed class ScanPhotoSourceHandler
         string reportedFolder = string.Empty;
         bool cancelled = false;
 
+        // Timed on its own so a slow crawl can be blamed from the log: the walk
+        // is the part that talks to the folder, the rest is this machine.
+        var walkStopwatch = Stopwatch.StartNew();
+
         try
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -197,6 +201,8 @@ public sealed class ScanPhotoSourceHandler
             cancelled = true;
         }
 
+        walkStopwatch.Stop();
+
         if (toAdd.Count > 0)
         {
             await _assets.AddRangeAsync(toAdd, CancellationToken.None).ConfigureAwait(false);
@@ -279,7 +285,8 @@ public sealed class ScanPhotoSourceHandler
         return new ScanResult(
             photoSourceId, source.Path, added, updated, removed, unchanged,
             stopwatch.Elapsed, cancelled, WasUnavailable: false,
-            FoldersNotRead: unreadable.Length, Kept: kept);
+            FoldersNotRead: unreadable.Length, Kept: kept,
+            WalkElapsed: walkStopwatch.Elapsed);
     }
 
     /// <summary>

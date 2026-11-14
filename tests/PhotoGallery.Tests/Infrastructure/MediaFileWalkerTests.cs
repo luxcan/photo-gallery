@@ -118,6 +118,102 @@ public sealed class MediaFileWalkerTests : IDisposable
         }
     }
 
+    [Fact]
+    public void Walk_FindsAHiddenSystemFile()
+    {
+        // A NAS marks dot-files hidden, and a listing that skipped hidden or
+        // system files would make every one of them look gone.
+        string hidden = Path.Combine(_photos, "hidden.jpg");
+        File.WriteAllText(hidden, "x");
+        File.SetAttributes(hidden, FileAttributes.Hidden | FileAttributes.System);
+
+        List<ScannedFile> files = [.. _walker.Walk(_photos).Files];
+
+        Assert.Equal("hidden.jpg", Assert.Single(files).RelativePath);
+    }
+
+    [Fact]
+    public void Walk_ReportsTheSameSizeAndDatesAsAskingTheFile()
+    {
+        // The re-scan compares these against the index. Any difference from
+        // what asking the file says would make every photo look changed.
+        string plain = Path.Combine(_photos, "plain.jpg");
+        string stamped = Path.Combine(_photos, "2016", "stamped.jpg");
+        File.WriteAllText(plain, "some bytes");
+        Directory.CreateDirectory(Path.GetDirectoryName(stamped)!);
+        File.WriteAllText(stamped, "other");
+        File.SetCreationTimeUtc(stamped, new DateTime(2016, 3, 1, 8, 0, 0, 123, DateTimeKind.Utc).AddTicks(4567));
+        File.SetLastWriteTimeUtc(stamped, new DateTime(2016, 3, 2, 9, 30, 15, 987, DateTimeKind.Utc).AddTicks(1));
+
+        List<ScannedFile> files = [.. _walker.Walk(_photos).Files];
+
+        Assert.Equal(2, files.Count);
+        foreach (ScannedFile file in files)
+        {
+            var asked = new FileInfo(Path.Combine(_photos, file.RelativePath));
+            Assert.Equal(asked.Length, file.Length);
+            Assert.Equal(asked.LastWriteTimeUtc, file.ModifiedUtc);
+            Assert.Equal(asked.CreationTimeUtc, file.CreatedUtc);
+        }
+    }
+
+    [Fact]
+    public void Walk_RecordsAFolderThatRefusesToListAndWalksItsNeighbours()
+    {
+        string locked = Path.Combine(_photos, "locked");
+        Directory.CreateDirectory(locked);
+        File.WriteAllText(Path.Combine(locked, "inside.jpg"), "x");
+        Directory.CreateDirectory(Path.Combine(_photos, "open"));
+        File.WriteAllText(Path.Combine(_photos, "open", "beside.jpg"), "x");
+
+        using (new DeniedFolder(locked))
+        {
+            MediaWalk walk = _walker.Walk(_photos);
+            List<ScannedFile> files = [.. walk.Files];
+
+            Assert.Equal(Path.Combine("open", "beside.jpg"), Assert.Single(files).RelativePath);
+            Assert.Equal(locked, Assert.Single(walk.UnreadableFolders));
+        }
+    }
+
+    [Fact]
+    public void Walk_SkipsTheNasThumbnailCacheWithoutCallingItUnreadable()
+    {
+        Directory.CreateDirectory(Path.Combine(_photos, "@eaDir"));
+        File.WriteAllText(Path.Combine(_photos, "@eaDir", "cached.jpg"), "x");
+        File.WriteAllText(Path.Combine(_photos, "real.jpg"), "x");
+
+        MediaWalk walk = _walker.Walk(_photos);
+        List<ScannedFile> files = [.. walk.Files];
+
+        Assert.Equal("real.jpg", Assert.Single(files).RelativePath);
+        Assert.Empty(walk.UnreadableFolders);
+    }
+
+    [Fact]
+    public void IsLink_WalksAReparsePointThatPointsNowhere()
+    {
+        // Cloud placeholders and deduplicated folders carry the reparse mark but
+        // hold real files. Skipping them on the mark alone would make their
+        // photos look gone.
+        Assert.False(MediaFileWalker.IsLink(
+            FileAttributes.Directory | FileAttributes.ReparsePoint, () => null));
+    }
+
+    [Fact]
+    public void IsLink_SkipsAReparsePointWithATarget() =>
+        Assert.True(MediaFileWalker.IsLink(
+            FileAttributes.Directory | FileAttributes.ReparsePoint, () => @"C:\elsewhere"));
+
+    [Fact]
+    public void IsLink_DoesNotAskAnOrdinaryFolderWhereItPoints()
+    {
+        // Asking is a round trip on a share; an ordinary folder never needs it.
+        Assert.False(MediaFileWalker.IsLink(
+            FileAttributes.Directory,
+            () => throw new InvalidOperationException("an ordinary folder was asked for its target")));
+    }
+
     public void Dispose()
     {
         try

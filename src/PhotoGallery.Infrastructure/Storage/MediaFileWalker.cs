@@ -17,6 +17,11 @@ namespace PhotoGallery.Infrastructure.Storage;
 /// to be listed is named in the walk, because the caller uses "this file was not
 /// seen" to decide that a file is gone, and a folder nobody could open never
 /// showed what was in it.</para>
+///
+/// <para>Each folder is listed once, and a file's size and dates are taken from
+/// that listing rather than asked for again. On a network share every separate
+/// question is a round trip; asking one per file made a re-scan of an unchanged
+/// library take minutes instead of seconds, for exactly the same answers.</para>
 /// </remarks>
 public sealed class MediaFileWalker : IMediaFileWalker
 {
@@ -63,8 +68,10 @@ public sealed class MediaFileWalker : IMediaFileWalker
             cancellationToken.ThrowIfCancellationRequested();
             DirectoryListing listing = pending.Pop();
 
-            foreach (string child in listing.Directories)
+            foreach (DirectoryInfo directory in listing.Directories)
             {
+                string child = directory.FullName;
+
                 // Never index the app's own thumbnails, models or quarantine,
                 // even when the working folder doubles as a photo source. These
                 // are choices rather than failures, so they are not recorded as
@@ -72,7 +79,7 @@ public sealed class MediaFileWalker : IMediaFileWalker
                 // ever being cleaned up.
                 if (_workingFolder.IsAppOwned(child)
                     || IsSystemFolder(child)
-                    || IsDirectoryLink(child))
+                    || IsDirectoryLink(directory))
                 {
                     continue;
                 }
@@ -88,52 +95,23 @@ public sealed class MediaFileWalker : IMediaFileWalker
                 }
             }
 
-            foreach (string file in listing.Files)
+            foreach (FileInfo file in listing.Files)
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
-                if (!MediaFileTypes.IsMedia(file))
+                if (!MediaFileTypes.IsMedia(file.Name))
                 {
                     continue;
                 }
 
-                ScannedFile? scanned = Describe(file, root);
-                if (scanned is not null)
-                {
-                    yield return scanned.Value;
-                }
-                else
-                {
-                    // Its folder listed, but this file would not answer. Treating
-                    // that as absence would delete a row for a file that is very
-                    // likely still there, so the folder counts as incompletely
-                    // read and nothing under it is judged missing.
-                    unreadable.Add(listing.Path);
-                }
+                // Read from what the listing already said, not by asking the
+                // file again: these properties were filled in by the listing.
+                yield return new ScannedFile(
+                    Path.GetRelativePath(root, file.FullName),
+                    file.Length,
+                    file.LastWriteTimeUtc,
+                    file.CreationTimeUtc);
             }
-        }
-    }
-
-    private static ScannedFile? Describe(string file, string root)
-    {
-        try
-        {
-            var info = new FileInfo(file);
-            return new ScannedFile(
-                Path.GetRelativePath(root, file),
-                info.Length,
-                info.LastWriteTimeUtc,
-                info.CreationTimeUtc);
-        }
-        catch (FileNotFoundException)
-        {
-            // Deleted between listing and stat. This one really is gone, and
-            // saying so is the point of the separate catch.
-            return null;
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            return null;
         }
     }
 
@@ -150,11 +128,29 @@ public sealed class MediaFileWalker : IMediaFileWalker
     /// Skipping them prevents a link back to an ancestor from making the walk
     /// cycle forever and avoids indexing the same tree through several names.
     /// </summary>
-    private static bool IsDirectoryLink(string path)
+    /// <remarks>
+    /// Only a folder the listing marked as a reparse point is asked for its
+    /// target, because every link carries that mark. The mark alone is not
+    /// enough to skip on: cloud placeholders and deduplicated folders carry it
+    /// too, and they hold real files.
+    /// </remarks>
+    private static bool IsDirectoryLink(DirectoryInfo directory) =>
+        IsLink(directory.Attributes, () => directory.LinkTarget);
+
+    /// <summary>
+    /// True for a folder that is an alias of another, given its listed
+    /// attributes and a way to ask where it points.
+    /// </summary>
+    internal static bool IsLink(FileAttributes attributes, Func<string?> linkTarget)
     {
+        if (!attributes.HasFlag(FileAttributes.ReparsePoint))
+        {
+            return false;
+        }
+
         try
         {
-            return new DirectoryInfo(path).LinkTarget is not null;
+            return linkTarget() is not null;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -167,17 +163,35 @@ public sealed class MediaFileWalker : IMediaFileWalker
     /// Lists a directory's children in one go, or reports that it would not open.
     /// </summary>
     /// <remarks>
-    /// Both listings together, so a directory cannot half-succeed and leave the
-    /// caller believing it saw everything in it.
+    /// One listing for folders and files together, read to the end inside the
+    /// try: entries arrive as the listing is read, so an error part-way through
+    /// surfaces here and the directory cannot half-succeed and leave the caller
+    /// believing it saw everything in it.
+    ///
+    /// <para>The overload without options, deliberately. It skips nothing, the
+    /// same as the listing this replaced. A default <see cref="EnumerationOptions"/>
+    /// would leave out hidden and system files and turn a folder that refuses to
+    /// open into an empty one - and both would read as files that had gone.</para>
     /// </remarks>
     private static bool TryList(string directory, out DirectoryListing listing)
     {
         try
         {
-            listing = new DirectoryListing(
-                directory,
-                [.. Directory.EnumerateDirectories(directory)],
-                [.. Directory.EnumerateFiles(directory)]);
+            var directories = new List<DirectoryInfo>();
+            var files = new List<FileInfo>();
+            foreach (FileSystemInfo entry in new DirectoryInfo(directory).EnumerateFileSystemInfos())
+            {
+                if (entry is DirectoryInfo child)
+                {
+                    directories.Add(child);
+                }
+                else if (entry is FileInfo file)
+                {
+                    files.Add(file);
+                }
+            }
+
+            listing = new DirectoryListing(directory, directories, files);
             return true;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
@@ -188,5 +202,5 @@ public sealed class MediaFileWalker : IMediaFileWalker
     }
 
     private readonly record struct DirectoryListing(
-        string Path, List<string> Directories, List<string> Files);
+        string Path, List<DirectoryInfo> Directories, List<FileInfo> Files);
 }

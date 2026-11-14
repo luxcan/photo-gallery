@@ -15,6 +15,11 @@ namespace PhotoGallery.Application.UseCases.Scanning;
 /// them when the source was unavailable, those under an unreadable folder
 /// otherwise.
 /// </param>
+/// <param name="WalkElapsed">
+/// The part of <paramref name="Elapsed"/> spent walking the folder - listing it
+/// and deciding about each file, batched writes included - as opposed to reading
+/// the index first and settling what had gone afterwards.
+/// </param>
 public sealed record ScanResult(
     int PhotoSourceId,
     string SourcePath,
@@ -26,7 +31,8 @@ public sealed record ScanResult(
     bool WasCancelled,
     bool WasUnavailable = false,
     int FoldersNotRead = 0,
-    int Kept = 0)
+    int Kept = 0,
+    TimeSpan WalkElapsed = default)
 {
     public int Seen => Added + Updated + Unchanged;
 
@@ -47,7 +53,8 @@ public sealed record ScanResult(
         : WasCancelled
             ? $"cancelled after {Seen:N0} files"
             : $"{Seen:N0} files: {Added:N0} new, {Updated:N0} changed, "
-            + $"{Removed:N0} gone, {Unchanged:N0} unchanged ({Elapsed.TotalSeconds:N1}s)"
+            + $"{Removed:N0} gone, {Unchanged:N0} unchanged ({Elapsed.TotalSeconds:N1}s, "
+            + $"walk {WalkElapsed.TotalSeconds:N1}s)"
             + (FoldersNotRead > 0
                 ? $" - could not read {FoldersNotRead:N0} of its folders, so "
                 + $"{Kept:N0} indexed files under them were kept"

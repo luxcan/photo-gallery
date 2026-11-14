@@ -223,6 +223,28 @@ public sealed class ScanPhotoSourceHandlerTests : IDisposable
     }
 
     [Fact]
+    public async Task Scan_KeepsTheRowsOfAFolderThatRefusesToList()
+    {
+        WritePhoto(@"locked\a.jpg");
+        WritePhoto(@"locked\b.jpg");
+        WritePhoto("c.jpg");
+        PhotoSource source = await AddSourceAsync(_photosRoot);
+        await NewHandler().HandleAsync(source.Id);
+
+        ScanResult second;
+        using (new DeniedFolder(Path.Combine(_photosRoot, "locked")))
+        {
+            second = await NewHandler().HandleAsync(source.Id);
+        }
+
+        // Unknown, not absent: nothing under a folder nobody could open may go.
+        Assert.Equal(0, second.Removed);
+        Assert.Equal(2, second.Kept);
+        Assert.Equal(1, second.FoldersNotRead);
+        Assert.Equal(3, await _assets.CountAsync(source.Id));
+    }
+
+    [Fact]
     public async Task Scan_SkipsTheAppsOwnFoldersInsideTheWorkingFolder()
     {
         // The working folder doubles as a photo source when set-up points at a
