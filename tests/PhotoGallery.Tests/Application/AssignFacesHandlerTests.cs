@@ -132,6 +132,24 @@ public sealed class AssignFacesHandlerTests : IDisposable
     }
 
     [Fact]
+    public async Task Reject_SaysTheFacesAreNotThem()
+    {
+        // It used to say "4 faces are King Loong" straight after the user had
+        // said they were not - the sentence never knew which answer was given.
+        int[] named = [AddFace(0, 0), AddFace(1, 2), AddFace(2, 4)];
+        AssignmentResult ana = await Name(named, "Ana Lim");
+
+        AssignmentResult one = await NewHandler().HandleAsync(new AssignFacesRequest(
+            [AddFace(3, 6)], AssignmentSource.Rejected, PersonId: ana.PersonId));
+        AssignmentResult two = await NewHandler().HandleAsync(new AssignFacesRequest(
+            [AddFace(4, 7), AddFace(5, 8)], AssignmentSource.Rejected, PersonId: ana.PersonId));
+
+        Assert.StartsWith("1 face is not Ana Lim", one.Summary, StringComparison.Ordinal);
+        Assert.StartsWith("2 faces are not Ana Lim", two.Summary, StringComparison.Ordinal);
+        Assert.StartsWith("3 faces are Ana Lim", ana.Summary, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Name_DoesNotOfferFacesThatAlreadyBelongToSomeoneElse()
     {
         int[] hers = [AddFace(0, 0), AddFace(1, 2), AddFace(2, 4)];

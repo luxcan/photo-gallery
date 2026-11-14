@@ -42,7 +42,11 @@ public sealed class AssignFacesHandler
         // What is reported back is how many questions were answered, not how
         // many rows that came to - the user answered one face, whatever number
         // of files that photograph happens to exist as.
-        return await RefreshAsync(personId, request.FaceIds.Count, cancellationToken)
+        return await RefreshAsync(
+                personId,
+                request.FaceIds.Count,
+                request.Source == AssignmentSource.Rejected,
+                cancellationToken)
             .ConfigureAwait(false);
     }
 
@@ -273,7 +277,7 @@ public sealed class AssignFacesHandler
     /// </remarks>
     public Task<AssignmentResult> RefreshAsync(
         int personId, CancellationToken cancellationToken = default) =>
-        RefreshAsync(personId, assigned: 0, cancellationToken);
+        RefreshAsync(personId, assigned: 0, rejected: false, cancellationToken);
 
     /// <summary>
     /// Works out afresh what one person looked like over their life, from the
@@ -299,7 +303,7 @@ public sealed class AssignFacesHandler
     }
 
     private async Task<AssignmentResult> RefreshAsync(
-        int personId, int assigned, CancellationToken cancellationToken)
+        int personId, int assigned, bool rejected, CancellationToken cancellationToken)
     {
         int eras = await RebuildErasAsync(personId, cancellationToken).ConfigureAwait(false);
         ProposalRound round = await _propose.HandleAsync(cancellationToken).ConfigureAwait(false);
@@ -309,7 +313,7 @@ public sealed class AssignFacesHandler
 
         return new AssignmentResult(
             personId, displayName, assigned, eras,
-            theirs.Offered, theirs.Matched, round.Considered);
+            theirs.Offered, theirs.Matched, round.Considered, rejected);
     }
 
     private async Task<string> NameOfAsync(int personId, CancellationToken cancellationToken)

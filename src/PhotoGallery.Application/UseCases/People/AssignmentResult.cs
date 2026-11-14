@@ -15,6 +15,10 @@ namespace PhotoGallery.Application.UseCases.People;
 /// showing exactly three hundred is a cap being met, and a number that stops at
 /// a round figure without saying so reads as the whole answer.
 /// </param>
+/// <param name="WereRejected">
+/// True when the answer was "no, they are not", so the sentence says that
+/// rather than the opposite of what was just decided.
+/// </param>
 public sealed record AssignmentResult(
     int PersonId,
     string DisplayName,
@@ -22,7 +26,8 @@ public sealed record AssignmentResult(
     int Eras,
     int Proposed,
     int Matched,
-    int Considered)
+    int Considered,
+    bool WereRejected = false)
 {
     public bool WasCapped => Matched > Proposed;
 
@@ -38,9 +43,13 @@ public sealed record AssignmentResult(
     /// Answering the last question about somebody is the most likely of all of
     /// these to be read, and it said "1 faces are Vera".
     /// </remarks>
-    private string Settled => Assigned == 1
-        ? $"1 face is {DisplayName}"
-        : $"{Assigned:N0} faces are {DisplayName}";
+    private string Settled => (Assigned == 1, WereRejected) switch
+    {
+        (true, false) => $"1 face is {DisplayName}",
+        (true, true) => $"1 face is not {DisplayName}",
+        (false, false) => $"{Assigned:N0} faces are {DisplayName}",
+        (false, true) => $"{Assigned:N0} faces are not {DisplayName}",
+    };
 
     /// <summary>What is left to answer, counted the same way.</summary>
     private string Waiting => Proposed == 1
