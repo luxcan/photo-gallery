@@ -4132,6 +4132,7 @@
           <TextBlock Style="{DynamicResource HintText}" Text="{Binding OverlayHint}" />
           <Button Style="{DynamicResource SecondaryButton}" Content="Stop"
                   MinWidth="90" HorizontalAlignment="Right" Margin="0,18,0,0"
+                  Visibility="{Binding OffersStop, Converter={StaticResource BoolToVisibility}}"
                   Command="{Binding CancelPassCommand}" />
         </StackPanel>
       </Border>

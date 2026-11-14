@@ -288,6 +288,23 @@ public sealed partial class PeopleViewModel : ObservableObject, IViewerGrid
     public event EventHandler? LibraryChanged;
 
     /// <summary>
+    /// Raised when a batch of answers starts being saved, carrying what is being
+    /// saved as a sentence, e.g. "24 faces for Ana".
+    /// </summary>
+    /// <remarks>
+    /// For the shell to cover the window, because the overlay is the shell's -
+    /// the same reason the Albums screen raises Looking rather than drawing one.
+    /// Saving a batch and putting the screen back together took about three
+    /// seconds on a copy of the real library, and with nothing covering it the
+    /// other people's names stayed clickable half way through, so the answer
+    /// felt like lag and a click could land on a screen still rebuilding.
+    /// </remarks>
+    public event EventHandler<string>? SavingAnswers;
+
+    /// <summary>That a batch of answers has been saved, or failed to be.</summary>
+    public event EventHandler? AnswersSaved;
+
+    /// <summary>
     /// Raised when a turn was refused because the photograph's folder is away.
     /// </summary>
     /// <remarks>
@@ -965,10 +982,13 @@ public sealed partial class PeopleViewModel : ObservableObject, IViewerGrid
         PersonReview? review;
         using (IServiceScope scope = _scopeFactory.CreateScope())
         {
-            review = await scope.ServiceProvider
-                .GetRequiredService<GetPersonReviewHandler>()
-                .HandleAsync(person.Id)
-                .ConfigureAwait(true);
+            GetPersonReviewHandler handler =
+                scope.ServiceProvider.GetRequiredService<GetPersonReviewHandler>();
+
+            // Off the dispatcher, as the board is: SQLite answers its async calls
+            // synchronously, and this read took about 300 ms on a copy of the
+            // real library - long enough to freeze the window after every answer.
+            review = await Task.Run(() => handler.HandleAsync(person.Id)).ConfigureAwait(true);
         }
 
         if (review is null || SelectedPerson?.Id != person.Id)
@@ -1782,17 +1802,42 @@ public sealed partial class PeopleViewModel : ObservableObject, IViewerGrid
     [RelayCommand(CanExecute = nameof(IsIdle))]
     private Task RejectProposalsAsync() => ResolveProposals(AssignmentSource.Rejected);
 
-    private Task ResolveProposals(AssignmentSource source)
+    private async Task ResolveProposals(AssignmentSource source)
     {
-        if (SelectedPerson is null)
+        if (SelectedPerson is not PersonItem person)
         {
-            return Task.CompletedTask;
+            return;
         }
 
         int[] chosen = [.. Proposals.Where(crop => crop.IsChosen).Select(crop => crop.FaceId)];
-        return chosen.Length == 0
-            ? Task.CompletedTask
-            : AssignAsync(new AssignFacesRequest(chosen, source, PersonId: SelectedPerson.Id));
+        if (chosen.Length == 0)
+        {
+            return;
+        }
+
+        // Covers the whole of it - the save, and the board and the queue read
+        // back afterwards - so nothing on the screen can be clicked while it is
+        // still being put back together. Ended however it ends, or a failure
+        // would leave the window covered for good.
+        SavingAnswers?.Invoke(this, SavingCaption(chosen.Length, source, person.DisplayName));
+        try
+        {
+            await AssignAsync(new AssignFacesRequest(chosen, source, PersonId: person.Id))
+                .ConfigureAwait(true);
+        }
+        finally
+        {
+            AnswersSaved?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    /// <summary>What a batch of answers is, in the words of the buttons that gave it.</summary>
+    private static string SavingCaption(int faces, AssignmentSource source, string name)
+    {
+        string count = faces == 1 ? "1 face" : $"{faces:N0} faces";
+        return source == AssignmentSource.Rejected
+            ? $"{count} that {(faces == 1 ? "is" : "are")} not {name}"
+            : $"{count} for {name}";
     }
 
     private async Task AssignAsync(AssignFacesRequest request)

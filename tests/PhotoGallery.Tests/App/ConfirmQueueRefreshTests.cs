@@ -1,5 +1,8 @@
 using Microsoft.Extensions.DependencyInjection;
+using PhotoGallery.App.Duplicates;
+using PhotoGallery.App.Gallery;
 using PhotoGallery.App.People;
+using PhotoGallery.App.ViewModels;
 using PhotoGallery.Application.Ports;
 using PhotoGallery.Application.UseCases.Gallery;
 using PhotoGallery.Application.UseCases.People;
@@ -32,6 +35,7 @@ public sealed class ConfirmQueueRefreshTests : IDisposable
     private readonly string _root;
     private readonly ServiceProvider _services;
     private readonly InMemoryLibrary _library = new();
+    private readonly WorkingFolder _workingFolder;
     private readonly PeopleViewModel _people;
 
     public ConfirmQueueRefreshTests()
@@ -39,8 +43,8 @@ public sealed class ConfirmQueueRefreshTests : IDisposable
         _root = Path.Combine(Path.GetTempPath(), $"pg-queue-{Guid.NewGuid():N}");
         Directory.CreateDirectory(_root);
 
-        var workingFolder = new WorkingFolder(_root);
-        workingFolder.EnsureCreated();
+        _workingFolder = new WorkingFolder(_root);
+        _workingFolder.EnsureCreated();
 
         _services = new ServiceCollection()
             .AddSingleton<IPeopleReader>(_library)
@@ -55,7 +59,7 @@ public sealed class ConfirmQueueRefreshTests : IDisposable
 
         _people = new PeopleViewModel(
             _services.GetRequiredService<IServiceScopeFactory>(),
-            new FileSystemThumbnailStore(workingFolder));
+            new FileSystemThumbnailStore(_workingFolder));
     }
 
     [Fact]
@@ -138,6 +142,106 @@ public sealed class ConfirmQueueRefreshTests : IDisposable
         Assert.False(_people.IsConfirming);
     }
 
+    /// <summary>
+    /// The window is covered from the click until the questions have been read
+    /// back, so nothing - another person's name included - can be clicked while
+    /// the screen is still being put back together.
+    /// </summary>
+    /// <remarks>
+    /// Saving a batch and reading the screen back took about three seconds on a
+    /// copy of the real library, with every name beside it still live: the
+    /// answer felt like lag, and a click in that time landed on a screen half
+    /// way through rebuilding.
+    /// </remarks>
+    [Fact]
+    public async Task SavingAnswers_CoversTheWindowUntilTheQuestionsAreReadBack()
+    {
+        MainViewModel shell = TheShell();
+        await OpenTheQueueAsync();
+        _people.Proposals.Single(crop => crop.FaceId == LeftOut).IsChosen = false;
+
+        var saving = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        _library.Assigning = () => saving.Task;
+        var coveredWhileReading = new List<bool>();
+        _library.Reading = () => coveredWhileReading.Add(shell.IsOverlayVisible);
+
+        Task answering = _people.ConfirmProposalsCommand.ExecuteAsync(null);
+
+        Assert.True(shell.IsOverlayVisible, "the answer was being saved with nothing on screen");
+        Assert.False(shell.IsIdle);
+        Assert.Equal("Saving your answers", shell.OverlayTitle);
+        Assert.Equal("2 faces for Ana", shell.OverlayTarget);
+        Assert.True(shell.OverlayIsIndeterminate, "a bar that measures nothing should not pretend to");
+        Assert.False(shell.CanStopPass, "Stop was offered half way through saving an answer");
+        Assert.False(shell.CancelPassCommand.CanExecute(null));
+        Assert.False(shell.OffersStop, "a Stop that can never be pressed was drawn on the overlay");
+
+        saving.SetResult();
+        await answering;
+
+        Assert.NotEmpty(coveredWhileReading);
+        Assert.All(coveredWhileReading, Assert.True);
+        Assert.False(shell.IsOverlayVisible);
+        Assert.True(shell.IsIdle);
+        Assert.Equal(LeftOut, Assert.Single(_people.Proposals).FaceId);
+    }
+
+    [Theory]
+    [InlineData(false, 3, "3 faces for Ana")]
+    [InlineData(false, 1, "1 face for Ana")]
+    [InlineData(true, 3, "3 faces that are not Ana")]
+    [InlineData(true, 1, "1 face that is not Ana")]
+    public async Task SavingAnswers_SaysHowManyFacesAndWho(bool turningDown, int chosen, string said)
+    {
+        MainViewModel shell = TheShell();
+        await OpenTheQueueAsync();
+        foreach (FaceCropItem crop in _people.Proposals.Skip(chosen))
+        {
+            crop.IsChosen = false;
+        }
+
+        string? target = null;
+        _library.Assigning = () =>
+        {
+            target = shell.OverlayTarget;
+            return Task.CompletedTask;
+        };
+
+        await (turningDown ? _people.RejectProposalsCommand : _people.ConfirmProposalsCommand)
+            .ExecuteAsync(null);
+
+        Assert.Equal(said, target);
+    }
+
+    [Fact]
+    public async Task SavingAnswers_ThatFails_TakesTheCoverDownAndSaysSo()
+    {
+        MainViewModel shell = TheShell();
+        await OpenTheQueueAsync();
+        _library.Assigning = () => throw new IOException("the index is busy");
+
+        await _people.ConfirmProposalsCommand.ExecuteAsync(null);
+
+        Assert.False(shell.IsOverlayVisible);
+        Assert.False(shell.IsTidying);
+        Assert.True(shell.IsIdle);
+        Assert.Equal("Could not record that: the index is busy", _people.Status);
+    }
+
+    /// <summary>The shell around this screen, so its overlay can be watched.</summary>
+    private MainViewModel TheShell()
+    {
+        IServiceScopeFactory scopeFactory = _services.GetRequiredService<IServiceScopeFactory>();
+        var store = new FileSystemThumbnailStore(_workingFolder);
+        return new MainViewModel(
+            scopeFactory,
+            new GalleryViewModel(scopeFactory, store),
+            _people,
+            new DuplicatesViewModel(scopeFactory, store),
+            store,
+            new FileActivityLog(_workingFolder));
+    }
+
     /// <summary>Selects the person and goes to their questions, as the screen does.</summary>
     private async Task OpenTheQueueAsync()
     {
@@ -177,9 +281,24 @@ public sealed class ConfirmQueueRefreshTests : IDisposable
 
         public IReadOnlyList<FaceRecord> Faces => _faces;
 
+        /// <summary>Run before an answer is written, to hold it or to fail it.</summary>
+        public Func<Task>? Assigning { get; set; }
+
+        /// <summary>Run on every read once an answer has been written.</summary>
+        public Action? Reading { get; set; }
+
+        private bool _assigned;
+
         public Task<IReadOnlyList<FaceRecord>> GetFacesAsync(
-            bool includeEmbeddings, CancellationToken token = default) =>
-            Task.FromResult<IReadOnlyList<FaceRecord>>([.. _faces]);
+            bool includeEmbeddings, CancellationToken token = default)
+        {
+            if (_assigned)
+            {
+                Reading?.Invoke();
+            }
+
+            return Task.FromResult<IReadOnlyList<FaceRecord>>([.. _faces]);
+        }
 
         public async Task<IReadOnlyList<FaceRecord>> GetFacesOnPicturesOfAsync(
             IReadOnlyCollection<int> faceIds, CancellationToken token = default)
@@ -196,12 +315,17 @@ public sealed class ConfirmQueueRefreshTests : IDisposable
         public Task<IReadOnlyList<Person>> GetPeopleAsync(CancellationToken token = default) =>
             Task.FromResult<IReadOnlyList<Person>>([new Person { Id = Ana, DisplayName = "Ana" }]);
 
-        public Task AssignAsync(
+        public async Task AssignAsync(
             int personId,
             IReadOnlyList<ScoredFace> faces,
             AssignmentSource source,
             CancellationToken token = default)
         {
+            if (Assigning is not null)
+            {
+                await Assigning();
+            }
+
             foreach (ScoredFace named in faces)
             {
                 int at = _faces.FindIndex(face => face.FaceId == named.FaceId);
@@ -211,7 +335,7 @@ public sealed class ConfirmQueueRefreshTests : IDisposable
                 }
             }
 
-            return Task.CompletedTask;
+            _assigned = true;
         }
 
         /// <summary>

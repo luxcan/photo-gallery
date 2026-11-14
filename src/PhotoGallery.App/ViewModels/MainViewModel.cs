@@ -256,6 +256,17 @@ public sealed partial class MainViewModel : ObservableObject
     public bool CanStopPass => IsOverlayVisible && !IsSettling;
 
     /// <summary>
+    /// Whether the overlay has a Stop button at all.
+    /// </summary>
+    /// <remarks>
+    /// Not while tidying - saving answers, keeping every copy, reading an album
+    /// back. That work is one write and the reading after it, and is never
+    /// stoppable, so a Stop greyed out for its whole length only looked broken.
+    /// A pass that can be stopped still shows it, greyed while it settles.
+    /// </remarks>
+    public bool OffersStop => !IsTidying;
+
+    /// <summary>
     /// True while a screen is rebuilding itself after a decision the user made.
     /// </summary>
     /// <remarks>
@@ -266,7 +277,8 @@ public sealed partial class MainViewModel : ObservableObject
     /// that ignored the click.
     /// </remarks>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsIdle), nameof(IsOverlayVisible), nameof(CanStopPass))]
+    [NotifyPropertyChangedFor(
+        nameof(IsIdle), nameof(IsOverlayVisible), nameof(CanStopPass), nameof(OffersStop))]
     [NotifyCanExecuteChangedFor(nameof(CancelPassCommand), nameof(ScanAllCommand),
         nameof(ScanSourceCommand), nameof(AddSourceCommand), nameof(RemoveSourceCommand),
         nameof(RecheckPeopleCommand), nameof(FindDuplicatesCommand))]
@@ -402,6 +414,8 @@ public sealed partial class MainViewModel : ObservableObject
         // with a question, and a question is a modal that needs an owner. It
         // calls UnderOverlayAsync below once it has one.
         People.LibraryChanged += OnLibraryChanged;
+        People.SavingAnswers += OnPeopleSavingAnswers;
+        People.AnswersSaved += OnPeopleAnswersSaved;
         Duplicates.LibraryChanged += OnLibraryChanged;
         Albums.LibraryChanged += OnLibraryChanged;
         Albums.Looking += OnAlbumsLooking;
@@ -2173,26 +2187,79 @@ public sealed partial class MainViewModel : ObservableObject
     {
         ArgumentNullException.ThrowIfNull(work);
 
-        IsTidying = true;
-        IsSettling = true;
-        OverlayTitle = title;
-        OverlayTarget = string.Empty;
-        OverlayStatus = status;
-        OverlayIsIndeterminate = true;
-        OverlayPercent = 0;
-        OverlayPicture = null;
-        OverlayHint = TidyingHint;
-
+        CoverForTidying(title, string.Empty, status);
         try
         {
             await work();
         }
         finally
         {
-            IsSettling = false;
-            IsTidying = false;
-            ClearOverlay();
+            UncoverAfterTidying();
         }
+    }
+
+    /// <summary>
+    /// Raises the overlay for work that cannot be stopped and has no count.
+    /// </summary>
+    private void CoverForTidying(string title, string target, string status)
+    {
+        IsTidying = true;
+        IsSettling = true;
+        OverlayTitle = title;
+        OverlayTarget = target;
+        OverlayStatus = status;
+        OverlayIsIndeterminate = true;
+        OverlayPercent = 0;
+        OverlayPicture = null;
+        OverlayHint = TidyingHint;
+    }
+
+    private void UncoverAfterTidying()
+    {
+        IsSettling = false;
+        IsTidying = false;
+        ClearOverlay();
+    }
+
+    /// <summary>
+    /// Whether the window is covered because People is saving a batch of answers.
+    /// </summary>
+    /// <remarks>
+    /// Kept for the reason <see cref="_coveredForLooking"/> is: the end of a save
+    /// must put down only an overlay the save raised.
+    /// </remarks>
+    private bool _coveredForAnswers;
+
+    /// <summary>
+    /// Covers the window from the moment a batch of answers is given until the
+    /// queue on screen has been read back.
+    /// </summary>
+    /// <remarks>
+    /// Straight away, with no delay before it as a look has: saving a batch
+    /// took two and a half to three seconds on a copy of the real library, so
+    /// there is no quick answer for it to flash over. No Stop - a half-saved
+    /// answer is not something to offer, and the save is one write.
+    /// </remarks>
+    private void OnPeopleSavingAnswers(object? sender, string what)
+    {
+        if (!IsIdle)
+        {
+            return;
+        }
+
+        _coveredForAnswers = true;
+        CoverForTidying("Saving your answers", what, string.Empty);
+    }
+
+    private void OnPeopleAnswersSaved(object? sender, EventArgs e)
+    {
+        if (!_coveredForAnswers)
+        {
+            return;
+        }
+
+        _coveredForAnswers = false;
+        UncoverAfterTidying();
     }
 
     /// <summary>
@@ -2739,9 +2806,12 @@ public sealed partial class MainViewModel : ObservableObject
     private async Task RefreshCountsAsync()
     {
         using IServiceScope scope = _scopeFactory.CreateScope();
-        Counts = await scope.ServiceProvider
-            .GetRequiredService<ILibraryIndex>()
-            .GetCountsAsync();
+        ILibraryIndex index = scope.ServiceProvider.GetRequiredService<ILibraryIndex>();
+
+        // Off the dispatcher: SQLite answers its async calls synchronously, and
+        // counting took about 150 ms on a copy of the real library - a freeze
+        // after every change any screen reports.
+        Counts = await Task.Run(() => index.GetCountsAsync());
     }
 
     /// <summary>
