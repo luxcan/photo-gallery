@@ -67,6 +67,18 @@ public partial class MainWindow : Window
             {
                 Dispatcher.BeginInvoke(() => PhotoViewer.Focus());
             }
+
+            // Whenever playing ends - stopped, finished, the viewer closed or
+            // moved to another picture - the element is paused as well. A Manual
+            // MediaElement remembers that it was told to play, and the next clip
+            // handed to it to warm would otherwise start by itself: the sound of
+            // a video nobody had pressed play on.
+            if (e.PropertyName == nameof(GalleryViewModel.IsPlayingVideo)
+                && !viewModel.Gallery.IsPlayingVideo)
+            {
+                _seekTimer.Stop();
+                VideoPlayer.Pause();
+            }
         };
 
         // The same for the face inspector, which walks the review queue on the
@@ -1118,6 +1130,12 @@ public partial class MainWindow : Window
             VideoPlayer.Play();
             _viewModel.Gallery.PlaybackSeconds = 0d;
             _seekTimer.Start();
+        }
+        else
+        {
+            // Opened only to warm it. Held paused, so a clip nobody asked for is
+            // never heard, whatever the element remembers from the last one.
+            VideoPlayer.Pause();
         }
 
         _viewModel.Gallery.PlaybackLengthSeconds = VideoPlayer.NaturalDuration.HasTimeSpan
