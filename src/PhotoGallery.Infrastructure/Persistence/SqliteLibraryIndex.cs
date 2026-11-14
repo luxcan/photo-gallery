@@ -145,7 +145,8 @@ public sealed class SqliteLibraryIndex : ILibraryIndex
         int faces = await _db.Faces.CountAsync(cancellationToken).ConfigureAwait(false);
         int people = await _db.People.CountAsync(cancellationToken).ConfigureAwait(false);
         // The groups the Duplicates screen would show, by the rule it shows them
-        // by: two copies left at least, one of them the keeper. Deleting a copy
+        // by: two copies left at least, whichever copy the last pass stored as
+        // keeper, because the screen works its suggestion out again (PRP 14). Deleting a copy
         // anywhere else takes its membership row and leaves the group behind it
         // unresolved, so counting every unresolved group kept one the screen had
         // already stopped offering until the next duplicates pass. Counted rather
@@ -153,9 +154,7 @@ public sealed class SqliteLibraryIndex : ILibraryIndex
         // never offered again - and nobody decided anything about these.
         int duplicateSets = await _db.DuplicateSets
             .CountAsync(
-                s => !s.IsResolved
-                     && s.Members.Count > 1
-                     && s.Members.Any(member => member.Role == DuplicateRole.Keeper),
+                s => !s.IsResolved && s.Members.Count > 1,
                 cancellationToken)
             .ConfigureAwait(false);
 

@@ -14,7 +14,7 @@ namespace PhotoGallery.Tests.Infrastructure;
 /// <remarks>
 /// Deleting a copy from the photo viewer takes its membership row with it, and
 /// the group it was in stays unresolved. The screen already hides a group that
-/// has stopped being a question - fewer than two copies left, or no keeper - but
+/// has stopped being a question - fewer than two copies left - but
 /// the count went on including it until the next duplicates pass, and a restart
 /// did not help. Counting the groups the screen would show, rather than
 /// resolving them, keeps the survivors free to be offered by a later pass: a
@@ -59,15 +59,20 @@ public sealed class DuplicateCountTests : IDisposable
         Assert.Empty(await _duplicates.GetAsync(DuplicateKind.Exact));
     }
 
+    /// <summary>
+    /// The copy a pass stored as keeper is not what the screen suggests: that is
+    /// worked out when the screen is shown (PRP 14). Two copies left are still a
+    /// question, whichever one went.
+    /// </summary>
     [Fact]
-    public async Task AGroupWhoseKeeperWasDeleted_IsNotCounted()
+    public async Task AGroupWhoseStoredKeeperWasDeleted_IsStillCounted()
     {
         (int keeper, int[] _) = AddGroup(copies: 3);
 
         await _assets.RemoveAsync([keeper]);
 
-        Assert.Equal(0, (await _index.GetCountsAsync()).UnresolvedDuplicateSets);
-        Assert.Empty(await _duplicates.GetAsync(DuplicateKind.Exact));
+        Assert.Equal(1, (await _index.GetCountsAsync()).UnresolvedDuplicateSets);
+        Assert.Single(await _duplicates.GetAsync(DuplicateKind.Exact));
     }
 
     /// <summary>

@@ -49,9 +49,11 @@ public sealed class ModelManifest
     /// on 15 August 2026.
     /// </summary>
     /// <remarks>
-    /// Only detection and recognition. The pack also carries landmark and
-    /// gender/age graphs this app never asks for, and loading them measured 3.4x
-    /// slower for an identical result.
+    /// Detection and recognition for finding people, and the 106-point landmark
+    /// graph as a feature of its own for reading eyes. The pack also carries
+    /// another landmark graph and a gender/age graph this app never asks for;
+    /// loading them alongside the face pass measured 3.4x slower for an
+    /// identical result.
     ///
     /// <para>Digests are taken from the files themselves. One invented rather
     /// than measured would be a lie the verifier believes.</para>
@@ -71,6 +73,17 @@ public sealed class ModelManifest
             FileName: "w600k_r50.onnx",
             Bytes: 174_383_860,
             Sha256: "4c06341c33c2ca1f86781dab0e829f88ad5b64be9fba56e56bc9ebdefc619e43",
+            Licence: InsightFaceLicence),
+
+        // The landmark graph from the same pack, for telling open eyes from
+        // closed (PRP 14). Measured from the file, and the pinned mirror serves
+        // the same length and digest.
+        new ModelDescriptor(
+            ModelId.FaceLandmarks,
+            Version: 1,
+            FileName: "2d106det.onnx",
+            Bytes: 5_030_888,
+            Sha256: "f001b856447c413801ef5c42091ed0cd516fcd21f2d6b79635b1e733a7109dbf",
             Licence: InsightFaceLicence),
 
         // Content search, measured from the files on 16 August 2026. The two

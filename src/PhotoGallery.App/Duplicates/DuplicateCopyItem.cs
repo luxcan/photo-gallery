@@ -6,6 +6,7 @@ using PhotoGallery.Application.Ports;
 using PhotoGallery.Application.UseCases.Duplicates;
 using PhotoGallery.Application.UseCases.Gallery;
 using PhotoGallery.Domain.Duplicates;
+using PhotoGallery.Domain.Faces;
 
 namespace PhotoGallery.App.Duplicates;
 
@@ -67,13 +68,67 @@ public sealed partial class DuplicateCopyItem : ObservableObject
     /// </summary>
     /// <remarks>
     /// A suggestion and not a decision, because nothing is chosen until the user
-    /// chooses it. A number of differing bits means nothing to the person
-    /// looking at two photographs; what helps is knowing which one the app would
-    /// have picked and how alike it thinks they are.
+    /// chooses it. The suggested copy says which rung of the ladder chose it,
+    /// and a copy beaten says what was wrong with it, so the reason can be
+    /// checked against the pictures (PRP 14). A copy that only lost on size
+    /// says nothing extra: its size is already on the card.
     /// </remarks>
     public string RoleCaption => IsKeeper
-        ? "Suggested"
-        : Copy.Distance == 0
-            ? string.Empty
-            : $"{Copy.Distance} of 64 bits differ";
+        ? SuggestedCaption(Copy.DecidedBy)
+        : LostCaption() ?? DistanceCaption;
+
+    /// <summary>
+    /// The known faces whose closed eyes cost this copy, as boxes over the
+    /// picture in the preview's pixels.
+    /// </summary>
+    public IReadOnlyList<FaceBounds> ClosedMarkers =>
+        Copy.PreviewWidth > 0 && Copy.PreviewHeight > 0
+            ? [.. (Copy.ClosedFaces ?? []).Select(face => face.Bounds)]
+            : [];
+
+    public bool HasClosedMarkers => ClosedMarkers.Count > 0;
+
+    /// <summary>The size of the space the markers are placed in, so they scale with the tile.</summary>
+    public int MarkerSpaceWidth => Copy.PreviewWidth;
+
+    public int MarkerSpaceHeight => Copy.PreviewHeight;
+
+    private string DistanceCaption => Copy.Distance == 0
+        ? string.Empty
+        : $"{Copy.Distance} of 64 bits differ";
+
+    private static string SuggestedCaption(KeeperCriterion? decidedBy) => decidedBy switch
+    {
+        KeeperCriterion.Eyes => "Suggested: eyes open",
+        KeeperCriterion.Sharpness => "Suggested: sharpest",
+        KeeperCriterion.Exposure => "Suggested: best exposed",
+        KeeperCriterion.Original => "Suggested: original file",
+        KeeperCriterion.Pixels => "Suggested: largest picture",
+        _ => "Suggested",
+    };
+
+    private string? LostCaption() => Copy.DecidedBy switch
+    {
+        KeeperCriterion.Eyes => ClosedCaption(Copy.ClosedNames),
+        KeeperCriterion.Sharpness => "Blurred",
+        KeeperCriterion.Exposure => Copy.Exposure switch
+        {
+            ExposureFault.TooBright => "Too bright",
+            ExposureFault.TooDark => "Too dark",
+            _ => null,
+        },
+        KeeperCriterion.Original => "Re-saved copy",
+        _ => null,
+    };
+
+    /// <summary>
+    /// Names the person whose eyes are closed, or counts them when there are
+    /// several - a card has room for one name, not a list.
+    /// </summary>
+    private static string? ClosedCaption(IReadOnlyList<string> names) => names.Count switch
+    {
+        0 => null,
+        1 => $"{names[0]}'s eyes are closed",
+        _ => $"{names.Count} people's eyes are closed",
+    };
 }

@@ -18,6 +18,7 @@ using PhotoGallery.App.Theme;
 using PhotoGallery.Application;
 using PhotoGallery.Application.Ports;
 using PhotoGallery.Application.UseCases.Albums;
+using PhotoGallery.Application.UseCases.Duplicates;
 using PhotoGallery.Application.UseCases.Gallery;
 using PhotoGallery.Application.UseCases.OpenLibrary;
 using PhotoGallery.Application.UseCases.People;
@@ -154,6 +155,23 @@ public sealed partial class MainViewModel : ObservableObject
         nameof(RecheckPeopleCommand))]
     private bool _isMovingAlbum;
 
+    /// <summary>
+    /// True while the library is being looked through for duplicates and the
+    /// near copies measured.
+    /// </summary>
+    /// <remarks>
+    /// Under the shared overlay because the measuring reads a thousand previews
+    /// and runs the eye graphs, which takes minutes the first time - and a face
+    /// pass replacing faces underneath it would have it measure boxes that are
+    /// no longer there.
+    /// </remarks>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsIdle), nameof(IsOverlayVisible), nameof(CanStopPass))]
+    [NotifyCanExecuteChangedFor(nameof(ScanAllCommand), nameof(ScanSourceCommand),
+        nameof(AddSourceCommand), nameof(RemoveSourceCommand), nameof(CancelPassCommand),
+        nameof(RecheckPeopleCommand), nameof(FindDuplicatesCommand))]
+    private bool _isFindingDuplicates;
+
     /// <summary>What the overlay is doing, e.g. "Indexing" or "Detaching folder".</summary>
     [ObservableProperty]
     private string _overlayTitle = string.Empty;
@@ -265,6 +283,8 @@ public sealed partial class MainViewModel : ObservableObject
     private CancellationTokenSource? _deleteCancellation;
 
     private CancellationTokenSource? _albumMoveCancellation;
+
+    private CancellationTokenSource? _duplicatesCancellation;
 
     public MainViewModel(
         IServiceScopeFactory scopeFactory,
@@ -760,7 +780,7 @@ public sealed partial class MainViewModel : ObservableObject
     /// <summary>No long pass is running, so the library may be changed.</summary>
     public bool IsIdle =>
         !IsRefreshing && !IsDetaching && !IsDetecting && !IsDeleting
-        && !IsMovingAlbum && !IsTidying;
+        && !IsMovingAlbum && !IsTidying && !IsFindingDuplicates;
 
     /// <summary>
     /// Whether the window is covered. Both passes rewrite the library's shape and
@@ -768,7 +788,7 @@ public sealed partial class MainViewModel : ObservableObject
     /// </summary>
     public bool IsOverlayVisible =>
         IsRefreshing || IsDetaching || IsDetecting || IsDeleting
-        || IsMovingAlbum || IsTidying;
+        || IsMovingAlbum || IsTidying || IsFindingDuplicates;
 
     public bool ShowSources => SelectedSection.Key == ActivitySection.SourcesKey;
 
@@ -2194,6 +2214,65 @@ public sealed partial class MainViewModel : ObservableObject
                 () => Duplicates.KeepEverythingAsync(set));
 
 
+    /// <summary>
+    /// Looks through the library for duplicates, and measures the copies that
+    /// look the same so the screen can suggest one.
+    /// </summary>
+    /// <remarks>
+    /// The measuring is a named step on the overlay with Stop beside it, never
+    /// something to switch on: it is part of looking for duplicates, and the
+    /// person who pressed the button should not have to know it is there.
+    /// Stopping is safe - what was measured is kept and the sets are left as
+    /// they were.
+    /// </remarks>
+    [RelayCommand(CanExecute = nameof(IsIdle))]
+    private async Task FindDuplicatesAsync()
+    {
+        IsFindingDuplicates = true;
+        _duplicatesCancellation = new CancellationTokenSource();
+
+        OverlayTitle = "Looking for duplicates";
+        OverlayTarget = DuplicateProgress.Finding;
+        OverlayStatus = "starting...";
+        OverlayIsIndeterminate = true;
+        OverlayPercent = 0;
+        OverlayHint = PassHint;
+
+        try
+        {
+            var progress = new Progress<DuplicateProgress>(report =>
+            {
+                OverlayTarget = report.Phase;
+                OverlayIsIndeterminate = report.Total == 0;
+                OverlayPercent = report.Fraction * 100d;
+                OverlayStatus = report.Total == 0
+                    ? "grouping the photos by their fingerprints..."
+                    : $"{report.Done:N0} of {report.Total:N0} photos";
+            });
+
+            await Duplicates
+                .FindAsync(progress, _duplicatesCancellation.Token)
+                .ConfigureAwait(true);
+        }
+        catch (OperationCanceledException)
+        {
+            Duplicates.Status =
+                "Stopped. What was measured is kept, and looking again carries on from there.";
+        }
+        catch (Exception ex) when (LibraryFailure.IsExpected(ex))
+        {
+            Append($"could not look for duplicates: {ex}");
+            Duplicates.Status = $"The library could not be searched: {ex.Message}";
+        }
+        finally
+        {
+            IsFindingDuplicates = false;
+            ClearOverlay();
+            _duplicatesCancellation.Dispose();
+            _duplicatesCancellation = null;
+        }
+    }
+
     /// <summary>Stops whichever pass is running. All of them stop gracefully.</summary>
     [RelayCommand(CanExecute = nameof(CanStopPass))]
     private void CancelPass()
@@ -2203,6 +2282,7 @@ public sealed partial class MainViewModel : ObservableObject
         _detectCancellation?.Cancel();
         _deleteCancellation?.Cancel();
         _albumMoveCancellation?.Cancel();
+        _duplicatesCancellation?.Cancel();
         OverlayStatus = "stopping...";
     }
 

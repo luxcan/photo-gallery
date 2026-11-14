@@ -26,6 +26,7 @@
     <ProjectReference Include="..\..\src\PhotoGallery.Application\PhotoGallery.Application.csproj" />
     <ProjectReference Include="..\..\src\PhotoGallery.Infrastructure\PhotoGallery.Infrastructure.csproj" />
     <ProjectReference Include="..\..\src\PhotoGallery.App\PhotoGallery.App.csproj" />
+    <ProjectReference Include="..\..\tools\PhotoGallery.Measure\PhotoGallery.Measure.csproj" />
   </ItemGroup>
 
 </Project>

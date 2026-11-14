@@ -38,6 +38,10 @@ public static class ModelSources
         ModelId.FaceDetection => $"{Faces}det_10g.onnx",
         ModelId.FaceRecognition => $"{Faces}w600k_r50.onnx",
 
+        // Same pinned revision; its served length and digest were checked
+        // against the manifest on 14 November 2026.
+        ModelId.FaceLandmarks => $"{Faces}2d106det.onnx",
+
         // Both graphs are called model.onnx where they come from, which is why
         // the screen lists the name this app wants beside each link.
         ModelId.ContentVision => $"{Content}visual/model.onnx",

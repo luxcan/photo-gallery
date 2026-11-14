@@ -1,5 +1,3 @@
-using PhotoGallery.Domain.Assets;
-
 namespace PhotoGallery.Domain.Duplicates;
 
 /// <summary>A group of assets found to be the same photo or video.</summary>
@@ -22,22 +20,34 @@ public sealed class DuplicateSet
                .Sum(m => m.Asset?.Length ?? 0L);
 
     /// <summary>
-    /// Applies <see cref="KeeperPolicy"/> across the current members, marking
-    /// exactly one keeper and the rest redundant.
+    /// Marks the suggested copy as the keeper and the rest redundant, or every
+    /// copy undecided when nothing is suggested.
     /// </summary>
-    public void AssignRoles()
+    /// <param name="keeperAssetId">
+    /// The copy <see cref="KeeperPolicy"/> suggests, or null when nothing
+    /// separates the copies - which is always the answer for identical files.
+    /// </param>
+    /// <remarks>
+    /// Undecided rather than all redundant when there is no keeper, because
+    /// redundant is what setting aside acts on: a set nobody chose a copy in
+    /// must never be one where every copy is offered up.
+    /// </remarks>
+    /// <exception cref="ArgumentException">The keeper is not one of the members.</exception>
+    public void Suggest(int? keeperAssetId)
     {
-        List<Asset> assets = Members
-            .Select(m => m.Asset ?? throw new InvalidOperationException(
-                $"Member {m.Id} has no asset loaded; roles cannot be assigned."))
-            .ToList();
+        if (keeperAssetId is int keeper && Members.All(member => member.AssetId != keeper))
+        {
+            throw new ArgumentException(
+                $"Asset {keeper} is not a member of this set.", nameof(keeperAssetId));
+        }
 
-        Asset keeper = KeeperPolicy.ChooseKeeper(assets);
         foreach (DuplicateMember member in Members)
         {
-            member.Role = ReferenceEquals(member.Asset, keeper)
-                ? DuplicateRole.Keeper
-                : DuplicateRole.Redundant;
+            member.Role = keeperAssetId is null
+                ? DuplicateRole.Undecided
+                : member.AssetId == keeperAssetId
+                    ? DuplicateRole.Keeper
+                    : DuplicateRole.Redundant;
         }
     }
 }

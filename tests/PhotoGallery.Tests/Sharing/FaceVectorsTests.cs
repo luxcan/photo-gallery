@@ -817,6 +817,95 @@ public sealed class FaceVectorsTests : IDisposable
     }
 
     [Fact]
+    public async Task AComputerWithoutTheEyeModelStillTakesFacesFromOneThatHasIt()
+    {
+        // PRP 14: the eye model is its own feature and no part of the check that
+        // decides whether face pictures may be shared.
+        Mum.Face(Mum.Prepared(@"2019\a.jpg", "aa11.jpg"), Head);
+        Dad.Prepared(@"2019\a.jpg", "aa11.jpg");
+
+        Mum.Models.Running(ModelId.FaceLandmarks, "landmarks-v1");
+        Dad.Models.Without(ModelId.FaceLandmarks);
+
+        await Mum.Pooling.GiveAsync();
+        PoolResult taken = await Dad.Pooling.TakeAsync();
+
+        Assert.Equal(1, taken.Faces);
+        Assert.Empty(taken.Mismatches);
+    }
+
+    [Fact]
+    public async Task EvenADifferentEyeModelIsNoDisagreementAboutFaces()
+    {
+        Mum.Face(Mum.Prepared(@"2019\a.jpg", "aa11.jpg"), Head);
+        Dad.Prepared(@"2019\a.jpg", "aa11.jpg");
+
+        Mum.Models.Running(ModelId.FaceLandmarks, "landmarks-v1");
+        Dad.Models.Running(ModelId.FaceLandmarks, "landmarks-v2");
+
+        await Mum.Pooling.GiveAsync();
+        PoolResult taken = await Dad.Pooling.TakeAsync();
+
+        Assert.Equal(1, taken.Faces);
+        Assert.Empty(taken.Mismatches);
+    }
+
+    [Fact]
+    public async Task NoMeasurementIsWrittenToTheSyncFolder()
+    {
+        // Every measurement is read from pixels each computer already has, so
+        // each works it out for itself. Publishing must carry none of it.
+        Asset photo = Mum.Prepared(@"2019\a.jpg", "aa11.jpg");
+        Mum.Face(photo, Head);
+        Face face = Mum.Db.Faces.AsNoTracking().Single();
+        Mum.Db.FaceEyes.Add(new FaceEyes
+        {
+            FaceId = face.Id,
+            State = EyeState.Closed,
+            Openness = 0.0123456,
+            Sharpness = 98765.4321,
+            MeasuredUtc = Monday,
+        });
+        Mum.Db.PreviewQuality.Add(new PreviewQuality
+        {
+            AssetId = photo.Id,
+            ThumbnailName = "aa11.jpg",
+            PreviewWrittenUtc = Monday,
+            Width = 1024,
+            Height = 768,
+            Sharpness = 54321.9876,
+            ClippedHigh = 0.4321,
+            ClippedLow = 0.1234,
+            MeasuredUtc = Monday,
+        });
+        Mum.Db.SaveChanges();
+        Mum.Db.ChangeTracker.Clear();
+
+        await Mum.Pooling.GiveAsync();
+        await Mum.Publishing.HandleAsync();
+
+        foreach (string file in Directory.EnumerateFiles(_house.SharedFolder, "*", SearchOption.AllDirectories))
+        {
+            string text = SharedText(file);
+            Assert.DoesNotContain("Openness", text, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("Sharpness", text, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("Clipped", text, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("98765", text, StringComparison.Ordinal);
+            Assert.DoesNotContain("54321", text, StringComparison.Ordinal);
+        }
+    }
+
+    /// <summary>A shared file as text, opened out first when it is compressed.</summary>
+    private static string SharedText(string path)
+    {
+        using FileStream file = File.OpenRead(path);
+        Stream readable = path.EndsWith(".gz", StringComparison.OrdinalIgnoreCase)
+            ? new System.IO.Compression.GZipStream(file, System.IO.Compression.CompressionMode.Decompress)
+            : file;
+        using var reader = new StreamReader(readable);
+        return reader.ReadToEnd();
+    }
+    [Fact]
     public void SiftingIsAPureFunctionOfTwoFingerprints()
     {
         var mine = new Dictionary<string, string> { ["FaceRecognition"] = "v1" };

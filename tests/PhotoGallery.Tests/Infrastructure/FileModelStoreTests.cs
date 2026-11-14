@@ -146,15 +146,16 @@ public sealed class FileModelStoreTests : IDisposable
     /// meant to add is exactly the change that should have to be deliberate.
     /// </remarks>
     [Fact]
-    public void DefaultManifest_NamesTheFaceModelsAndTheContentSearchFilesAndNothingElse()
+    public void DefaultManifest_NamesTheFaceModelsTheEyeModelAndTheContentSearchFilesAndNothingElse()
     {
-        // Six, and the gazetteer is deliberately not among them: it is compiled
+        // Seven, and the gazetteer is deliberately not among them: it is compiled
         // into the executable rather than supplied by the user, so there is no
         // file to verify.
-        Assert.Equal(6, ModelManifest.Default.All.Count);
+        Assert.Equal(7, ModelManifest.Default.All.Count);
 
         Assert.Equal("det_10g.onnx", ModelManifest.Default.For(ModelId.FaceDetection).FileName);
         Assert.Equal("w600k_r50.onnx", ModelManifest.Default.For(ModelId.FaceRecognition).FileName);
+        Assert.Equal("2d106det.onnx", ModelManifest.Default.For(ModelId.FaceLandmarks).FileName);
         Assert.Equal(
             "clip_vit_l14_visual.onnx", ModelManifest.Default.For(ModelId.ContentVision).FileName);
         Assert.Equal(

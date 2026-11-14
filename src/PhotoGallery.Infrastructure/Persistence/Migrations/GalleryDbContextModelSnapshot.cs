@@ -390,6 +390,42 @@ namespace PhotoGallery.Infrastructure.Persistence.Migrations
                     b.ToTable("Assets", (string)null);
                 });
 
+            modelBuilder.Entity("PhotoGallery.Domain.Assets.PreviewQuality", b =>
+                {
+                    b.Property<int>("AssetId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<double>("ClippedHigh")
+                        .HasColumnType("REAL");
+
+                    b.Property<double>("ClippedLow")
+                        .HasColumnType("REAL");
+
+                    b.Property<int>("Height")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("MeasuredUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("PreviewWrittenUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<double?>("Sharpness")
+                        .HasColumnType("REAL");
+
+                    b.Property<string>("ThumbnailName")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Width")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("AssetId");
+
+                    b.ToTable("PreviewQuality", (string)null);
+                });
+
             modelBuilder.Entity("PhotoGallery.Domain.Assets.VideoKeyframe", b =>
                 {
                     b.Property<int>("Id")
@@ -514,6 +550,28 @@ namespace PhotoGallery.Infrastructure.Persistence.Migrations
                     b.HasIndex("AssetId");
 
                     b.ToTable("Faces", (string)null);
+                });
+
+            modelBuilder.Entity("PhotoGallery.Domain.Faces.FaceEyes", b =>
+                {
+                    b.Property<int>("FaceId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("MeasuredUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<double?>("Openness")
+                        .HasColumnType("REAL");
+
+                    b.Property<double?>("Sharpness")
+                        .HasColumnType("REAL");
+
+                    b.Property<int?>("State")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("FaceId");
+
+                    b.ToTable("FaceEyes", (string)null);
                 });
 
             modelBuilder.Entity("PhotoGallery.Domain.Library.LibrarySettings", b =>
@@ -914,6 +972,17 @@ namespace PhotoGallery.Infrastructure.Persistence.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("PhotoGallery.Domain.Assets.PreviewQuality", b =>
+                {
+                    b.HasOne("PhotoGallery.Domain.Assets.Asset", "Asset")
+                        .WithOne()
+                        .HasForeignKey("PhotoGallery.Domain.Assets.PreviewQuality", "AssetId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Asset");
+                });
+
             modelBuilder.Entity("PhotoGallery.Domain.Assets.VideoKeyframe", b =>
                 {
                     b.HasOne("PhotoGallery.Domain.Assets.Asset", "Asset")
@@ -953,6 +1022,17 @@ namespace PhotoGallery.Infrastructure.Persistence.Migrations
                         .IsRequired();
 
                     b.Navigation("Asset");
+                });
+
+            modelBuilder.Entity("PhotoGallery.Domain.Faces.FaceEyes", b =>
+                {
+                    b.HasOne("PhotoGallery.Domain.Faces.Face", "Face")
+                        .WithOne()
+                        .HasForeignKey("PhotoGallery.Domain.Faces.FaceEyes", "FaceId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Face");
                 });
 
             modelBuilder.Entity("PhotoGallery.Domain.People.FaceAssignment", b =>

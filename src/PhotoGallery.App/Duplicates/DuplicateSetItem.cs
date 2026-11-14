@@ -59,6 +59,21 @@ public sealed partial class DuplicateSetItem : ObservableObject
     /// <summary>What deleting this group would reclaim.</summary>
     public long DoomedBytes => Bytes(Doomed);
 
+    /// <summary>
+    /// Said on the set when no copy in it is suggested, so an unmarked set
+    /// reads as an answer rather than as the app having missed it.
+    /// </summary>
+    /// <remarks>
+    /// Two different answers. Identical files are the same photograph, so
+    /// either is the one to keep; a "Looks the same" set where every rung of
+    /// the ladder tied is a choice only the person looking can make (PRP 14).
+    /// </remarks>
+    public string Verdict => Set.Kind == DuplicateKind.Exact
+        ? "These are the same file"
+        : Set.Keeper is null ? "Nothing to choose between these" : string.Empty;
+
+    public bool HasVerdict => Verdict.Length > 0;
+
     public string Caption => Copies.Count == 2
         ? "2 copies of this picture"
         : $"{Copies.Count} copies of this picture";

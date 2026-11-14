@@ -23,6 +23,10 @@ public sealed class GalleryDbContext : DbContext
 
     public DbSet<Face> Faces => Set<Face>();
 
+    public DbSet<FaceEyes> FaceEyes => Set<FaceEyes>();
+
+    public DbSet<PreviewQuality> PreviewQuality => Set<PreviewQuality>();
+
     public DbSet<VideoKeyframe> VideoKeyframes => Set<VideoKeyframe>();
 
     public DbSet<PhotoContent> PhotoContent => Set<PhotoContent>();

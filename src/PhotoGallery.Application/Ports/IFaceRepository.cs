@@ -16,7 +16,8 @@ public interface IFaceRepository
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Moves the boxes on some pictures to follow a turn of those pictures.
+    /// Moves the boxes on some pictures to follow a turn of those pictures, and
+    /// turns the measured preview size they are drawn against with them.
     /// </summary>
     /// <param name="width">The preview's width before the turn.</param>
     /// <param name="height">Its height before the turn.</param>

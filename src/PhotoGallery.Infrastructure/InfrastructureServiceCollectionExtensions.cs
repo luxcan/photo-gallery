@@ -80,6 +80,8 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddScoped<IPeopleReader, SqlitePeopleReader>();
         services.AddScoped<IPeopleRepository, SqlitePeopleRepository>();
         services.AddScoped<IContentRepository, SqliteContentRepository>();
+        services.AddScoped<IPhotoQualityRepository, SqlitePhotoQualityRepository>();
+        services.AddSingleton<IPreviewQualityReader, PreviewQualityReader>();
 
         // Sharing. The exchange is a folder nominated in the library's own
         // settings, so it is built per scope like everything else that reads
@@ -94,6 +96,14 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddSingleton<IModelFolder, ModelFolder>();
         services.AddSingleton<IModelStore, FileModelStore>();
         services.AddSingleton<IFaceScanner, OnnxFaceScanner>();
+
+        // The eye graphs load on the first face measured, never at start-up, so
+        // a computer without the landmark file pays nothing for this. Asked for
+        // only once the duplicates pass has found the file installed. The file
+        // is looked for when the graphs are built, so a models folder moved
+        // while the app runs is followed.
+        services.AddSingleton<IEyeMeasurer>(provider =>
+            new OnnxEyeMeasurer(provider.GetRequiredService<IModelStore>()));
 
         // A singleton for the same reason the face scanner is one: the visual
         // graph alone is 1.2 GB to load, and the sessions are safe to run from

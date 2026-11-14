@@ -1,8 +1,7 @@
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
 using Microsoft.ML.OnnxRuntime;
 using PhotoGallery.Application.Ports;
 using PhotoGallery.Domain.Faces;
+using PhotoGallery.Infrastructure.Imaging;
 using PhotoGallery.Infrastructure.Models;
 
 namespace PhotoGallery.Infrastructure.Faces;
@@ -72,7 +71,7 @@ public sealed class OnnxFaceScanner : IFaceScanner, IDisposable
 
     private IReadOnlyList<ScannedFace>? Scan(string previewPath, CancellationToken cancellationToken)
     {
-        BgrImage? preview = Decode(previewPath);
+        BgrImage? preview = PreviewPixels.Read(previewPath);
         if (preview is null)
         {
             return null;
@@ -168,53 +167,6 @@ public sealed class OnnxFaceScanner : IFaceScanner, IDisposable
         }
 
         return new InferenceSession(_models.ResolvePath(id), InferenceDevice.ForGraph());
-    }
-
-    /// <summary>
-    /// The preview as plain blue-green-red bytes, or null when it will not open.
-    /// </summary>
-    /// <remarks>
-    /// No orientation or metadata handling: a preview was written by this app
-    /// from an already-rotated bitmap, so what is on disk is what should be
-    /// looked at.
-    /// </remarks>
-    private static BgrImage? Decode(string path)
-    {
-        try
-        {
-            using FileStream stream =
-                new(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-
-            var decoded = new BitmapImage();
-            decoded.BeginInit();
-            decoded.StreamSource = stream;
-            decoded.CacheOption = BitmapCacheOption.OnLoad;
-            decoded.EndInit();
-            decoded.Freeze();
-
-            var converted = new FormatConvertedBitmap(decoded, PixelFormats.Bgr24, null, 0d);
-            converted.Freeze();
-
-            if (converted.PixelWidth <= 0 || converted.PixelHeight <= 0)
-            {
-                return null;
-            }
-
-            int stride = converted.PixelWidth * BgrImage.BytesPerPixel;
-            byte[] pixels = new byte[stride * converted.PixelHeight];
-            converted.CopyPixels(pixels, stride, 0);
-
-            return new BgrImage(pixels, converted.PixelWidth, converted.PixelHeight);
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
-                                       or NotSupportedException or ArgumentException
-                                       or OverflowException or InvalidOperationException
-                                       or FileFormatException or OutOfMemoryException)
-        {
-            // A preview that will not decode is reported as unread rather than
-            // as a photograph with no faces in it.
-            return null;
-        }
     }
 
     /// <summary>

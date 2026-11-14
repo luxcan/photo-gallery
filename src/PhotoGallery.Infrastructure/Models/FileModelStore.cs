@@ -1,4 +1,3 @@
-using System.Security.Cryptography;
 using PhotoGallery.Application.Ports;
 
 namespace PhotoGallery.Infrastructure.Models;
@@ -146,35 +145,8 @@ public sealed class FileModelStore : IModelStore
         }
     }
 
-    /// <summary>
-    /// Whether a file is byte-for-byte the one the descriptor names.
-    /// </summary>
-    /// <remarks>
-    /// Length first, because it rejects a truncated download without reading
-    /// 166 MB to reach the same conclusion.
-    /// </remarks>
-    private static bool Matches(string path, ModelDescriptor descriptor)
-    {
-        try
-        {
-            if (new FileInfo(path).Length != descriptor.Bytes)
-            {
-                return false;
-            }
-
-            using FileStream stream = File.OpenRead(path);
-            return string.Equals(
-                Convert.ToHexStringLower(SHA256.HashData(stream)),
-                descriptor.Sha256,
-                StringComparison.Ordinal);
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            // A file that cannot be read is indistinguishable from the wrong one,
-            // and both mean the same thing: do not use it.
-            return false;
-        }
-    }
+    private static bool Matches(string path, ModelDescriptor descriptor) =>
+        ModelFile.Matches(path, descriptor.Bytes, descriptor.Sha256);
 
     private static async Task CopyAsync(
         string source, string destination, CancellationToken cancellationToken)

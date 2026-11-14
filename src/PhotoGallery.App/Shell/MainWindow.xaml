@@ -2932,7 +2932,7 @@
                     RequestNavigate="OnLinkRequested"><Run Text="geonames.org" /></Hyperlink></TextBlock>
                 <TextBlock Style="{DynamicResource HintText}" Margin="10,0,0,5"
                            TextWrapping="Wrap"><Run
-                    Text="•  InsightFace — used to find the faces in a photograph and tell one person from another. Non-commercial research use only. " /><Hyperlink
+                    Text="•  InsightFace — used to find the faces in a photograph, tell one person from another, and tell whether their eyes are open. Non-commercial research use only. " /><Hyperlink
                     NavigateUri="https://github.com/deepinsight/insightface"
                     RequestNavigate="OnLinkRequested"><Run Text="github.com/deepinsight/insightface" /></Hyperlink></TextBlock>
                 <TextBlock Style="{DynamicResource HintText}" Margin="10,0,0,5"
@@ -3002,8 +3002,8 @@
               <Button Style="{DynamicResource SecondaryButton}" MinWidth="160"
                       HorizontalAlignment="Right" VerticalAlignment="Center"
                       Content="Look for duplicates"
-                      ToolTip="Search the library for duplicates. Nothing is read from disk."
-                      Command="{Binding Duplicates.FindCommand}" />
+                      ToolTip="Search the library for duplicates and compare the copies that look the same. Only the small previews are read."
+                      Command="{Binding FindDuplicatesCommand}" />
             </Grid>
 
             <!-- What each list means. The identical one needs saying because the
@@ -3033,10 +3033,20 @@
                             CornerRadius="{StaticResource Radius.Control}">
                       <StackPanel>
                         <Grid>
-                          <TextBlock HorizontalAlignment="Left" VerticalAlignment="Center"
-                                     FontSize="13"
-                                     Foreground="{DynamicResource Editor.Foreground}"
-                                     Text="{Binding Caption}" />
+                          <!-- The verdict sits beside the count when no copy is
+                               suggested, so an unmarked set reads as an answer:
+                               the same file twice, or nothing to choose. -->
+                          <StackPanel Orientation="Horizontal" HorizontalAlignment="Left"
+                                      VerticalAlignment="Center">
+                            <TextBlock VerticalAlignment="Center" FontSize="13"
+                                       Foreground="{DynamicResource Editor.Foreground}"
+                                       Text="{Binding Caption}" />
+                            <TextBlock Style="{DynamicResource HintText}" Margin="12,0,0,0"
+                                       VerticalAlignment="Center"
+                                       Text="{Binding Verdict}"
+                                       Visibility="{Binding HasVerdict,
+                                                    Converter={StaticResource BoolToVisibility}}" />
+                          </StackPanel>
 
                           <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                             <!-- The answer for a group that is not a duplicate
@@ -3098,7 +3108,41 @@
                                         Command="{Binding DataContext.Duplicates.InspectCopyCommand,
                                                   RelativeSource={RelativeSource AncestorType=Window}}"
                                         CommandParameter="{Binding}">
-                                  <Image Source="{Binding Picture}" Stretch="Uniform" />
+                                  <Grid>
+                                    <Image Source="{Binding Picture}" Stretch="Uniform" />
+                                    <!-- A marker over each known face whose closed eyes
+                                         cost this copy, so the reason can be checked by
+                                         eye in a second. The boxes are in the preview's
+                                         pixels; laid out in a space that size and shrunk
+                                         the way the picture is, they land on the faces
+                                         whatever size the tile is drawn. -->
+                                    <Viewbox Stretch="Uniform" IsHitTestVisible="False"
+                                             Visibility="{Binding HasClosedMarkers,
+                                                          Converter={StaticResource BoolToVisibility}}">
+                                      <ItemsControl ItemsSource="{Binding ClosedMarkers}"
+                                                    Width="{Binding MarkerSpaceWidth}"
+                                                    Height="{Binding MarkerSpaceHeight}">
+                                        <ItemsControl.ItemsPanel>
+                                          <ItemsPanelTemplate>
+                                            <Canvas />
+                                          </ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                        <ItemsControl.ItemContainerStyle>
+                                          <Style TargetType="ContentPresenter">
+                                            <Setter Property="Canvas.Left" Value="{Binding X}" />
+                                            <Setter Property="Canvas.Top" Value="{Binding Y}" />
+                                          </Style>
+                                        </ItemsControl.ItemContainerStyle>
+                                        <ItemsControl.ItemTemplate>
+                                          <DataTemplate>
+                                            <Border Width="{Binding Width}" Height="{Binding Height}"
+                                                    BorderThickness="8" CornerRadius="6"
+                                                    BorderBrush="{DynamicResource Status.CautionVivid}" />
+                                          </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                      </ItemsControl>
+                                    </Viewbox>
+                                  </Grid>
                                 </Button>
                                 <TextBlock Margin="0,6,0,0" FontSize="12" TextTrimming="CharacterEllipsis"
                                            Foreground="{DynamicResource Editor.Foreground}"
@@ -3122,6 +3166,13 @@
                                 <TextBlock FontSize="11" TextWrapping="Wrap"
                                            Foreground="{DynamicResource Editor.Placeholder}"
                                            Text="{Binding Details.WhenShort}" />
+
+                                <!-- Why the app suggests this copy, or what is
+                                     wrong with one it does not: the rung of the
+                                     ladder that decided, in words (PRP 14). -->
+                                <TextBlock FontSize="11" TextWrapping="Wrap"
+                                           Foreground="{DynamicResource Editor.Foreground}"
+                                           Text="{Binding RoleCaption}" />
                                 <!-- A tick rather than a radio, so it can be
                                      taken back: unticking the last one lifts the
                                      whole group out of the decision again. -->

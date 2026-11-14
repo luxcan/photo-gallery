@@ -54,6 +54,7 @@ public static class AppServiceCollectionExtensions
             .AddScoped<FindPeopleHandler>()
             .AddScoped<TurnPhotoHandler>()
             .AddScoped<RemovePhotoHandler>()
+            .AddScoped<CopyMeasurer>()
             .AddScoped<FindDuplicatesHandler>()
             .AddScoped<GetDuplicatesHandler>()
             .AddScoped<GetPersonReviewHandler>()

@@ -23,11 +23,17 @@ public static class FeatureModels
         ModelId.ContentMerges,
     ];
 
+    // Not in the faces list on purpose. That list decides whether People opens
+    // and whether face pictures may be shared; the landmark file decides only
+    // whether one rung of the duplicates ladder speaks.
+    private static readonly ModelId[] s_eyes = [ModelId.FaceLandmarks];
+
     /// <summary>The files that feature needs, in the order they are worth naming.</summary>
     public static IReadOnlyList<ModelId> Of(ModelFeature feature) => feature switch
     {
         ModelFeature.Faces => s_faces,
         ModelFeature.ContentSearch => s_contentSearch,
+        ModelFeature.Eyes => s_eyes,
         _ => throw new ArgumentOutOfRangeException(nameof(feature)),
     };
 

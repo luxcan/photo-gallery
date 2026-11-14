@@ -1,12 +1,11 @@
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
 using Microsoft.ML.OnnxRuntime;
 using Microsoft.ML.OnnxRuntime.Tensors;
 using PhotoGallery.Application.Ports;
 using PhotoGallery.Domain.Search;
-using PhotoGallery.Infrastructure.Models;
 using PhotoGallery.Domain.Vectors;
 using PhotoGallery.Infrastructure.Faces;
+using PhotoGallery.Infrastructure.Imaging;
+using PhotoGallery.Infrastructure.Models;
 
 namespace PhotoGallery.Infrastructure.Search;
 
@@ -64,7 +63,7 @@ public sealed class ClipContentEncoder : IContentEncoder, IDisposable
 
     private ContentEmbedding? DescribePicture(string previewPath, CancellationToken cancellationToken)
     {
-        BgrImage? preview = Decode(previewPath);
+        BgrImage? preview = PreviewPixels.Read(previewPath);
         if (preview is null)
         {
             return null;
@@ -191,48 +190,6 @@ public sealed class ClipContentEncoder : IContentEncoder, IDisposable
             : throw new InvalidOperationException(
                 $"The {id} file is {state}. It has to be installed before pictures can be "
                 + "searched by what is in them.");
-    }
-
-    /// <summary>
-    /// The preview as plain blue-green-red bytes, or null when it will not open.
-    /// </summary>
-    private static BgrImage? Decode(string path)
-    {
-        try
-        {
-            using FileStream stream =
-                new(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-
-            var decoded = new BitmapImage();
-            decoded.BeginInit();
-            decoded.StreamSource = stream;
-            decoded.CacheOption = BitmapCacheOption.OnLoad;
-            decoded.EndInit();
-            decoded.Freeze();
-
-            var converted = new FormatConvertedBitmap(decoded, PixelFormats.Bgr24, null, 0d);
-            converted.Freeze();
-
-            if (converted.PixelWidth <= 0 || converted.PixelHeight <= 0)
-            {
-                return null;
-            }
-
-            int stride = converted.PixelWidth * BgrImage.BytesPerPixel;
-            byte[] pixels = new byte[stride * converted.PixelHeight];
-            converted.CopyPixels(pixels, stride, 0);
-
-            return new BgrImage(pixels, converted.PixelWidth, converted.PixelHeight);
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
-                                       or NotSupportedException or ArgumentException
-                                       or OverflowException or InvalidOperationException
-                                       or FileFormatException or OutOfMemoryException)
-        {
-            // A preview that will not decode is reported as unread rather than
-            // as a photograph of nothing.
-            return null;
-        }
     }
 
     public void Dispose()

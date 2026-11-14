@@ -37,4 +37,10 @@ public enum ModelId
     /// training run and describe one scheme between them.
     /// </remarks>
     ContentMerges = 5,
+
+    /// <summary>
+    /// Places 106 points around a face already found, which is how far each
+    /// eye is open is read (PRP 14).
+    /// </summary>
+    FaceLandmarks = 6,
 }

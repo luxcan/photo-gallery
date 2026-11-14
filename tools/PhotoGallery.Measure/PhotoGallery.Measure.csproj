@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- PRP 14 phase 1: measures the near-duplicate copies of a library COPY and
+       writes what it finds outside the repository. Not shipped: publish.ps1
+       publishes PhotoGallery.App alone, and only the tests reference this. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <!-- For the preview decoder and for drawing the face crops. -->
+    <UseWPF>true</UseWPF>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\PhotoGallery.Infrastructure\PhotoGallery.Infrastructure.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="PhotoGallery.Tests" />
+  </ItemGroup>
+
+</Project>

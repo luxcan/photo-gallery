@@ -37,7 +37,6 @@ public sealed partial class DuplicatesViewModel : ObservableObject
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsIdle))]
-    [NotifyCanExecuteChangedFor(nameof(FindCommand))]
     private bool _isBusy;
 
     [ObservableProperty]
@@ -245,40 +244,36 @@ public sealed partial class DuplicatesViewModel : ObservableObject
         + "You can keep more than one, or keep them all and the group will not be offered again.";
 
     /// <summary>
-    /// Looks through the library again.
+    /// Looks through the library again, and measures the copies that look the
+    /// same so one can be suggested.
     /// </summary>
     /// <remarks>
-    /// Nothing is read from disk: both kinds come out of hashes taken while the
-    /// bytes were already in memory during the prepare pass. Twelve years of
-    /// copying between phones, cards and folders is answered in under a second.
+    /// Finding the sets reads nothing from disk: both kinds come out of hashes
+    /// taken while the bytes were already in memory during the prepare pass.
+    /// Measuring reads only the cached previews of the near copies, so it runs
+    /// with the photo sources out of reach.
+    ///
+    /// <para>The shell runs this under its overlay, which names the step and
+    /// offers Stop, because the measuring takes minutes the first time. A Stop
+    /// leaves the sets as they were and keeps what was measured; the next look
+    /// carries on from there.</para>
     /// </remarks>
-    [RelayCommand(CanExecute = nameof(IsIdle))]
-    private async Task FindAsync()
+    /// <exception cref="OperationCanceledException">Stopped. Nothing on screen changed.</exception>
+    public async Task FindAsync(IProgress<DuplicateProgress>? progress, CancellationToken cancellationToken)
     {
-        IsBusy = true;
-        try
+        DuplicateScan scan;
+        using (IServiceScope scope = _scopeFactory.CreateScope())
         {
-            DuplicateScan scan;
-            using (IServiceScope scope = _scopeFactory.CreateScope())
-            {
-                FindDuplicatesHandler handler =
-                    scope.ServiceProvider.GetRequiredService<FindDuplicatesHandler>();
+            FindDuplicatesHandler handler =
+                scope.ServiceProvider.GetRequiredService<FindDuplicatesHandler>();
 
-                scan = await Task.Run(() => handler.HandleAsync()).ConfigureAwait(true);
-            }
+            scan = await Task
+                .Run(() => handler.HandleAsync(progress: progress, cancellationToken: cancellationToken), CancellationToken.None)
+                .ConfigureAwait(true);
+        }
 
-            Status = scan.Summary;
-            HasScanned = true;
-        }
-        catch (Exception ex) when (ex is IOException or InvalidOperationException)
-        {
-            Status = $"The library could not be searched: {ex.Message}";
-            return;
-        }
-        finally
-        {
-            IsBusy = false;
-        }
+        Status = scan.Summary;
+        HasScanned = true;
 
         await ReloadAsync().ConfigureAwait(true);
     }
@@ -306,7 +301,7 @@ public sealed partial class DuplicatesViewModel : ObservableObject
             Apply(board);
             await DecodeAsync().ConfigureAwait(true);
         }
-        catch (Exception ex) when (ex is IOException or InvalidOperationException)
+        catch (Exception ex) when (LibraryFailure.IsExpected(ex))
         {
             Status = $"The duplicates could not be loaded: {ex.Message}";
         }

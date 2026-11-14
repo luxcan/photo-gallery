@@ -108,30 +108,53 @@ public static class FaceAligner
     /// cannot be fitted.
     /// </summary>
     /// <remarks>
-    /// Filled by reversing the transform and asking where each destination
-    /// pixel came from, which is the only way to leave no holes. Anything
-    /// falling outside the picture contributes black, so a face at the very
-    /// edge of a photo still produces a crop of the expected size.
+    /// A face at the very edge of a photo still produces a crop of the expected
+    /// size: whatever falls outside the picture is black.
     /// </remarks>
     public static BgrImage? Align(BgrImage image, ReadOnlySpan<float> landmarks)
     {
         ArgumentNullException.ThrowIfNull(image);
 
-        if (!TryEstimate(landmarks, out SimilarityTransform transform)
-            || !transform.TryInvert(out SimilarityTransform inverse))
+        return TryEstimate(landmarks, out SimilarityTransform transform)
+            ? Warp(image, transform, CropSize, CropSize)
+            : null;
+    }
+
+    /// <summary>
+    /// The <paramref name="width"/> by <paramref name="height"/> crop that
+    /// <paramref name="toCrop"/> maps the picture onto, or null when the
+    /// transform cannot be reversed.
+    /// </summary>
+    /// <remarks>
+    /// Filled by reversing the transform and asking where each destination
+    /// pixel came from, which is the only way to leave no holes. Anything
+    /// falling outside the picture contributes black, as OpenCV's warpAffine
+    /// does by default - the reference both face graphs were run through.
+    ///
+    /// <para>Shared by the recognition crop and the landmark crop, which differ
+    /// only in the transform and the size: two copies of a bilinear sampler
+    /// would be two places for a half-pixel to drift.</para>
+    /// </remarks>
+    public static BgrImage? Warp(BgrImage image, SimilarityTransform toCrop, int width, int height)
+    {
+        ArgumentNullException.ThrowIfNull(image);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(width);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(height);
+
+        if (!toCrop.TryInvert(out SimilarityTransform inverse))
         {
             return null;
         }
 
-        byte[] crop = new byte[CropSize * CropSize * BgrImage.BytesPerPixel];
+        byte[] crop = new byte[width * height * BgrImage.BytesPerPixel];
         Span<byte> topLeft = stackalloc byte[BgrImage.BytesPerPixel];
         Span<byte> topRight = stackalloc byte[BgrImage.BytesPerPixel];
         Span<byte> bottomLeft = stackalloc byte[BgrImage.BytesPerPixel];
         Span<byte> bottomRight = stackalloc byte[BgrImage.BytesPerPixel];
 
-        for (int y = 0; y < CropSize; y++)
+        for (int y = 0; y < height; y++)
         {
-            for (int x = 0; x < CropSize; x++)
+            for (int x = 0; x < width; x++)
             {
                 (float sourceX, float sourceY) = inverse.Apply(x, y);
 
@@ -145,7 +168,7 @@ public static class FaceAligner
                 image.Sample(x0, y0 + 1, bottomLeft);
                 image.Sample(x0 + 1, y0 + 1, bottomRight);
 
-                int target = ((y * CropSize) + x) * BgrImage.BytesPerPixel;
+                int target = ((y * width) + x) * BgrImage.BytesPerPixel;
                 for (int channel = 0; channel < BgrImage.BytesPerPixel; channel++)
                 {
                     float top = (topLeft[channel] * (1 - weightX)) + (topRight[channel] * weightX);
@@ -158,6 +181,6 @@ public static class FaceAligner
             }
         }
 
-        return new BgrImage(crop, CropSize, CropSize);
+        return new BgrImage(crop, width, height);
     }
 }

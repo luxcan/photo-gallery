@@ -5,9 +5,12 @@ using PhotoGallery.Application.Ports;
 using PhotoGallery.Application.UseCases.Duplicates;
 using PhotoGallery.Domain.Assets;
 using PhotoGallery.Domain.Duplicates;
+using PhotoGallery.Domain.Faces;
 using PhotoGallery.Domain.Library;
+using PhotoGallery.Infrastructure.Imaging;
 using PhotoGallery.Infrastructure.Persistence;
 using PhotoGallery.Infrastructure.Storage;
+using PhotoGallery.Tests.Sharing;
 
 namespace PhotoGallery.Tests.Application;
 
@@ -28,6 +31,7 @@ public sealed class DuplicatesTests : IDisposable
     private readonly GalleryDbContext _db;
     private readonly SqliteDuplicateRepository _repository;
     private readonly FileSystemQuarantine _quarantine;
+    private readonly FileSystemThumbnailStore _thumbnails;
 
     public DuplicatesTests()
     {
@@ -38,6 +42,7 @@ public sealed class DuplicatesTests : IDisposable
         var workingFolder = new WorkingFolder(Path.Combine(_root, "working"));
         workingFolder.EnsureCreated();
         _quarantine = new FileSystemQuarantine(workingFolder);
+        _thumbnails = new FileSystemThumbnailStore(workingFolder);
 
         _db = new GalleryDbContext(new DbContextOptionsBuilder<GalleryDbContext>()
             .UseSqlite($"Data Source={Path.Combine(_root, "index.db")}")
@@ -65,18 +70,37 @@ public sealed class DuplicatesTests : IDisposable
     }
 
     [Fact]
-    public async Task Find_KeepsTheCopyInTheFolderThatSaysWhatItIs()
+    public async Task Find_SuggestsNoCopyOfIdenticalFilesWhateverTheirFolders()
     {
-        // A bare-date folder carries nothing beyond the date already on the file.
-        // Measured on the real library, this reversed 110 of 230 decisions
-        // against a naive shortest-path rule.
+        // PRP 14: the folder rule is gone. The same bytes are the same
+        // photograph, and either copy is the one to keep - so neither is marked,
+        // and the set is still offered with nothing suggested.
         AddPhoto(@"20230201\a.jpg", hash: "aaaa");
         AddPhoto(@"20230203 - Chingay\a.jpg", hash: "aaaa");
+        AddPhoto(@"20230203 - Chingay\deeper\a.jpg", hash: "aaaa");
 
-        await Find();
+        DuplicateScan scan = await Find();
         DuplicateSetView set = Assert.Single(await _repository.GetAsync(DuplicateKind.Exact));
 
-        Assert.Equal(@"20230203 - Chingay\a.jpg", set.Keeper!.RelativePath);
+        Assert.Null(set.Keeper);
+        Assert.Empty(set.Redundant);
+        Assert.All(set.Copies, copy => Assert.Equal(DuplicateRole.Undecided, copy.Role));
+        Assert.Equal(2, scan.ExactRedundant);
+    }
+
+    [Fact]
+    public async Task Find_SuggestsNothingBetweenNearCopiesThatTieOnEveryRung()
+    {
+        // Same size, same length, no capture details, never measured: nothing
+        // separates them, and no folder or path order is asked to.
+        AddPhoto(@"20230203 - Chingay\a.jpg", hash: "aaaa", phash: 0b1111);
+        AddPhoto(@"20230201\a.jpg", hash: "bbbb", phash: 0b1111);
+
+        await Find();
+        DuplicateSetView set = Assert.Single(await _repository.GetAsync(DuplicateKind.Near));
+
+        Assert.Null(set.Keeper);
+        Assert.Equal(2, set.Copies.Count);
     }
 
     [Fact]
@@ -132,7 +156,7 @@ public sealed class DuplicatesTests : IDisposable
         AddPhoto(@"20230201\a.jpg", hash: Digest("same"));
         await Find();
 
-        int setId = (await _repository.GetAsync(DuplicateKind.Exact)).Single().Id;
+        int setId = await ChooseKeeperAsync(@"20230203 - Chingay\a.jpg");
         QuarantineResult result = await Quarantine().HandleAsync([setId]);
 
         Assert.Equal(1, result.Moved);
@@ -154,7 +178,7 @@ public sealed class DuplicatesTests : IDisposable
         int redundant = AddPhoto(@"20230201\a.jpg", hash: Digest("same"));
         await Find();
 
-        await Quarantine().HandleAsync([(await _repository.GetAsync(DuplicateKind.Exact)).Single().Id]);
+        await Quarantine().HandleAsync([await ChooseKeeperAsync(@"20230203 - Chingay\a.jpg")]);
 
         Asset row = await _db.Assets.AsNoTracking().SingleAsync(a => a.Id == redundant);
         Assert.NotNull(row.QuarantinedUtc);
@@ -171,7 +195,7 @@ public sealed class DuplicatesTests : IDisposable
         AddPhoto(@"20230201\a.jpg", hash: Digest("same"));
         await Find();
 
-        int setId = (await _repository.GetAsync(DuplicateKind.Exact)).Single().Id;
+        int setId = await ChooseKeeperAsync(@"20230203 - Chingay\a.jpg");
 
         // The redundant copy's file was never written, so it cannot be moved.
         QuarantineResult result = await Quarantine().HandleAsync([setId]);
@@ -197,7 +221,7 @@ public sealed class DuplicatesTests : IDisposable
         AddPhoto(@"20230201\a.jpg", hash: Digest("same"));
         await Find();
 
-        int setId = (await _repository.GetAsync(DuplicateKind.Exact)).Single().Id;
+        int setId = await ChooseKeeperAsync(@"20230203 - Chingay\a.jpg");
         QuarantineResult result = await Quarantine().HandleAsync([setId]);
 
         Assert.Equal(0, result.Moved);
@@ -215,7 +239,7 @@ public sealed class DuplicatesTests : IDisposable
         AddPhoto(@"20230203 - Chingay\a.jpg", hash: Digest("same"));
         AddPhoto(@"20230201\a.jpg", hash: Digest("same"));
         await Find();
-        await Quarantine().HandleAsync([(await _repository.GetAsync(DuplicateKind.Exact)).Single().Id]);
+        await Quarantine().HandleAsync([await ChooseKeeperAsync(@"20230203 - Chingay\a.jpg")]);
         Assert.False(File.Exists(redundant));
 
         RestoreResult result =
@@ -239,7 +263,7 @@ public sealed class DuplicatesTests : IDisposable
         AddPhoto(@"20230203 - Chingay\a.jpg", hash: Digest("same"));
         AddPhoto(@"20230201\a.jpg", hash: Digest("same"));
         await Find();
-        await Quarantine().HandleAsync([(await _repository.GetAsync(DuplicateKind.Exact)).Single().Id]);
+        await Quarantine().HandleAsync([await ChooseKeeperAsync(@"20230203 - Chingay\a.jpg")]);
 
         DuplicateScan again = await Find();
 
@@ -257,7 +281,7 @@ public sealed class DuplicatesTests : IDisposable
         await Find();
 
         DuplicateSetView before = (await _repository.GetAsync(DuplicateKind.Exact)).Single();
-        Assert.NotEqual(preferred, before.Keeper!.AssetId);
+        Assert.Null(before.Keeper);
 
         await _repository.SetKeeperAsync(before.Id, preferred);
 
@@ -298,7 +322,9 @@ public sealed class DuplicatesTests : IDisposable
         DuplicateSetView set = (await _repository.GetAsync(DuplicateKind.Exact)).Single();
         await _repository.SetKeeperAsync(set.Id, stranger);
 
-        Assert.NotNull((await _repository.FindAsync(set.Id))!.Keeper);
+        // Nothing rewritten: rewriting every role to Redundant would offer every
+        // copy up to be set aside.
+        Assert.Empty((await _repository.FindAsync(set.Id))!.Redundant);
     }
 
     [Fact]
@@ -347,7 +373,56 @@ public sealed class DuplicatesTests : IDisposable
         Assert.Equal(1, again.NearSets);
     }
 
-    private Task<DuplicateScan> Find() => new FindDuplicatesHandler(_repository).HandleAsync();
+    [Fact]
+    public async Task SetAside_MovesNothingInASetNobodyChoseACopyIn()
+    {
+        // A set with no suggestion holds no redundant copy, so setting it aside
+        // without a choice cannot take every copy out of the library.
+        string first = WriteFile(@"20230203 - Chingay\a.jpg", "same");
+        string second = WriteFile(@"20230201\a.jpg", "same");
+        AddPhoto(@"20230203 - Chingay\a.jpg", hash: Digest("same"));
+        AddPhoto(@"20230201\a.jpg", hash: Digest("same"));
+        await Find();
+
+        QuarantineResult result = await Quarantine()
+            .HandleAsync([(await _repository.GetAsync(DuplicateKind.Exact)).Single().Id]);
+
+        Assert.Equal(0, result.Moved);
+        Assert.True(File.Exists(first));
+        Assert.True(File.Exists(second));
+    }
+
+    private Task<DuplicateScan> Find()
+    {
+        var quality = new SqlitePhotoQualityRepository(_db);
+        var models = new StubModelStore();
+        return new FindDuplicatesHandler(
+                _repository,
+                quality,
+                new CopyMeasurer(quality, new PreviewQualityReader(), _thumbnails, new NoEyes()),
+                models)
+            .HandleAsync();
+    }
+
+    /// <summary>
+    /// What the user does on the screen before anything can be set aside: picks
+    /// the copy to keep. The app no longer suggests one for identical files.
+    /// </summary>
+    private async Task<int> ChooseKeeperAsync(string relativePath)
+    {
+        DuplicateSetView set = (await _repository.GetAsync(DuplicateKind.Exact)).Single();
+        await _repository.SetKeeperAsync(
+            set.Id, set.Copies.Single(copy => copy.RelativePath == relativePath).AssetId);
+        return set.Id;
+    }
+
+    /// <summary>No eye model in these tests: nothing here reaches the eyes rung.</summary>
+    private sealed class NoEyes : IEyeMeasurer
+    {
+        public Task<IReadOnlyList<EyeMeasurement>?> MeasureAsync(
+            string previewPath, IReadOnlyList<FaceBounds> faces, CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException("The eye model is not installed in these tests.");
+    }
 
     private QuarantineDuplicatesHandler Quarantine() => new(_repository, _quarantine);
 

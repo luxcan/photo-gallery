@@ -25,6 +25,22 @@ public sealed class SqliteFaceRepository : IFaceRepository
             return;
         }
 
+        // The measured preview's size is the space the boxes are drawn in, so a
+        // quarter turn swaps it with them. Its readings stay: a turned picture
+        // is as sharp and as exposed as it was, and the next pass measures the
+        // rewritten preview anyway.
+        if (((degrees % 180) + 180) % 180 == 90)
+        {
+            await _db.PreviewQuality
+                .Where(quality => assetIds.Contains(quality.AssetId))
+                .ExecuteUpdateAsync(
+                    set => set
+                        .SetProperty(quality => quality.Width, quality => quality.Height)
+                        .SetProperty(quality => quality.Height, quality => quality.Width),
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+
         // Read, move, write. The arithmetic lives on FaceBounds so that the one
         // thing that must be exactly right is pure and tested, rather than
         // spread across a database expression.

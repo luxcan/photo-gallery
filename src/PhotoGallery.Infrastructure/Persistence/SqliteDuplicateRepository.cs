@@ -266,11 +266,15 @@ public sealed class SqliteDuplicateRepository : IDuplicateRepository
                     member.Distance,
                     asset.ContentHash,
                     asset.TakenUtc,
-                    asset.ModifiedUtc));
+                    asset.ModifiedUtc,
+                    Fingerprint: asset.PerceptualHash));
             }
 
-            // A set whose keeper has gone is not a question any more.
-            if (copies.Count > 1 && copies.Any(copy => copy.Role == DuplicateRole.Keeper))
+            // Still a question as long as two copies are left. The roles stored
+            // here are only what the last pass made of the set; which copy is
+            // suggested is worked out again when the screen is shown (PRP 14),
+            // so a stored keeper having gone says nothing about the rest.
+            if (copies.Count > 1)
             {
                 views.Add(new DuplicateSetView(
                     set.Id,

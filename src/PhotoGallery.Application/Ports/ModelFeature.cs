@@ -16,4 +16,15 @@ public enum ModelFeature
 
     /// <summary>Describing photographs, so they can be searched by what is in them.</summary>
     ContentSearch = 1,
+
+    /// <summary>
+    /// Telling whether the people in a photograph have their eyes open, so the
+    /// copy worth keeping can be suggested.
+    /// </summary>
+    /// <remarks>
+    /// Its own feature rather than a third file under <see cref="Faces"/>: People
+    /// would otherwise refuse to open on every computer that has not imported
+    /// it, for a step only the duplicates screen uses.
+    /// </remarks>
+    Eyes = 2,
 }

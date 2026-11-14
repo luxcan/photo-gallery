@@ -52,6 +52,16 @@ public sealed record FeatureCard(
                 + "model (1).onnx, leave it - Photo Gallery renames it.",
                 status),
 
+            ModelFeature.Eyes => new FeatureCard(
+                status.Feature,
+                "Telling whether eyes are open",
+                "When two photographs look the same, suggests the one where the people "
+                + "you have named have their eyes open. Without it the Duplicates screen "
+                + "still suggests the sharper, better exposed or original copy.",
+                "Press Download below and save the file into the folder in Step 1. It needs "
+                + "Finding people as well.",
+                status),
+
             _ => throw new ArgumentOutOfRangeException(nameof(status)),
         };
     }
@@ -90,9 +100,12 @@ public sealed record FeatureCard(
 
             if (wanted == Status.Files.Count)
             {
-                return wanted == 2
-                    ? "Download both files"
-                    : $"Download all {wanted} files";
+                return wanted switch
+                {
+                    1 => "Download the file",
+                    2 => "Download both files",
+                    _ => $"Download all {wanted} files",
+                };
             }
 
             return wanted == 1

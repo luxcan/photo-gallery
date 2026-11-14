@@ -71,6 +71,10 @@ shallower path, then ordinal order** so the result is stable between runs.
 
 Measured: that reversed **218 of 362** decisions.
 
+**Superseded by [14](14-best-of-a-burst.md).** The folder rule is removed: an
+identical set gets no suggestion at all, and a near set is decided by the keeper
+ladder there, or not at all.
+
 ### Two confidence bands, never mixed
 
 - **Exact** — provably the same bytes. Safe to approve in bulk.
@@ -84,8 +88,8 @@ Measured: that reversed **218 of 362** decisions.
 
 ```
 DuplicateSet     Kind (Exact|Near), DetectedUtc, IsResolved, Members
-DuplicateMember  AssetId, Role (Keeper|Redundant), Distance
-KeeperPolicy     IsGenericFolder, ChooseKeeper, ComparePreference   (pure)
+DuplicateMember  AssetId, Role (Keeper|Redundant|Undecided), Distance
+KeeperPolicy     Choose(copies) -> keeper or none, and why   (pure; PRP 14)
 PerceptualHash   64-bit; DistanceTo = popcount of XOR
 Asset.QuarantinedUtc   set aside, still known
 ```
