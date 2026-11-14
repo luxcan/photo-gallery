@@ -32,6 +32,18 @@ public sealed class RenditionBehindOriginalTests : IDisposable
     }
 
     [Fact]
+    public void AVideoIsNeverBehindAndIsNotRead()
+    {
+        // The clip is held open with no sharing, so any attempt to read it
+        // would fail and come back "cannot tell" (null) instead of 0.
+        string clip = Path.Combine(_root, "clip.mp4");
+        File.WriteAllBytes(clip, new byte[1024]);
+        using var held = new FileStream(clip, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+
+        Assert.Equal(0, _turner.DegreesBehindOriginal("anything.jpg", clip, 90));
+    }
+
+    [Fact]
     public async Task AFileNobodyTurnedIsNotBehind()
     {
         (string original, string name) = await PreparedAsync();
