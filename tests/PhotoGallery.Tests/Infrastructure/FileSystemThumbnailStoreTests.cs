@@ -1,3 +1,6 @@
+using System.Diagnostics;
+using System.Security.AccessControl;
+using System.Security.Principal;
 using PhotoGallery.Application.Ports;
 using PhotoGallery.Domain.Assets;
 using PhotoGallery.Infrastructure.Storage;
@@ -249,6 +252,165 @@ public sealed class FileSystemThumbnailStoreTests : IDisposable
         Assert.Equal(2, names.Count);
         Assert.Contains(first, names);
         Assert.Contains(second, names);
+    }
+
+    [Fact]
+    public async Task ListStoredNames_GivesTheAnswerExistsGivesForEveryPicture()
+    {
+        // The library wall now reads which pictures are prepared from this one
+        // walk instead of asking Exists per picture, so the two must agree on
+        // every half-finished case.
+        string whole = await _store.SaveAsync(Thumbnail(1));
+        string tileOnly = await _store.SaveAsync(Thumbnail(2));
+        string previewOnly = await _store.SaveAsync(Thumbnail(3));
+        File.Delete(_store.ResolvePreviewPath(tileOnly));
+        File.Delete(_store.ResolveTilePath(previewOnly));
+
+        string unfinished = _store.NameFor(Convert.ToHexStringLower(
+            System.Security.Cryptography.SHA256.HashData(BitConverter.GetBytes(4))));
+        Directory.CreateDirectory(Path.GetDirectoryName(_store.ResolveTilePath(unfinished))!);
+        File.WriteAllBytes(_store.ResolveTilePath(unfinished) + ".0123.tmp", [1]);
+        File.WriteAllBytes(_store.ResolvePreviewPath(unfinished), [1]);
+
+        IReadOnlyCollection<string> names = _store.ListStoredNames();
+
+        Assert.Equal(whole, Assert.Single(names));
+        foreach (string name in new[] { whole, tileOnly, previewOnly, unfinished })
+        {
+            Assert.Equal(_store.Exists(name), names.Contains(name));
+        }
+    }
+
+    [Fact]
+    public async Task ListStoredNames_SkipsAndReportsAShardThatWentPartWayThrough()
+    {
+        // A shard that is listed and then gone by the time it is read - a detach
+        // sweeping it while the wall loads. A link to a folder that no longer
+        // exists is exactly that, held still for a test.
+        string kept = await _store.SaveAsync(Thumbnail(1));
+        string gone = Path.Combine(_root, "gone");
+        Directory.CreateDirectory(gone);
+        string shard = Path.Combine(_workingFolder.ThumbnailsPath, "zz");
+        Junction(shard, gone);
+        Directory.Delete(gone);
+
+        try
+        {
+            List<string> reported = [];
+            IReadOnlyCollection<string> names =
+                _store.ListStoredNames((folder, _) => reported.Add(folder));
+
+            Assert.Equal(kept, Assert.Single(names));
+            Assert.Equal(shard, Assert.Single(reported), ignoreCase: true);
+        }
+        finally
+        {
+            Directory.Delete(shard);
+        }
+    }
+
+    [Fact]
+    public async Task ListStoredNames_WithNobodyToTell_ThrowsRatherThanReadingAShardAsEmpty()
+    {
+        await _store.SaveAsync(Thumbnail(1));
+        string gone = Path.Combine(_root, "gone");
+        Directory.CreateDirectory(gone);
+        string shard = Path.Combine(_workingFolder.ThumbnailsPath, "zz");
+        Junction(shard, gone);
+        Directory.Delete(gone);
+
+        try
+        {
+            Assert.ThrowsAny<IOException>(() => _store.ListStoredNames());
+        }
+        finally
+        {
+            Directory.Delete(shard);
+        }
+    }
+
+    [Fact]
+    public async Task ListStoredNames_CarriesOnPastAShardThatRefusesToOpen()
+    {
+        string kept = await _store.SaveAsync(Thumbnail(1));
+        string refused = await _store.SaveAsync(Thumbnail(2));
+        var shard = new DirectoryInfo(Path.GetDirectoryName(_store.ResolveTilePath(refused))!);
+        Assert.NotEqual(
+            Path.GetDirectoryName(_store.ResolveTilePath(kept)), shard.FullName, StringComparer.OrdinalIgnoreCase);
+
+        var deny = new FileSystemAccessRule(
+            WindowsIdentity.GetCurrent().User!,
+            FileSystemRights.ListDirectory,
+            AccessControlType.Deny);
+        DirectorySecurity security = shard.GetAccessControl();
+        security.AddAccessRule(deny);
+        shard.SetAccessControl(security);
+
+        try
+        {
+            List<string> reported = [];
+            IReadOnlyCollection<string> names =
+                _store.ListStoredNames((folder, _) => reported.Add(folder));
+
+            // Read as not prepared, the side every caller can live with - but
+            // said, not read as a shard that happens to hold nothing.
+            Assert.Equal(kept, Assert.Single(names));
+            Assert.Equal(shard.FullName, Assert.Single(reported), ignoreCase: true);
+        }
+        finally
+        {
+            security = shard.GetAccessControl();
+            security.RemoveAccessRule(deny);
+            shard.SetAccessControl(security);
+        }
+    }
+
+    [Fact]
+    public async Task ListStoredNames_WithNobodyToTell_ThrowsForAShardThatRefusesToOpen()
+    {
+        // Sharing and detaching ask with nobody to tell. Read as empty, a refused
+        // shard made sharing plan to fetch every rendition in it again.
+        await _store.SaveAsync(Thumbnail(1));
+        string refused = await _store.SaveAsync(Thumbnail(2));
+        var shard = new DirectoryInfo(Path.GetDirectoryName(_store.ResolveTilePath(refused))!);
+
+        var deny = new FileSystemAccessRule(
+            WindowsIdentity.GetCurrent().User!,
+            FileSystemRights.ListDirectory,
+            AccessControlType.Deny);
+        DirectorySecurity security = shard.GetAccessControl();
+        security.AddAccessRule(deny);
+        shard.SetAccessControl(security);
+
+        try
+        {
+            Assert.Throws<UnauthorizedAccessException>(() => _store.ListStoredNames());
+        }
+        finally
+        {
+            security = shard.GetAccessControl();
+            security.RemoveAccessRule(deny);
+            shard.SetAccessControl(security);
+        }
+    }
+
+    /// <summary>A directory junction, which needs no elevation, unlike a symbolic link.</summary>
+    private static void Junction(string link, string target)
+    {
+        var start = new ProcessStartInfo("cmd.exe")
+        {
+            UseShellExecute = false,
+            CreateNoWindow = true,
+        };
+        start.ArgumentList.Add("/c");
+        start.ArgumentList.Add("mklink");
+        start.ArgumentList.Add("/J");
+        start.ArgumentList.Add(link);
+        start.ArgumentList.Add(target);
+
+        using Process process = Process.Start(start)!;
+        process.WaitForExit();
+        Assert.Equal(0, process.ExitCode);
     }
 
     [Fact]

@@ -1084,7 +1084,8 @@ public sealed class EditAlbumTests : IDisposable
 
         public bool TryDelete(string? thumbnailName) => _inner.TryDelete(thumbnailName);
 
-        public IReadOnlyCollection<string> ListStoredNames() => _inner.ListStoredNames();
+        public IReadOnlyCollection<string> ListStoredNames(Action<string, Exception>? unreadable = null) =>
+            _inner.ListStoredNames(unreadable);
 
         public void RemoveEmptyShards() => _inner.RemoveEmptyShards();
     }

@@ -2210,7 +2210,6 @@ public sealed partial class AlbumsViewModel : ObservableObject, IViewerGrid
             OnPropertyChanged(nameof(PhotoCount));
             OnPropertyChanged(nameof(HasPhotos));
 
-            await _photos.MarkPreparedAsync(CancellationToken.None).ConfigureAwait(true);
             await _photos.ShowRangeAsync(0).ConfigureAwait(true);
         }
         catch (Exception ex) when (LibraryFailure.IsExpected(ex))
