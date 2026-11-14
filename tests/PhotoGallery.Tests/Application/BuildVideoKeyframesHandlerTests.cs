@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using PhotoGallery.Application.Ports;
+using PhotoGallery.Application.UseCases;
 using PhotoGallery.Application.UseCases.Videos;
 using PhotoGallery.Domain.Assets;
 using PhotoGallery.Domain.Library;
@@ -348,6 +349,39 @@ public sealed class BuildVideoKeyframesHandlerTests : IDisposable
         Assert.True(result.Cancelled);
         Assert.Equal(3, result.Prepared);
         Assert.Equal(3, ClipsWithFrames());
+    }
+
+    [Fact]
+    public async Task TheCountMovesOnTheClockNotEveryTenthVideo()
+    {
+        // Five videos, each taking a tick: a count kept to every tenth video
+        // would not move once before the end, which on the real pass is ten
+        // seconds of a bar standing still.
+        AddVideos(5);
+        var reports = new RecordingProgress<VideoProgress>();
+        var handler = new BuildVideoKeyframesHandler(
+            _reader, _assets, _thumbnails, new FakeExtractor(frames: 1), _sources,
+            new SteppingClock(ProgressPacer.Interval));
+
+        await handler.HandleAsync(degreeOfParallelism: 1, progress: reports);
+
+        // The opening report, one per video, and the closing tally.
+        Assert.Equal(7, reports.Seen.Count);
+        Assert.Equal([0, 1, 2, 3, 4, 5, 5], reports.Seen.Select(r => r.Done));
+    }
+
+    [Fact]
+    public async Task TheCountWaitsForTheClockBetweenVideos()
+    {
+        AddVideos(5);
+        var reports = new RecordingProgress<VideoProgress>();
+        var handler = new BuildVideoKeyframesHandler(
+            _reader, _assets, _thumbnails, new FakeExtractor(frames: 1), _sources,
+            new SteppingClock(TimeSpan.Zero));
+
+        await handler.HandleAsync(degreeOfParallelism: 1, progress: reports);
+
+        Assert.Equal([0, 5], reports.Seen.Select(r => r.Done));
     }
 
     private BuildVideoKeyframesHandler HandlerYielding(int frames) =>

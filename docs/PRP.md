@@ -81,6 +81,28 @@ Recorded with their reasons so they are not re-litigated.
 - Every screen states what happens next; no dead ends.
 - Say what is *about* to happen before the click, not after.
 
+### Responsiveness rules
+
+The window never stops answering, and long work is always seen to move. A
+frozen window or a count standing still reads as a hang, and people close the
+app on a hang.
+
+- **Work longer than a moment runs off the UI thread.** The window answers
+  within about 100 ms throughout, measured by sampling the UI thread, not
+  judged by eye.
+- **A running count goes to the screen ten times a second**, by the clock
+  through `ProgressPacer`, never every Nth item. Counting by items either
+  floods the screen when items are quick or stands still when they are slow:
+  a video takes about a second, so "every tenth" meant ten seconds with
+  nothing moving. Report once before the work starts and once at the end.
+- **Every long pass names its step, shows a count and offers a safe Stop.**
+- **A list that can outgrow the screen is virtualised**: its own scroller and
+  a recycling `VirtualizingStackPanel`, never an `ItemsControl` inside an outer
+  `ScrollViewer`. The duplicates list built all 503 sets at once that way and
+  froze the window for 4 s on every tab switch.
+- **A responsiveness fix is proved by measuring before and after** on a copy
+  of a real library, not by a small test library where everything is quick.
+
 ---
 
 ## 4. Where things live

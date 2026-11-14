@@ -52,14 +52,6 @@ public sealed class BuildVideoKeyframesHandler
     /// </remarks>
     private const int SaveBatchSize = 8;
 
-    /// <summary>How many videos pass between progress reports.</summary>
-    /// <remarks>
-    /// Ten, against the other passes' twenty-five, because a video costs far
-    /// more than a photograph does: a quarter of the reports for work that takes
-    /// many times as long would leave the bar looking stuck.
-    /// </remarks>
-    private const int ReportEvery = 10;
-
     /// <summary>How many videos are opened at once when the caller has no opinion.</summary>
     /// <remarks>
     /// Eight, as the preparing pass has, and for the preparing pass's reason: a
@@ -82,19 +74,22 @@ public sealed class BuildVideoKeyframesHandler
     private readonly IThumbnailStore _store;
     private readonly IKeyframeExtractor _extractor;
     private readonly ISourceAvailability _availability;
+    private readonly TimeProvider _clock;
 
     public BuildVideoKeyframesHandler(
         IGalleryReader reader,
         IAssetRepository assets,
         IThumbnailStore store,
         IKeyframeExtractor extractor,
-        ISourceAvailability availability)
+        ISourceAvailability availability,
+        TimeProvider? clock = null)
     {
         _reader = reader;
         _assets = assets;
         _store = store;
         _extractor = extractor;
         _availability = availability;
+        _clock = clock ?? TimeProvider.System;
     }
 
     public async Task<VideoBuildResult> HandleAsync(
@@ -127,10 +122,11 @@ public sealed class BuildVideoKeyframesHandler
 
         int prepared = 0, failed = 0, skipped = 0, done = 0;
         bool cancelled = false;
+        var pacer = new ProgressPacer(_clock);
 
         // Reported before any work, so the screen shows how many videos it is
         // about to get through rather than sitting on "starting..." through the
-        // first ten of them - which on this pass is minutes, not moments.
+        // first of them - which on this pass is seconds, not moments.
         progress?.Report(new VideoProgress(0, pending.Count, 0, 0, stopwatch.Elapsed));
 
         var completed = new ConcurrentQueue<VideoKeyframeUpdate>();
@@ -204,7 +200,7 @@ public sealed class BuildVideoKeyframesHandler
                     }
 
                     int seen = Interlocked.Increment(ref done);
-                    if (seen % ReportEvery == 0)
+                    if (pacer.IsDue())
                     {
                         progress?.Report(new VideoProgress(
                             seen,

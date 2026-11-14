@@ -31,15 +31,6 @@ public sealed class LocatePhotosHandler
     private const int SaveBatchSize = 20;
 
     /// <summary>
-    /// How many photographs pass between progress reports.
-    /// </summary>
-    /// <remarks>
-    /// Twenty-five, matching the preparing pass, because a file here costs about
-    /// what a file costs there - three quarters of a second over the share.
-    /// </remarks>
-    private const int ReportEvery = 25;
-
-    /// <summary>
     /// How many originals are opened at once when the caller has no opinion.
     /// </summary>
     /// <remarks>
@@ -55,6 +46,7 @@ public sealed class LocatePhotosHandler
     private readonly IPlaceRepository _places;
     private readonly IAssetRepository _assets;
     private readonly ISourceAvailability _availability;
+    private readonly TimeProvider _clock;
 
     public LocatePhotosHandler(
         IGalleryReader reader,
@@ -62,7 +54,8 @@ public sealed class LocatePhotosHandler
         IGeocoder geocoder,
         IPlaceRepository places,
         IAssetRepository assets,
-        ISourceAvailability availability)
+        ISourceAvailability availability,
+        TimeProvider? clock = null)
     {
         _reader = reader;
         _coordinates = coordinates;
@@ -70,6 +63,7 @@ public sealed class LocatePhotosHandler
         _places = places;
         _assets = assets;
         _availability = availability;
+        _clock = clock ?? TimeProvider.System;
     }
 
     public async Task<LocatePhotosResult> HandleAsync(
@@ -121,6 +115,7 @@ public sealed class LocatePhotosHandler
 
         int located = 0, named = 0, unreadable = 0, done = 0;
         bool cancelled = false;
+        var pacer = new ProgressPacer(_clock);
 
         // Reported before any work, so the screen names this phase as it begins
         // rather than as it ends.
@@ -167,7 +162,7 @@ public sealed class LocatePhotosHandler
                             }
 
                             int seen = Interlocked.Increment(ref done);
-                            if (seen % ReportEvery == 0)
+                            if (pacer.IsDue())
                             {
                                 progress?.Report(new LocatePhotosProgress(
                                     seen, pending.Length, Volatile.Read(ref named),

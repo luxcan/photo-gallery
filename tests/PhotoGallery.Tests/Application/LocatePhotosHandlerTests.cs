@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using PhotoGallery.Application.Ports;
+using PhotoGallery.Application.UseCases;
 using PhotoGallery.Application.UseCases.Places;
 using PhotoGallery.Domain.Assets;
 using PhotoGallery.Domain.Library;
@@ -50,8 +51,25 @@ public sealed class LocatePhotosHandlerTests : IDisposable
         _db.SaveChanges();
     }
 
-    private LocatePhotosHandler NewHandler() =>
-        new(_reader, _coordinates, _geocoder, _places, _assets, _availability);
+    private LocatePhotosHandler NewHandler(TimeProvider? clock = null) =>
+        new(_reader, _coordinates, _geocoder, _places, _assets, _availability, clock);
+
+    [Fact]
+    public async Task Locate_MovesTheCountOnTheClockNotEveryTwentyFifthPhotograph()
+    {
+        // Five photographs, each taking a tick: counted every twenty-fifth, the
+        // bar would not move once before the end.
+        for (int i = 0; i < 5; i++)
+        {
+            AddPhoto($"{i}.jpg");
+        }
+
+        var reports = new RecordingProgress<LocatePhotosProgress>();
+        await NewHandler(new SteppingClock(ProgressPacer.Interval))
+            .HandleAsync(degreeOfParallelism: 1, progress: reports);
+
+        Assert.Equal([0, 1, 2, 3, 4, 5, 5], reports.Seen.Select(r => r.Done));
+    }
 
     [Fact]
     public async Task Locate_NamesAPhotographFromItsCoordinates()

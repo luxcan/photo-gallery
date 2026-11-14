@@ -88,7 +88,7 @@ public sealed class ScanFolderProgressTests : IDisposable
             WritePhoto($@"big\p{i:00}.jpg");
         }
 
-        var reports = new RecordingProgress();
+        var reports = new RecordingProgress<ScanProgress>();
         PhotoSource source = await AddSourceAsync();
         await NewHandler(new SteppingClock(TimeSpan.FromMilliseconds(60))).HandleAsync(source.Id, reports);
 
@@ -105,7 +105,7 @@ public sealed class ScanFolderProgressTests : IDisposable
             WritePhoto($@"big\p{i:00}.jpg");
         }
 
-        var reports = new RecordingProgress();
+        var reports = new RecordingProgress<ScanProgress>();
         PhotoSource source = await AddSourceAsync();
         await NewHandler(new SteppingClock(TimeSpan.Zero)).HandleAsync(source.Id, reports);
 
@@ -121,24 +121,6 @@ public sealed class ScanFolderProgressTests : IDisposable
             new SqliteDecisionReader(_db),
             new SqliteDecisionRepository(_db),
             clock);
-
-    /// <summary>Records every report as it is made, without posting anywhere.</summary>
-    private sealed class RecordingProgress : IProgress<ScanProgress>
-    {
-        public List<ScanProgress> Seen { get; } = [];
-
-        public void Report(ScanProgress value) => Seen.Add(value);
-    }
-
-    /// <summary>A clock that moves on by a fixed step every time it is read.</summary>
-    private sealed class SteppingClock(TimeSpan step) : TimeProvider
-    {
-        private long _ticks;
-
-        public override long TimestampFrequency => TimeSpan.TicksPerSecond;
-
-        public override long GetTimestamp() => _ticks += step.Ticks;
-    }
 
     private Task<PhotoSource> AddSourceAsync() =>
         new AddPhotoSourceHandler(new SqliteLibraryIndex(_db), _workingFolder)
