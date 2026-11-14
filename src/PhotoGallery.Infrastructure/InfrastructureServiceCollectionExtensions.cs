@@ -61,6 +61,7 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddSingleton<IThumbnailStore, FileSystemThumbnailStore>();
         services.AddSingleton<IThumbnailGenerator, WindowsThumbnailGenerator>();
         services.AddSingleton<IKeyframeExtractor, ShellThumbnailKeyframeExtractor>();
+        services.AddSingleton<IVideoOrientationReader, Mp4VideoOrientationReader>();
         services.AddSingleton<IRenditionTurner, WindowsRenditionTurner>();
         services.AddSingleton<IOriginalOrientation, ExifOriginalOrientation>();
         services.AddSingleton<IOriginalFile, WindowsOriginalFile>();

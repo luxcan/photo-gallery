@@ -1099,7 +1099,7 @@ public partial class MainWindow : Window
     /// the source had not finished opening when the click landed - a file on a
     /// share, which is all of them here. Calling Play twice is harmless.
     /// </remarks>
-    private void OnVideoOpened(object sender, RoutedEventArgs e)
+    private async void OnVideoOpened(object sender, RoutedEventArgs e)
     {
         DiagnosticLog.Write(
             $"video opened: natural={VideoPlayer.NaturalVideoWidth}x"
@@ -1124,27 +1124,28 @@ public partial class MainWindow : Window
             ? VideoPlayer.NaturalDuration.TimeSpan.TotalSeconds
             : 0d;
 
+        // The still's shape, which is only read for a file that does not say
+        // which way up it goes - an .mts clip has nowhere to say it.
+        bool? stillIsPortrait = null;
         try
         {
-            // The stream's own shape, which is the only place the rotation shows
-            // up - MediaElement will not report what the container's flag says,
-            // so the still is the reference for which way up this clip goes.
-            if (VideoPlayer.NaturalVideoWidth > 0 && VideoPlayer.NaturalVideoHeight > 0
-                && _viewModel.Gallery.OpenPicture is ImageSource still
+            if (_viewModel.Gallery.OpenPicture is ImageSource still
                 && still.Width > 0 && still.Height > 0)
             {
-                _viewModel.Gallery.AlignPlaybackTo(
-                    streamIsPortrait:
-                        VideoPlayer.NaturalVideoHeight > VideoPlayer.NaturalVideoWidth,
-                    stillIsPortrait: still.Height > still.Width);
+                stillIsPortrait = still.Height > still.Width;
             }
         }
         catch (Exception ex) when (ex is NotSupportedException or InvalidOperationException)
         {
-            // A picture that will not say how big it is leaves the clip playing
-            // the way it was recorded, which is the answer for most of them.
+            // A picture that will not say how big it is leaves only the file to
+            // go by, and a clip with no note playing the way it was recorded.
             DiagnosticLog.Write("could not measure the still to orient the video", ex);
         }
+
+        // The stream's size as the player reports it, which is what shows whether
+        // the player has turned it itself.
+        await _viewModel.Gallery.AlignPlaybackAsync(
+            VideoPlayer.NaturalVideoWidth, VideoPlayer.NaturalVideoHeight, stillIsPortrait);
     }
 
     /// <summary>
