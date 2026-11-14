@@ -2253,6 +2253,10 @@ public sealed partial class MainViewModel : ObservableObject
             await Duplicates
                 .FindAsync(progress, _duplicatesCancellation.Token)
                 .ConfigureAwait(true);
+
+            // The side menu counts the groups too, and a search that found new
+            // ones left it saying the old number beside a tab saying the new one.
+            await RefreshCountsAsync().ConfigureAwait(true);
         }
         catch (OperationCanceledException)
         {
