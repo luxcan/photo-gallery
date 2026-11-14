@@ -33,6 +33,25 @@ public sealed class BestOfABurstMarkupTests
         Assert.Contains(binding, s_window, StringComparison.Ordinal);
 
     [Fact]
+    public void TheSuggestedCopyCarriesARibbonAcrossItsCorner()
+    {
+        // The reason under the card is small print; the ribbon is what makes the
+        // suggestion visible across a screenful of sets.
+        Assert.Contains("Style=\"{DynamicResource SuggestedRibbon}\"", s_window, StringComparison.Ordinal);
+        Assert.Contains("Visibility=\"{Binding IsKeeper,", s_window, StringComparison.Ordinal);
+
+        string controls = File.ReadAllText(AppMarkup.PathTo("Theme", "Controls.xaml"));
+        Assert.Contains("x:Key=\"SuggestedRibbon\"", controls, StringComparison.Ordinal);
+        Assert.Contains("<RotateTransform Angle=\"-45\" />", controls, StringComparison.Ordinal);
+
+        // Cut at the photograph's edges, not the tile's: the picture's grid is
+        // centred so it shrinks to the picture as drawn, and clips the ribbon.
+        Assert.Matches(
+            "<Grid x:Name=\"CopyPicture\" ClipToBounds=\"True\"\\s+HorizontalAlignment=\"Center\" VerticalAlignment=\"Center\">",
+            s_window);
+    }
+
+    [Fact]
     public void TheCreditsSayThePackAlsoReadsEyes() =>
         Assert.Contains("tell whether their eyes are open", s_window, StringComparison.Ordinal);
 

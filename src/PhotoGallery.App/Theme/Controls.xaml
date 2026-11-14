@@ -1537,6 +1537,28 @@
     <Setter Property="Padding" Value="5,2" />
   </Style>
 
+  <!-- The copy the app suggests keeping, on a "Looks the same" card: a ribbon
+       across the photograph's top-left corner, in the accent colour, because
+       the reason written under the card is small print that a screenful of sets
+       hides. Laid on a Canvas so its ends can run past the corner, and the
+       picture's grid clips them at the photograph's edges (the card shrinks
+       that grid to the photo, so the cut is never in the letterbox bars).
+       The band's centre sits 30 px in from each edge, which leaves about 85 px
+       of it showing - room for the star and the word on the narrowest tile. -->
+  <Style x:Key="SuggestedRibbon" TargetType="Border">
+    <Setter Property="Background" Value="{DynamicResource AccentBackground}" />
+    <Setter Property="Width" Value="140" />
+    <Setter Property="Height" Value="18" />
+    <Setter Property="Canvas.Left" Value="-40" />
+    <Setter Property="Canvas.Top" Value="21" />
+    <Setter Property="RenderTransformOrigin" Value="0.5,0.5" />
+    <Setter Property="RenderTransform">
+      <Setter.Value>
+        <RotateTransform Angle="-45" />
+      </Setter.Value>
+    </Setter>
+  </Style>
+
   <!-- A photograph the user has ticked on the wall.
 
        A tick rather than a border, because a border is already taken: the

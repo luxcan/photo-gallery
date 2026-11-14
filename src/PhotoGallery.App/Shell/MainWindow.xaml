@@ -3108,7 +3108,12 @@
                                         Command="{Binding DataContext.Duplicates.InspectCopyCommand,
                                                   RelativeSource={RelativeSource AncestorType=Window}}"
                                         CommandParameter="{Binding}">
-                                  <Grid>
+                                  <!-- Centred, so the grid shrinks to the picture as
+                                       drawn rather than filling the tile: the badge's
+                                       corner is then the photograph's corner, not the
+                                       bars beside a tall one or above a wide one. -->
+                                  <Grid x:Name="CopyPicture" ClipToBounds="True"
+                                        HorizontalAlignment="Center" VerticalAlignment="Center">
                                     <Image Source="{Binding Picture}" Stretch="Uniform" />
                                     <!-- A marker over each known face whose closed eyes
                                          cost this copy, so the reason can be checked by
@@ -3142,6 +3147,25 @@
                                         </ItemsControl.ItemTemplate>
                                       </ItemsControl>
                                     </Viewbox>
+                                    <!-- Which copy the app would keep, readable
+                                         at a glance across a screenful of sets.
+                                         A ribbon and not a tick: the suggestion
+                                         never ticks anything for the person. -->
+                                    <Canvas IsHitTestVisible="False"
+                                            Visibility="{Binding IsKeeper,
+                                                         Converter={StaticResource BoolToVisibility}}">
+                                      <Border Style="{DynamicResource SuggestedRibbon}">
+                                        <StackPanel Orientation="Horizontal"
+                                                    HorizontalAlignment="Center" VerticalAlignment="Center">
+                                          <TextBlock Text="&#xE735;" FontFamily="Segoe MDL2 Assets"
+                                                     FontSize="10" VerticalAlignment="Center"
+                                                     Foreground="{DynamicResource AccentForeground}" />
+                                          <TextBlock Text="Suggested" FontSize="10" FontWeight="SemiBold"
+                                                     Margin="3,0,0,0" VerticalAlignment="Center"
+                                                     Foreground="{DynamicResource AccentForeground}" />
+                                        </StackPanel>
+                                      </Border>
+                                    </Canvas>
                                   </Grid>
                                 </Button>
                                 <TextBlock Margin="0,6,0,0" FontSize="12" TextTrimming="CharacterEllipsis"

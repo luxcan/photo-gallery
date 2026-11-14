@@ -286,6 +286,13 @@ When a copy is suggested, its card says which rung decided it:
 | Nothing | no copy marked | **Nothing to choose between these** on the set |
 | Identical set | no copy marked | **These are the same file** on the set |
 
+The suggested copy also carries a **★ Suggested** ribbon in the accent colour,
+running diagonally across the top-left corner of the photograph and cut off at
+its edges (never in the bars beside a tall picture or above a wide one). The
+reason under the card is small print, and with 421 of 503 sets suggesting
+nothing, a screenful of cards gave no sign of which ones did. The ribbon is a
+mark, not a tick: it never ticks the copy.
+
 On the copy's card tile, a known face counted against a copy on eyes gets a
 small marker over its box, so the reason can be checked by eye in a second.
 Only a copy that lost on eyes is marked: unknown faces, faces closed in every
