@@ -3022,9 +3022,29 @@
                                       Converter={StaticResource BoolToVisibility}}" />
             </Grid>
 
-            <ScrollViewer Grid.Row="2" Margin="0,12,0,0" VerticalScrollBarVisibility="Auto"
-                          HorizontalScrollBarVisibility="Disabled">
-              <ItemsControl ItemsSource="{Binding Duplicates.Showing}">
+            <!-- Virtualised: only the sets on screen are built. Several hundred
+                 sets of photographs built at once froze the window for seconds
+                 every time the tab was switched. -->
+            <ItemsControl Grid.Row="2" Margin="0,12,0,0"
+                          ItemsSource="{Binding Duplicates.Showing}"
+                          ScrollViewer.CanContentScroll="True"
+                          VirtualizingPanel.IsVirtualizing="True"
+                          VirtualizingPanel.VirtualizationMode="Recycling"
+                          VirtualizingPanel.ScrollUnit="Pixel">
+                <ItemsControl.Template>
+                  <ControlTemplate TargetType="ItemsControl">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled"
+                                  CanContentScroll="True">
+                      <ItemsPresenter />
+                    </ScrollViewer>
+                  </ControlTemplate>
+                </ItemsControl.Template>
+                <ItemsControl.ItemsPanel>
+                  <ItemsPanelTemplate>
+                    <VirtualizingStackPanel />
+                  </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
                 <ItemsControl.ItemTemplate>
                   <DataTemplate>
                     <Border Margin="0,0,0,10" Padding="12,10"
@@ -3212,8 +3232,7 @@
                     </Border>
                   </DataTemplate>
                 </ItemsControl.ItemTemplate>
-              </ItemsControl>
-            </ScrollViewer>
+            </ItemsControl>
 
             <Grid Grid.Row="3" Margin="0,10,0,0">
               <StackPanel HorizontalAlignment="Left" VerticalAlignment="Center">
