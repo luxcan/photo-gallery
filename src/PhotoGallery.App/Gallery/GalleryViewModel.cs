@@ -617,6 +617,43 @@ public sealed partial class GalleryViewModel : ObservableObject
     private string? _playingPath;
 
     /// <summary>
+    /// Which way up the file of the clip being loaded says it goes, being read.
+    /// </summary>
+    /// <remarks>
+    /// Started the moment the player is given the clip, and off the UI thread,
+    /// because the note sits at the far end of most of these files on a share -
+    /// so the answer is usually in by the time the player says the clip is open.
+    /// </remarks>
+    private Task<VideoOrientation?>? _fileOrientation;
+
+    partial void OnPlayingPathChanged(string? value) =>
+        _fileOrientation = value is null ? null : Task.Run(() => ReadFileOrientation(value));
+
+    private VideoOrientation? ReadFileOrientation(string path)
+    {
+        try
+        {
+            using IServiceScope scope = _scopeFactory.CreateScope();
+            VideoOrientation? read = scope.ServiceProvider
+                .GetRequiredService<IVideoOrientationReader>()
+                .Read(path);
+
+            if (read is null)
+            {
+                DiagnosticLog.Write(
+                    $"{path} does not say which way up it goes; guessing from its shape");
+            }
+
+            return read;
+        }
+        catch (InvalidOperationException ex)
+        {
+            DiagnosticLog.Write($"could not ask {path} which way up it goes", ex);
+            return null;
+        }
+    }
+
+    /// <summary>
     /// Whether the clip is on screen in place of its still.
     /// </summary>
     /// <remarks>
@@ -653,32 +690,48 @@ public sealed partial class GalleryViewModel : ObservableObject
     /// A quarter turn to draw the playing clip with, clockwise.
     /// </summary>
     /// <remarks>
-    /// A phone records portrait video as a landscape stream plus a flag saying
-    /// which way up it goes. The Windows shell honours that flag, so the poster
-    /// is upright; <c>MediaElement</c> does not, so the clip plays on its side -
-    /// upright still, sideways film, from the same file.
+    /// A phone records a turned clip as an upright stream plus a note saying
+    /// which way up it goes. The Windows shell honours that note, so the poster
+    /// is upright; <c>MediaElement</c> does not, so the clip played on its side
+    /// or upside down - upright still, turned film, from the same file.
     ///
-    /// <para>Worked out by comparing the two rather than by reading the
-    /// container: the poster is known to be the right way up, so a poster that
-    /// is portrait while the stream is landscape is exactly the case that needs
-    /// turning. That needs no parser and no new dependency, and it is silent on
-    /// the clips that are already correct.</para>
+    /// <para>This used to be guessed from the stream's shape against the
+    /// poster's, which can see a quarter turn but never a half one: 141 clips in
+    /// the first real library played upside down. The note is read from the file
+    /// now, and the shape is only the fallback for a file with none.</para>
     /// </remarks>
     [ObservableProperty]
     private double _playingRotation;
 
     /// <summary>
-    /// Says how the stream is shaped against the still, so the clip can be drawn
-    /// the way the picture already is.
+    /// Works out which way up to draw the clip the player has just opened.
     /// </summary>
-    /// <param name="streamIsPortrait">Whether the decoded stream is taller than wide.</param>
-    /// <param name="stillIsPortrait">Whether the poster is.</param>
-    public void AlignPlaybackTo(bool streamIsPortrait, bool stillIsPortrait)
+    /// <param name="streamWidth">The width the player reports for the stream.</param>
+    /// <param name="streamHeight">Its height.</param>
+    /// <param name="stillIsPortrait">
+    /// Whether the poster on screen is taller than wide, or null when it could
+    /// not be measured.
+    /// </param>
+    public async Task AlignPlaybackAsync(int streamWidth, int streamHeight, bool? stillIsPortrait)
     {
-        // Ninety rather than two-seventy: a phone held upright writes a
-        // ninety-degree flag, which is nearly all of this library's portrait
-        // video. A clip that comes out upside down is one the user can turn.
-        PlayingRotation = streamIsPortrait == stillIsPortrait ? 0d : 90d;
+        if (OpenTile is not GalleryTile tile || _fileOrientation is not Task<VideoOrientation?> reading)
+        {
+            return;
+        }
+
+        VideoOrientation? file = await reading.ConfigureAwait(true);
+
+        // The viewer may have moved on while the file was read, and this answer
+        // belongs to the clip that was open when it was asked.
+        if (!ReferenceEquals(OpenTile, tile) || !ReferenceEquals(_fileOrientation, reading))
+        {
+            return;
+        }
+
+        // The tile's turn as it is now, not as it was when the read began: a turn
+        // made in the meantime has already moved the picture and must stay.
+        PlayingRotation = PlaybackTurn.For(
+            file, tile.Rotation, streamWidth, streamHeight, stillIsPortrait);
     }
 
     /// <summary>How far into the clip the picture on screen is, in seconds.</summary>
@@ -740,12 +793,11 @@ public sealed partial class GalleryViewModel : ObservableObject
         return span >= TimeSpan.FromHours(1) ? span.ToString(@"h\:mm\:ss") : span.ToString(@"m\:ss");
     }
 
-    /// <summary>Turns the playing clip a quarter, clockwise or back.</summary>
+    /// <summary>Turns the loaded clip's picture a quarter, clockwise or back.</summary>
     /// <remarks>
-    /// Only while it plays, and not written down. The turn a video needs belongs
-    /// to how it was recorded rather than to what the user thinks of it, and the
-    /// automatic answer above is right for nearly all of them - this is for the
-    /// handful it is not, and asking again next time costs one click.
+    /// The picture only. The turn itself is saved the way a photograph's is, by
+    /// <see cref="TurnPhotoCommand"/>, and this is what makes the clip on screen
+    /// follow it at once rather than on the next play.
     /// </remarks>
     public void TurnPlayingVideo(int degrees) =>
         PlayingRotation = ((PlayingRotation + degrees) % 360d + 360d) % 360d;
@@ -3068,16 +3120,6 @@ public sealed partial class GalleryViewModel : ObservableObject
             return;
         }
 
-        // A clip on screen turns here and nowhere else. Turning its still
-        // instead is what this looked like it was doing - the poster rotated
-        // and the film carried on sideways - which is the one outcome that
-        // makes the button look broken while it is working perfectly.
-        if (IsPlayingVideo)
-        {
-            TurnPlayingVideo(turn);
-            return;
-        }
-
         TurnedPhoto result;
 
         // Behind the same gate as naming a face, and for the same reason: both
@@ -3117,7 +3159,17 @@ public sealed partial class GalleryViewModel : ObservableObject
         }
 
         OpenPicture = TileImageLoader.LoadPreview(_thumbnails, tile.ThumbnailName);
-        RepaintTurned(tile, result.CachedOnlyAssets);
+        RepaintTurned(tile, turn, result.CachedOnlyAssets);
+
+        // A clip turns through the same saved path as a photograph, so the turn
+        // is there the next time it is played. A turn made while it played used
+        // to move the film and nothing else, and was gone on the next open. The
+        // loaded clip follows now whether or not it is playing: stopping keeps
+        // it loaded, and playing it again does not work its turn out afresh.
+        if (tile.IsVideo && ReferenceEquals(OpenTile, tile))
+        {
+            TurnPlayingVideo(turn);
+        }
 
         // Said outright, because "the file itself now knows" and "only this app
         // knows" are different situations and the difference is invisible until
@@ -3158,8 +3210,9 @@ public sealed partial class GalleryViewModel : ObservableObject
     /// of them when the viewer stepped onto it.</para>
     /// </remarks>
     /// <param name="open">The tile the turn was made from.</param>
+    /// <param name="degrees">The turn just made, clockwise.</param>
     /// <param name="cachedOnly">The photographs whose file could not be told.</param>
-    private void RepaintTurned(GalleryTile open, IReadOnlyList<int> cachedOnly)
+    private void RepaintTurned(GalleryTile open, int degrees, IReadOnlyList<int> cachedOnly)
     {
         ImageSource? turned = TileImageLoader.LoadTile(_thumbnails, open.ThumbnailName);
 
@@ -3172,6 +3225,12 @@ public sealed partial class GalleryViewModel : ObservableObject
         foreach (GalleryTile tile in showing)
         {
             tile.IsTurnedInAppOnly = cachedOnly.Contains(tile.Item.Id);
+
+            // What the handler recorded: the turn added where the file could not
+            // be told, and cleared where it could.
+            tile.Rotation = tile.IsTurnedInAppOnly
+                ? (((tile.Rotation + degrees) % 360) + 360) % 360
+                : 0;
 
             if (ReferenceEquals(tile, open) || tile.Picture is not null)
             {

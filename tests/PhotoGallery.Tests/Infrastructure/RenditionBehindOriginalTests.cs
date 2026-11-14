@@ -32,18 +32,6 @@ public sealed class RenditionBehindOriginalTests : IDisposable
     }
 
     [Fact]
-    public void AVideoIsNeverBehindAndIsNotRead()
-    {
-        // The clip is held open with no sharing, so any attempt to read it
-        // would fail and come back "cannot tell" (null) instead of 0.
-        string clip = Path.Combine(_root, "clip.mp4");
-        File.WriteAllBytes(clip, new byte[1024]);
-        using var held = new FileStream(clip, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
-
-        Assert.Equal(0, _turner.DegreesBehindOriginal("anything.jpg", clip, 90));
-    }
-
-    [Fact]
     public async Task AFileNobodyTurnedIsNotBehind()
     {
         (string original, string name) = await PreparedAsync();
@@ -98,13 +86,23 @@ public sealed class RenditionBehindOriginalTests : IDisposable
     [Fact]
     public async Task AnOriginalTheDecoderCannotRead_IsNotBehind()
     {
-        // A video. Asking again would hold its turn for ever, and the file holds
-        // no tag this app could have written.
+        // HEIC on a machine without the extension, or a damaged file. Asking
+        // again would hold its turn for ever.
         (_, string name) = await PreparedAsync();
-        string video = Path.Combine(_root, "clip.mp4");
-        await File.WriteAllBytesAsync(video, [0, 0, 0, 24, 102, 116, 121, 112]);
+        string still = Path.Combine(_root, "still.heic");
+        await File.WriteAllBytesAsync(still, [0, 0, 0, 24, 102, 116, 121, 112]);
 
-        Assert.Equal(0, _turner.DegreesBehindOriginal(name, video, 0));
+        Assert.Equal(0, _turner.DegreesBehindOriginal(name, still, 0));
+    }
+
+    [Fact]
+    public async Task AVideo_IsNotBehind_WithoutReadingIt()
+    {
+        // The path does not exist, so any attempt to read it would answer null
+        // and hold the turn. A clip over 2 GB cannot be read whole either.
+        (_, string name) = await PreparedAsync();
+
+        Assert.Equal(0, _turner.DegreesBehindOriginal(name, Path.Combine(_root, "gone.MOV"), 0));
     }
 
     [Fact]

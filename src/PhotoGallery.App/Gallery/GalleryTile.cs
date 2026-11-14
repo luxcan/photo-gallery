@@ -24,7 +24,19 @@ public sealed partial class GalleryTile : ObservableObject
         Item = item;
         ThumbnailName = item.ThumbnailName;
         IsTurnedInAppOnly = item.IsTurnedInAppOnly;
+        Rotation = item.Rotation;
     }
+
+    /// <summary>
+    /// The user's own turn, clockwise, as last known.
+    /// </summary>
+    /// <remarks>
+    /// Moved by a turn made while the tile is on screen, for the same reason as
+    /// <see cref="IsTurnedInAppOnly"/>: the row is fixed for the life of the
+    /// tile. A clip reads this every time it is played, so a turn read from the
+    /// row alone would be undone on the next play until the grid was read again.
+    /// </remarks>
+    public int Rotation { get; set; }
 
     /// <summary>
     /// Whether this picture is only upright inside this app, as last known.

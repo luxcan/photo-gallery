@@ -25,6 +25,24 @@ public sealed class SqliteFaceRepository : IFaceRepository
             return;
         }
 
+        // The turn has just rewritten the preview, and the face pass reads a
+        // preview written after its last look as a changed picture: it looked
+        // again, and looking again deletes every face and the name on it. The
+        // boxes are moved below instead, so the look is as good as new. Only on
+        // rows already looked at - stamping one nobody has looked at would hide
+        // its faces from the pass for good - and before the early return for a
+        // picture with no faces, which was re-read just the same.
+        //
+        // Taken here rather than written as DateTime.UtcNow inside the query,
+        // which SQLite would answer with its own clock in its own text format.
+        DateTime lookedAt = DateTime.UtcNow;
+        await _db.Assets
+            .Where(asset => assetIds.Contains(asset.Id) && asset.FacesDetectedUtc != null)
+            .ExecuteUpdateAsync(
+                set => set.SetProperty(asset => asset.FacesDetectedUtc, lookedAt),
+                cancellationToken)
+            .ConfigureAwait(false);
+
         // The measured preview's size is the space the boxes are drawn in, so a
         // quarter turn swaps it with them. Its readings stay: a turned picture
         // is as sharp and as exposed as it was, and the next pass measures the

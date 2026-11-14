@@ -212,34 +212,84 @@ public sealed class VideoPlaybackTests
     }
 
     [Fact]
-    public void APortraitClipInALandscapeStreamIsTurnedUpright()
+    public async Task AClipIsDrawnTheWayItsFileSays()
     {
-        // What a phone writes: the stream is landscape and a flag says which way
-        // up it goes. The shell honours the flag when it makes the poster;
-        // MediaElement does not, so the still is portrait and the film is not.
-        GalleryViewModel gallery = Showing(AssetKind.Video);
+        // Filed upside down: stream and poster both landscape, which the shape
+        // guess read as already right.
+        GalleryViewModel gallery = Showing(
+            AssetKind.Video, reader: new FixedReader(new VideoOrientation(180, 1280, 720)));
 
-        gallery.AlignPlaybackTo(streamIsPortrait: false, stillIsPortrait: true);
+        await gallery.AlignPlaybackAsync(1280, 720, stillIsPortrait: false);
 
-        Assert.Equal(90d, gallery.PlayingRotation);
+        Assert.Equal(180d, gallery.PlayingRotation);
     }
 
     [Fact]
-    public void AClipAlreadyTheRightWayUpIsLeftAlone()
+    public async Task TheSavedTurnIsAddedToTheFiles()
     {
-        GalleryViewModel gallery = Showing(AssetKind.Video);
+        GalleryViewModel gallery = Showing(
+            AssetKind.Video,
+            reader: new FixedReader(new VideoOrientation(180, 1280, 720)),
+            rotation: 90);
 
-        gallery.AlignPlaybackTo(streamIsPortrait: false, stillIsPortrait: false);
+        await gallery.AlignPlaybackAsync(1280, 720, stillIsPortrait: true);
+
+        Assert.Equal(270d, gallery.PlayingRotation);
+    }
+
+    [Fact]
+    public async Task AStreamThePlayerHasTurnedItselfIsNotTurnedAgain()
+    {
+        GalleryViewModel gallery = Showing(
+            AssetKind.Video, reader: new FixedReader(new VideoOrientation(90, 1920, 1080)));
+
+        await gallery.AlignPlaybackAsync(1080, 1920, stillIsPortrait: true);
 
         Assert.Equal(0d, gallery.PlayingRotation);
     }
 
     [Fact]
-    public void APortraitStreamWithAPortraitStillIsLeftAlone()
+    public async Task WithoutANoteAPortraitClipInALandscapeStreamIsTurnedUpright()
+    {
+        // A file that cannot say - here, a one-byte clip with no reader behind
+        // it - falls back to the shape: the poster is upright, so a portrait
+        // poster over a landscape stream needs a quarter turn.
+        GalleryViewModel gallery = Showing(AssetKind.Video);
+
+        await gallery.AlignPlaybackAsync(1920, 1080, stillIsPortrait: true);
+
+        Assert.Equal(90d, gallery.PlayingRotation);
+    }
+
+    [Fact]
+    public async Task WithoutANoteAClipAlreadyTheRightWayUpIsLeftAlone()
     {
         GalleryViewModel gallery = Showing(AssetKind.Video);
 
-        gallery.AlignPlaybackTo(streamIsPortrait: true, stillIsPortrait: true);
+        await gallery.AlignPlaybackAsync(1920, 1080, stillIsPortrait: false);
+
+        Assert.Equal(0d, gallery.PlayingRotation);
+    }
+
+    [Fact]
+    public async Task WithoutANoteAPortraitStreamWithAPortraitStillIsLeftAlone()
+    {
+        GalleryViewModel gallery = Showing(AssetKind.Video);
+
+        await gallery.AlignPlaybackAsync(1080, 1920, stillIsPortrait: true);
+
+        Assert.Equal(0d, gallery.PlayingRotation);
+    }
+
+    [Fact]
+    public async Task AnAnswerForAClipLeftBehindIsNotApplied()
+    {
+        GalleryViewModel gallery = Showing(
+            AssetKind.Video, reader: new FixedReader(new VideoOrientation(180, 1280, 720)));
+        Task aligning = gallery.AlignPlaybackAsync(1280, 720, stillIsPortrait: false);
+
+        gallery.OpenTile = Tile(AssetKind.Photo);
+        await aligning;
 
         Assert.Equal(0d, gallery.PlayingRotation);
     }
@@ -307,9 +357,19 @@ public sealed class VideoPlaybackTests
     /// draws it.
     /// </remarks>
     private GalleryViewModel Showing(
-        AssetKind kind, bool exists = true, string? fullPath = null)
+        AssetKind kind,
+        bool exists = true,
+        string? fullPath = null,
+        IVideoOrientationReader? reader = null,
+        int rotation = 0)
     {
-        ServiceProvider services = new ServiceCollection().BuildServiceProvider();
+        var registered = new ServiceCollection();
+        if (reader is not null)
+        {
+            registered.AddSingleton(reader);
+        }
+
+        ServiceProvider services = registered.BuildServiceProvider();
         var workingFolder = new WorkingFolder(
             Path.Combine(Path.GetTempPath(), $"pg-play-{Guid.NewGuid():N}"));
 
@@ -319,14 +379,15 @@ public sealed class VideoPlaybackTests
 
         gallery.OpenTile = Tile(
             kind,
-            fullPath ?? (exists ? _clip : Path.Combine(Path.GetTempPath(), "gone", "clip.MOV")));
+            fullPath ?? (exists ? _clip : Path.Combine(Path.GetTempPath(), "gone", "clip.MOV")),
+            rotation);
 
         return gallery;
     }
 
     private GalleryTile Tile(AssetKind kind) => Tile(kind, _clip);
 
-    private static GalleryTile Tile(AssetKind kind, string fullPath) =>
+    private static GalleryTile Tile(AssetKind kind, string fullPath, int rotation = 0) =>
         new(new GalleryItem(
             1,
             @"20250419 - Kidzania\clip.MOV",
@@ -336,6 +397,12 @@ public sealed class VideoPlaybackTests
             "ab/abcdef.jpg",
             null,
             new DateTime(2025, 4, 19, 0, 0, 0, DateTimeKind.Utc),
-            0,
+            rotation,
             kind));
+
+    /// <summary>A file that says the same thing whatever is asked.</summary>
+    private sealed class FixedReader(VideoOrientation? says) : IVideoOrientationReader
+    {
+        public VideoOrientation? Read(string fullPath) => says;
+    }
 }

@@ -62,10 +62,11 @@ public sealed class WindowsRenditionTurner : IRenditionTurner
         ArgumentException.ThrowIfNullOrWhiteSpace(thumbnailName);
         ArgumentException.ThrowIfNullOrWhiteSpace(originalPath);
 
-        // Settled from the name, before anything is read. A video holds no tag
-        // this app could have written, so the answer is always "not behind" -
-        // and reading it first to find that out pulled the whole clip, hundreds
-        // of megabytes, over the network for every video turn a sync brought in.
+        // A clip is known by its name before anything is read. Its file holds no
+        // tag this app could have written, so there is nothing to compare - and
+        // reading it whole would pull the entire film over the share for each
+        // turned clip on every merge, and fail for good on one over 2 GB, holding
+        // its turn for ever.
         if (MediaFileTypes.Classify(originalPath) == AssetKind.Video)
         {
             return 0;
