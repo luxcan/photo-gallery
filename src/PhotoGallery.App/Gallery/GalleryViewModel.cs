@@ -1719,6 +1719,16 @@ public sealed partial class GalleryViewModel : ObservableObject
 
     private async Task LoadOpenFacesAsync(int assetId)
     {
+        // Only for the picture on screen. Saving a name or setting a face aside
+        // re-reads its picture when the write lands, seconds later - and by then
+        // the arrows may have moved on. Going ahead regardless cleared the boxes
+        // of the picture now open and, finding the answer was not for it, never
+        // drew them again: boxes that appeared and then vanished.
+        if (!ShowFaceNames || OpenTile?.Item.Id != assetId)
+        {
+            return;
+        }
+
         long request = Interlocked.Increment(ref _faceLoadVersion);
 
         // Which face the user is being asked about, if any, so that this can put

@@ -37,6 +37,7 @@ public sealed class NamingTwoFacesTests : IDisposable
     private const int FirstFace = 101;
     private const int SecondFace = 102;
     private const int ThePhotograph = 7;
+    private const int NextPhotograph = 8;
 
     private readonly string _root;
     private readonly ServiceProvider _services;
@@ -142,6 +143,39 @@ public sealed class NamingTwoFacesTests : IDisposable
         Assert.Null(_gallery.FacingBeingNamed);
     }
 
+    /// <summary>
+    /// Stepping on to the next picture while a name is still saving leaves the
+    /// next picture's boxes alone.
+    /// </summary>
+    /// <remarks>
+    /// Caught on a screen recording: name a face, press the arrow, and the boxes
+    /// on the picture you land on are drawn and then vanish half a second later.
+    /// The save, finishing, re-read the faces of the picture it was made on -
+    /// and that re-read cleared the boxes on screen before checking which
+    /// picture was open, then found it was not its own and stopped there.
+    /// </remarks>
+    [Fact]
+    public async Task SteppingOnWhileANameSavesKeepsTheNextPicturesBoxes()
+    {
+        await ShowTheFacesAsync();
+
+        _gallery.BeginNamingFaceCommand.Execute(Face(FirstFace));
+        _gallery.Picker.Typed = "Shirley";
+        Task saving = _gallery.Picker.AddCommand.ExecuteAsync(null);
+        await Started(_repository.Entered);
+
+        // The arrow: the next picture opens and draws its own two faces.
+        _gallery.OpenFrom(new PlainGrid(new TileWindow(_thumbnails)), Tile(NextPhotograph));
+        await TestWait.ForAsync(
+            () => _gallery.OpenFaces.Count == 2, "the next picture's faces to be drawn");
+
+        _repository.Release();
+        await saving;
+
+        Assert.Equal(NextPhotograph, _gallery.OpenTile?.Item.Id);
+        Assert.Equal(2, _gallery.OpenFaces.Count);
+    }
+
     /// <summary>Opens the picture with its faces drawn, as the viewer would.</summary>
     private async Task ShowTheFacesAsync()
     {
@@ -156,9 +190,9 @@ public sealed class NamingTwoFacesTests : IDisposable
     private PhotoFaceItem Face(int faceId) =>
         _gallery.OpenFaces.Single(face => face.FaceId == faceId);
 
-    private static GalleryTile Tile() =>
+    private static GalleryTile Tile(int assetId = ThePhotograph) =>
         new(new GalleryItem(
-            ThePhotograph,
+            assetId,
             @"album\photo.jpg",
             "photo.jpg",
             "album",
