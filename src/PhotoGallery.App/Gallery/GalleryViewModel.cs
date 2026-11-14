@@ -143,6 +143,7 @@ public sealed partial class GalleryViewModel : ObservableObject
     private PhotoDetails? _openDetails;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowsEmptyMessage))]
     private bool _isLoading;
 
     public GalleryViewModel(IServiceScopeFactory scopeFactory, IThumbnailStore thumbnails)
@@ -285,6 +286,16 @@ public sealed partial class GalleryViewModel : ObservableObject
     public AlbumPicker Albums { get; }
 
     public bool IsEmpty => _window.Count == 0;
+
+    /// <summary>
+    /// Whether the wall says why it is empty.
+    /// </summary>
+    /// <remarks>
+    /// Not while it is being read. A wall that has never been filled is empty
+    /// until its first read lands, and "No pictures yet" over the fade for the
+    /// length of that read is a claim the read is about to contradict.
+    /// </remarks>
+    public bool ShowsEmptyMessage => IsEmpty && !IsLoading;
 
     // ------------------------------------------------------- choosing several
 
@@ -2257,57 +2268,165 @@ public sealed partial class GalleryViewModel : ObservableObject
         await ShowEverythingAsync().ConfigureAwait(true);
     }
 
+    /// <summary>
+    /// The read the wall will show. Any read started before it gives way.
+    /// </summary>
+    private Task _newestLoad = Task.CompletedTask;
+
+    private CancellationTokenSource? _loadCancellation;
+
     /// <summary>Reads the library and lays it out.</summary>
+    /// <remarks>
+    /// The newest call wins. Two chips pressed in quick succession used to race,
+    /// and a slower first read could fill the wall after a quicker second one,
+    /// so the lit chip and the pictures disagreed. A call that is overtaken does
+    /// not return early either: it waits for the newest one, so whoever called
+    /// it carries on against the wall that is actually showing - the viewer
+    /// opening the photograph that slid into a deleted one's place, say.
+    /// </remarks>
     public async Task LoadAsync(CancellationToken cancellationToken = default)
     {
-        IsLoading = true;
-        try
-        {
-            GalleryQuery query = CurrentQuery();
+        _loadCancellation?.Cancel();
+        var mine = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        _loadCancellation = mine;
 
-            GalleryPage page;
-            using (IServiceScope scope = _scopeFactory.CreateScope())
+        Task load = ReadAndFillAsync(mine);
+        _newestLoad = load;
+
+        while (true)
+        {
+            try
             {
-                page = await scope.ServiceProvider
-                    .GetRequiredService<QueryGalleryHandler>()
-                    .HandleAsync(query, cancellationToken);
+                // Awaited, not merely waited for, even when it is someone else's
+                // read: the caller that overtook this one may have let it go
+                // unwatched, and a failure of the read the wall now depends on
+                // must reach every caller standing on that wall.
+                await load.ConfigureAwait(true);
+            }
+            catch (Exception ex) when (!ReferenceEquals(_newestLoad, load))
+            {
+                // Overtaken. Whatever this read found is an answer nobody is
+                // asking for any more, but a real failure is still worth a line.
+                if (ex is not OperationCanceledException)
+                {
+                    DiagnosticLog.Write("an overtaken library read failed", ex);
+                }
             }
 
-            // Filling also forgets the position asked for before: different
-            // pictures under the same index say nothing about what is on screen
-            // now.
-            _window.Fill(page.Items.Select(item => new GalleryTile(item)
+            if (ReferenceEquals(_newestLoad, load))
             {
-                // Put back on the new tiles, because the old ones have just been
-                // thrown away. A reload after deleting or moving arrives here
-                // with the set already emptied, so this only carries a choice
-                // across a rebuild the user did not ask for - a resize, or the
-                // grid catching up with a pass.
-                IsChosen = _chosen.Contains(item.Id),
-            }));
+                return;
+            }
 
-            // Anything ticked that this query no longer shows is dropped. Acting
-            // on a photograph the wall has stopped showing would be acting on
-            // something nobody can see.
-            _chosen.IntersectWith(_window.Tiles.Select(tile => tile.Item.Id));
-            NotifyChosen();
+            load = _newestLoad;
+        }
+    }
 
-            TotalCount = page.TotalCount;
-            await _window.MarkPreparedAsync(cancellationToken);
-            NotifyCounts();
+    /// <summary>
+    /// One read of the library onto the wall, unless a newer one overtakes it.
+    /// </summary>
+    private async Task ReadAndFillAsync(CancellationTokenSource mine)
+    {
+        CancellationToken cancellationToken = mine.Token;
+        try
+        {
+            IsLoading = true;
+            try
+            {
+                GalleryQuery query = CurrentQuery();
+
+                // Off the dispatcher, the scope with it so its DbContext never
+                // crosses threads. Microsoft.Data.Sqlite answers its async calls
+                // synchronously, so awaited here the read held the window for 270
+                // to 470 ms on the whole library, and about two seconds on the
+                // first read of a session.
+                Task<GalleryPage> reading = Task.Run(
+                    async () =>
+                    {
+                        using IServiceScope scope = _scopeFactory.CreateScope();
+                        return await scope.ServiceProvider
+                            .GetRequiredService<QueryGalleryHandler>()
+                            .HandleAsync(query, cancellationToken)
+                            .ConfigureAwait(false);
+                    },
+                    cancellationToken);
+
+                // Beside the read rather than after it: it needs nothing from the
+                // answer, and finished before the wall is filled, the count never
+                // flashes every picture as not prepared yet.
+                Task<IReadOnlyCollection<string>> listing = ListPreparedAsync(cancellationToken);
+
+                await Task.WhenAll(reading, listing).ConfigureAwait(true);
+
+                // Overtaken while reading: the newer read fills the wall.
+                cancellationToken.ThrowIfCancellationRequested();
+
+                GalleryPage page = await reading.ConfigureAwait(true);
+
+                // Filling also forgets the position asked for before: different
+                // pictures under the same index say nothing about what is on
+                // screen now.
+                _window.Fill(page.Items.Select(item => new GalleryTile(item)
+                {
+                    // Put back on the new tiles, because the old ones have just
+                    // been thrown away. A reload after deleting or moving arrives
+                    // here with the set already emptied, so this only carries a
+                    // choice across a rebuild the user did not ask for - a
+                    // resize, or the grid catching up with a pass.
+                    IsChosen = _chosen.Contains(item.Id),
+                }));
+                _window.MarkPrepared(await listing.ConfigureAwait(true));
+
+                // Anything ticked that this query no longer shows is dropped.
+                // Acting on a photograph the wall has stopped showing would be
+                // acting on something nobody can see.
+                _chosen.IntersectWith(_window.Tiles.Select(tile => tile.Item.Id));
+                NotifyChosen();
+
+                TotalCount = page.TotalCount;
+                NotifyCounts();
+            }
+            finally
+            {
+                // Only the newest read puts the busy state down; an overtaken one
+                // would lift the fade off a wall that is still being read.
+                if (ReferenceEquals(_loadCancellation, mine))
+                {
+                    IsLoading = false;
+                }
+            }
+
+            // Outside the busy state. The wall is current by now; what is left
+            // is decoding the first screen of pictures, which fills in behind
+            // grey tiles. Held under the busy state it kept the wall faded and
+            // out of reach after it was already right.
+            await ShowRangeAsync(0, cancellationToken).ConfigureAwait(true);
         }
         finally
         {
-            IsLoading = false;
-        }
+            if (ReferenceEquals(_loadCancellation, mine))
+            {
+                _loadCancellation = null;
+            }
 
-        // Outside the busy state. The wall is current by now; what is left is
-        // decoding the first screen of pictures, which waits a second for the
-        // view to stop moving and then fills in behind grey tiles as it always
-        // has. Held under the busy state it kept the wall faded and out of reach
-        // for a second and a half after it was already right.
-        await ShowRangeAsync(0, cancellationToken);
+            mine.Dispose();
+        }
     }
+
+    /// <summary>
+    /// Every rendition on disk, from one walk of the thumbnails folder on a
+    /// worker.
+    /// </summary>
+    /// <remarks>
+    /// A shard that cannot be read is skipped and written down rather than
+    /// failing the load: its pictures are counted as not prepared yet, which is
+    /// the worst it can cost.
+    /// </remarks>
+    private Task<IReadOnlyCollection<string>> ListPreparedAsync(CancellationToken cancellationToken) =>
+        Task.Run(
+            () => _thumbnails.ListStoredNames(
+                (folder, error) => DiagnosticLog.Write($"thumbnails: could not read {folder}", error)),
+            cancellationToken);
 
     /// <summary>
     /// What the grid is currently asking for.
@@ -2658,7 +2777,7 @@ public sealed partial class GalleryViewModel : ObservableObject
             }
         }
 
-        await _window.MarkPreparedAsync(cancellationToken);
+        _window.MarkPrepared(await ListPreparedAsync(cancellationToken).ConfigureAwait(true));
         NotifyCounts();
     }
 
@@ -3377,5 +3496,6 @@ public sealed partial class GalleryViewModel : ObservableObject
     {
         OnPropertyChanged(nameof(CountSummary));
         OnPropertyChanged(nameof(IsEmpty));
+        OnPropertyChanged(nameof(ShowsEmptyMessage));
     }
 }

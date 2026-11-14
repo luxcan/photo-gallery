@@ -188,7 +188,7 @@ public sealed class TileWindowRowsTests
 
         public bool TryDelete(string? thumbnailName) => true;
 
-        public IReadOnlyCollection<string> ListStoredNames() => [];
+        public IReadOnlyCollection<string> ListStoredNames(Action<string, Exception>? unreadable = null) => [];
 
         public void RemoveEmptyShards()
         {

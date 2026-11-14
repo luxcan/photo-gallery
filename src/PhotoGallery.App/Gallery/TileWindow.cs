@@ -82,6 +82,20 @@ public sealed class TileWindow
     /// </summary>
     private int _requestedStart = -1;
 
+    /// <summary>
+    /// Whether the wall has just been filled and nobody has scrolled it since.
+    /// </summary>
+    /// <remarks>
+    /// The pause before decoding is there for a viewport that is still moving,
+    /// and a wall that has just been filled is not moving: it measured a whole
+    /// second of grey tiles on every chip and every visit to the library, on top
+    /// of the decode itself. A state rather than a flag on one request, because
+    /// the first screen is asked for several times - by the load, and again by
+    /// the window learning its height and its width - and every one of those
+    /// asks restarts the wait.
+    /// </remarks>
+    private bool _isFresh;
+
     public TileWindow(IThumbnailStore thumbnails)
     {
         ArgumentNullException.ThrowIfNull(thumbnails);
@@ -138,8 +152,19 @@ public sealed class TileWindow
         _tiles = [.. groups.SelectMany(group => group.Tiles)];
         _requestedStart = -1;
         _windowStart = 0;
+        _isFresh = true;
+
+        // A screen still being fetched was fetching for tiles just thrown away,
+        // and finishing it would end the fresh state of a wall it never drew.
+        _rangeCancellation?.Cancel();
         Rebuild();
     }
+
+    /// <summary>
+    /// Whether the next screen asked for is decoded straight away rather than
+    /// after the pause for the viewport to settle.
+    /// </summary>
+    public bool IsFresh => _isFresh;
 
     /// <summary>
     /// Re-cuts the runs without disturbing the tiles, for when only the grouping
@@ -185,10 +210,9 @@ public sealed class TileWindow
             return false;
         }
 
-        // A new list rather than RemoveAt: MarkPreparedAsync walks this one on a
-        // thread of its own, and a list shortened under it throws there. Fill and
-        // Regroup replace it the same way, so a walk already running simply
-        // finishes on the list it started with.
+        // A new list rather than RemoveAt, the way Fill and Regroup replace it,
+        // so anything still walking the old one finishes on the list it started
+        // with instead of throwing on a list shortened under it.
         _tiles = [.. _tiles.Where((_, index) => index != at)];
         _groups =
         [
@@ -314,6 +338,17 @@ public sealed class TileWindow
             return;
         }
 
+        // A position away from the top of a fresh wall is somebody scrolling,
+        // and from there on the pause is earned again. Judged by where it lands
+        // rather than by a scroll event: refilling the list moves its scroll
+        // offset back to the top too, and that is not the user moving.
+        if (_isFresh && !GalleryLayout.IsSamePlace(0, first, _columns))
+        {
+            _isFresh = false;
+        }
+
+        bool settle = !_isFresh;
+
         var mine = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         _rangeCancellation?.Cancel();
         _rangeCancellation = mine;
@@ -343,13 +378,18 @@ public sealed class TileWindow
 
         DiagnosticLog.Write(
             $"range asked at {first} of {_tiles.Count} "
-            + $"(on screen {onScreen}, window {from}..{to})");
+            + $"(on screen {onScreen}, window {from}..{to}"
+            + (settle ? ")" : ", fresh)"));
 
         try
         {
             // Stage one: what is actually on screen, after a pause short enough
-            // that letting go of the scrollbar feels immediate.
-            await Task.Delay(VisibleSettle, mine.Token);
+            // that letting go of the scrollbar feels immediate - or at once, on a
+            // wall that has just been filled.
+            if (settle)
+            {
+                await Task.Delay(VisibleSettle, mine.Token);
+            }
 
             int visibleTo = Math.Min(_tiles.Count, first + onScreen);
             List<GalleryTile> visible = Missing(first, visibleTo);
@@ -359,6 +399,12 @@ public sealed class TileWindow
             {
                 await LoadPicturesAsync(visible, mine.Token);
             }
+
+            // Decoding swallows its own cancellation, so asked again here: only a
+            // first screen that actually finished ends the fresh state, and one
+            // abandoned for a re-ask leaves the re-ask unpaused too.
+            mine.Token.ThrowIfCancellationRequested();
+            _isFresh = false;
 
             DiagnosticLog.Write($"range {first}: on screen done");
 
@@ -475,24 +521,30 @@ public sealed class TileWindow
     }
 
     /// <summary>
-    /// Asks the disk which pictures actually have a rendition.
+    /// Marks which pictures actually have a rendition, from what the store
+    /// listed.
     /// </summary>
     /// <remarks>
-    /// One existence check per picture. Measured at 691 ms for this library,
-    /// which is why it runs on a worker: done on the dispatcher, and repeated on
-    /// every progress report of a running pass, it left the window unresponsive.
+    /// Given the listing rather than asking the disk per picture: one existence
+    /// check per picture cost 3.6 to 4.1 s for 20,000 of them, and the wall stood
+    /// faded for all of it. A lookup per tile in one listing is a few
+    /// milliseconds, so this is done on the dispatcher.
     ///
     /// <para>The row's name alone will not do: a working folder can be copied or
     /// cleaned without its index, leaving names that point at nothing.</para>
     /// </remarks>
-    public Task MarkPreparedAsync(CancellationToken cancellationToken) =>
-        Task.Run(
-            () =>
-            {
-                foreach (GalleryTile tile in _tiles)
-                {
-                    tile.IsPrepared = _thumbnails.Exists(tile.ThumbnailName);
-                }
-            },
-            cancellationToken);
+    public void MarkPrepared(IReadOnlyCollection<string> stored)
+    {
+        ArgumentNullException.ThrowIfNull(stored);
+
+        // The store's own set already ignores case, as the disk does; anything
+        // else is made into one so the lookups stay cheap.
+        IReadOnlySet<string> names = stored as IReadOnlySet<string>
+            ?? new HashSet<string>(stored, StringComparer.OrdinalIgnoreCase);
+
+        foreach (GalleryTile tile in _tiles)
+        {
+            tile.IsPrepared = tile.ThumbnailName is not null && names.Contains(tile.ThumbnailName);
+        }
+    }
 }

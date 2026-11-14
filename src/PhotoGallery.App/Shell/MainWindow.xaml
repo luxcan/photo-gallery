@@ -827,7 +827,7 @@
                            TextWrapping="Wrap"
                            Foreground="{DynamicResource Editor.Placeholder}"
                            Text="{Binding Gallery.EmptyMessage}"
-                           Visibility="{Binding Gallery.IsEmpty,
+                           Visibility="{Binding Gallery.ShowsEmptyMessage,
                                         Converter={StaticResource BoolToVisibility}}" />
               </Grid>
             </Grid>

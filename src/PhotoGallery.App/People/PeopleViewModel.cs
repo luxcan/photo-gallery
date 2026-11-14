@@ -694,7 +694,6 @@ public sealed partial class PeopleViewModel : ObservableObject, IViewerGrid
         IsPersonMenuOpen = false;
 
         Regroup(fresh: true);
-        await _photos.MarkPreparedAsync(CancellationToken.None).ConfigureAwait(true);
         await _photos.ShowRangeAsync(0).ConfigureAwait(true);
     }
 
@@ -787,7 +786,6 @@ public sealed partial class PeopleViewModel : ObservableObject, IViewerGrid
 
         // Fresh, not regrouped: the tiles change, not only their headings.
         Regroup(fresh: true);
-        await _photos.MarkPreparedAsync(CancellationToken.None).ConfigureAwait(true);
         await _photos.ShowRangeAsync(0).ConfigureAwait(true);
     }
 

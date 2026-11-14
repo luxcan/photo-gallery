@@ -84,8 +84,18 @@ public interface IThumbnailStore
     /// between two prepare passes leaves its previous pair of files behind with
     /// nothing naming them. Detaching the library's last source sweeps those up,
     /// which is the only way they can ever be found.
+    ///
+    /// <para>The same answer <see cref="Exists"/> gives, for every name at once
+    /// and from one walk of the folder. The library wall asks it on every load,
+    /// and asking <see cref="Exists"/> once per picture cost 3.6 to 4.1 s for
+    /// 20,000 of them.</para>
     /// </remarks>
-    IReadOnlyCollection<string> ListStoredNames();
+    /// <param name="unreadable">
+    /// Told about any folder that could not be read - a shard removed part-way
+    /// through the walk, say - which is then skipped. Without it the failure is
+    /// thrown rather than quietly read as a folder holding nothing.
+    /// </param>
+    IReadOnlyCollection<string> ListStoredNames(Action<string, Exception>? unreadable = null);
 
     /// <summary>Removes the shard directories that no longer hold anything.</summary>
     void RemoveEmptyShards();

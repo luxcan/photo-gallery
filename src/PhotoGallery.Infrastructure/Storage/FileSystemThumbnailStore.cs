@@ -33,6 +33,24 @@ public sealed class FileSystemThumbnailStore : IThumbnailStore
 
     private const int ShardLength = 2;
 
+    /// <summary>
+    /// How one shard is read when every rendition is listed.
+    /// </summary>
+    /// <remarks>
+    /// Hidden and system files are not skipped, unlike a default
+    /// <see cref="EnumerationOptions"/>: a working folder restored from a backup
+    /// can arrive with its attributes changed, and the files are just as there.
+    /// A folder that refuses to open is not ignored here: ignoring it also covers
+    /// the shard itself, which then lists as empty without a word, so the refusal
+    /// is left to reach <see cref="Listed"/> and be told or thrown.
+    /// </remarks>
+    private static readonly EnumerationOptions s_shardListing = new()
+    {
+        RecurseSubdirectories = true,
+        IgnoreInaccessible = false,
+        AttributesToSkip = 0,
+    };
+
     private readonly IWorkingFolder _workingFolder;
 
     public FileSystemThumbnailStore(IWorkingFolder workingFolder) =>
@@ -151,18 +169,34 @@ public sealed class FileSystemThumbnailStore : IThumbnailStore
         return Gone(ResolveTilePath(thumbnailName)) & Gone(ResolvePreviewPath(thumbnailName));
     }
 
-    public IReadOnlyCollection<string> ListStoredNames()
+    public IReadOnlyCollection<string> ListStoredNames(Action<string, Exception>? unreadable = null)
     {
         var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        if (!Directory.Exists(_workingFolder.ThumbnailsPath))
+        string root = _workingFolder.ThumbnailsPath;
+        if (!Directory.Exists(root))
         {
             return names;
         }
 
-        // Under thumbs\ only, never the working folder root: the root may itself
-        // hold the user's pictures, which is why IsAppOwned refuses it.
-        foreach (string file in Directory.EnumerateFiles(
-                     _workingFolder.ThumbnailsPath, '*' + Extension, SearchOption.AllDirectories))
+        // Every file first, then paired in memory. Asking the disk about each
+        // tile's preview in turn is what made this cost 2.0 to 3.8 s on 20,000
+        // pictures, where the walk on its own takes under a tenth of that.
+        //
+        // Shard by shard, so a shard that goes part-way through - a detach
+        // sweeping it, another copy of the app tidying up - costs that shard
+        // and not the whole answer. Under thumbs\ only, never the working
+        // folder root: the root may itself hold the user's pictures, which is
+        // why IsAppOwned refuses it.
+        var files = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (string shard in Listed(root, Directory.EnumerateDirectories, unreadable))
+        {
+            files.UnionWith(Listed(
+                shard,
+                folder => Directory.EnumerateFiles(folder, '*' + Extension, s_shardListing),
+                unreadable));
+        }
+
+        foreach (string file in files)
         {
             // Windows pattern matching also returns longer extensions, so the
             // search pattern narrows the walk but does not decide the answer.
@@ -178,15 +212,44 @@ public sealed class FileSystemThumbnailStore : IThumbnailStore
                 continue;
             }
 
+            // Both renditions where Exists would look for them, so the two
+            // answers can never disagree about a picture.
             string name = stem + Extension;
             if (RenditionName.IsSafeFileName(name)
-                && File.Exists(ResolvePreviewPath(name)))
+                && files.Contains(ResolveTilePath(name))
+                && files.Contains(ResolvePreviewPath(name)))
             {
                 names.Add(name);
             }
         }
 
         return names;
+    }
+
+    /// <summary>
+    /// One folder's listing, read to the end, or nothing when it would not be
+    /// read and the caller asked to be told rather than stopped.
+    /// </summary>
+    /// <remarks>
+    /// Drained inside the try: entries arrive as the listing is read, so a
+    /// folder removed part-way through fails here rather than in the middle of
+    /// the caller's loop.
+    /// </remarks>
+    private static List<string> Listed(
+        string folder,
+        Func<string, IEnumerable<string>> list,
+        Action<string, Exception>? unreadable)
+    {
+        try
+        {
+            return [.. list(folder)];
+        }
+        catch (Exception ex) when ((ex is IOException or UnauthorizedAccessException)
+                                   && unreadable is not null)
+        {
+            unreadable(folder, ex);
+            return [];
+        }
     }
 
     public void RemoveEmptyShards()
