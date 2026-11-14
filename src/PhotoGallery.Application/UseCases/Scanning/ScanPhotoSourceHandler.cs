@@ -26,12 +26,23 @@ public sealed class ScanPhotoSourceHandler
 {
     private const int BatchSize = 500;
 
+    /// <summary>
+    /// How often the running count goes to the screen: ten times a second.
+    /// </summary>
+    /// <remarks>
+    /// By time rather than by file count, so the count moves as smoothly over a
+    /// slow share as over a fast one. Every file would be thousands of redraws
+    /// a second for no more information than the eye can take in.
+    /// </remarks>
+    private static readonly TimeSpan ReportInterval = TimeSpan.FromMilliseconds(100);
+
     private readonly ILibraryIndex _index;
     private readonly IAssetRepository _assets;
     private readonly IMediaFileWalker _walker;
     private readonly IThumbnailStore _thumbnails;
     private readonly IDecisionReader _decisions;
     private readonly IDecisionRepository _sharing;
+    private readonly TimeProvider _clock;
 
     public ScanPhotoSourceHandler(
         ILibraryIndex index,
@@ -39,7 +50,8 @@ public sealed class ScanPhotoSourceHandler
         IMediaFileWalker walker,
         IThumbnailStore thumbnails,
         IDecisionReader decisions,
-        IDecisionRepository sharing)
+        IDecisionRepository sharing,
+        TimeProvider? clock = null)
     {
         _index = index;
         _assets = assets;
@@ -47,6 +59,7 @@ public sealed class ScanPhotoSourceHandler
         _thumbnails = thumbnails;
         _decisions = decisions;
         _sharing = sharing;
+        _clock = clock ?? TimeProvider.System;
     }
 
     public async Task<ScanResult> HandleAsync(
@@ -96,6 +109,7 @@ public sealed class ScanPhotoSourceHandler
         var superseded = new List<string>();
         int added = 0, updated = 0, unchanged = 0, seen = 0;
         string reportedFolder = string.Empty;
+        long reportedAt = _clock.GetTimestamp();
         bool cancelled = false;
 
         // Timed on its own so a slow crawl can be blamed from the log: the walk
@@ -184,13 +198,16 @@ public sealed class ScanPhotoSourceHandler
                     toUpdate.Clear();
                 }
 
-                // Reported when the folder changes as well as every 250 files,
-                // because a folder holding fewer than that would otherwise never
-                // be named - and on this library most of them hold fewer.
+                // Reported when the folder changes as well as on the clock,
+                // because a folder walked inside one tick would otherwise never
+                // be named - and on this library most folders are that quick.
                 string folder = FolderOf(file.RelativePath);
-                if (seen % 250 == 0 || !string.Equals(folder, reportedFolder, StringComparison.Ordinal))
+                long now = _clock.GetTimestamp();
+                if (_clock.GetElapsedTime(reportedAt, now) >= ReportInterval
+                    || !string.Equals(folder, reportedFolder, StringComparison.Ordinal))
                 {
                     reportedFolder = folder;
+                    reportedAt = now;
                     progress?.Report(
                         new ScanProgress(source.Path, seen, added, updated, unchanged, folder));
                 }

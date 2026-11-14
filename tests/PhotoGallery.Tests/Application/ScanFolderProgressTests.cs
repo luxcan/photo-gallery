@@ -41,7 +41,7 @@ public sealed class ScanFolderProgressTests : IDisposable
     [Fact]
     public async Task Scan_NamesEachFolderAsItReachesIt()
     {
-        // Deliberately small folders. Reporting only every 250 files would never
+        // Deliberately small folders. Reporting only on the clock would never
         // name any of these, and a real library is mostly folders this size.
         WritePhoto(@"20230201\a.jpg");
         WritePhoto(@"20230203 - Chingay\b.jpg");
@@ -78,13 +78,67 @@ public sealed class ScanFolderProgressTests : IDisposable
         Assert.All(seen, folder => Assert.Equal(string.Empty, folder));
     }
 
-    private ScanPhotoSourceHandler NewHandler() =>
+    [Fact]
+    public async Task Scan_ReportsTheCountTenTimesASecondInsideOneFolder()
+    {
+        // Twenty files in one folder, each taking 60 ms of the clock: the count
+        // should move about every other file, not wait for the folder to end.
+        for (int i = 0; i < 20; i++)
+        {
+            WritePhoto($@"big\p{i:00}.jpg");
+        }
+
+        var reports = new RecordingProgress();
+        PhotoSource source = await AddSourceAsync();
+        await NewHandler(new SteppingClock(TimeSpan.FromMilliseconds(60))).HandleAsync(source.Id, reports);
+
+        Assert.InRange(reports.Seen.Count(r => r.Folder == "big"), 9, 11);
+    }
+
+    [Fact]
+    public async Task Scan_DoesNotReportEveryFileBetweenTicks()
+    {
+        // The clock never moves, so only reaching the folder and the final
+        // tally are worth telling the screen about.
+        for (int i = 0; i < 20; i++)
+        {
+            WritePhoto($@"big\p{i:00}.jpg");
+        }
+
+        var reports = new RecordingProgress();
+        PhotoSource source = await AddSourceAsync();
+        await NewHandler(new SteppingClock(TimeSpan.Zero)).HandleAsync(source.Id, reports);
+
+        Assert.Equal(2, reports.Seen.Count);
+        Assert.Equal(20, reports.Seen[^1].Seen);
+    }
+
+    private ScanPhotoSourceHandler NewHandler(TimeProvider? clock = null) =>
         new(new SqliteLibraryIndex(_db),
             new SqliteAssetRepository(_db),
             new MediaFileWalker(_workingFolder),
             new FileSystemThumbnailStore(_workingFolder),
             new SqliteDecisionReader(_db),
-            new SqliteDecisionRepository(_db));
+            new SqliteDecisionRepository(_db),
+            clock);
+
+    /// <summary>Records every report as it is made, without posting anywhere.</summary>
+    private sealed class RecordingProgress : IProgress<ScanProgress>
+    {
+        public List<ScanProgress> Seen { get; } = [];
+
+        public void Report(ScanProgress value) => Seen.Add(value);
+    }
+
+    /// <summary>A clock that moves on by a fixed step every time it is read.</summary>
+    private sealed class SteppingClock(TimeSpan step) : TimeProvider
+    {
+        private long _ticks;
+
+        public override long TimestampFrequency => TimeSpan.TicksPerSecond;
+
+        public override long GetTimestamp() => _ticks += step.Ticks;
+    }
 
     private Task<PhotoSource> AddSourceAsync() =>
         new AddPhotoSourceHandler(new SqliteLibraryIndex(_db), _workingFolder)
