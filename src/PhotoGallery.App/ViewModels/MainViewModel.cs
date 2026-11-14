@@ -101,7 +101,7 @@ public sealed partial class MainViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(IsIdle), nameof(IsOverlayVisible), nameof(CanStopPass))]
     [NotifyCanExecuteChangedFor(nameof(ScanAllCommand), nameof(ScanSourceCommand),
         nameof(AddSourceCommand), nameof(RemoveSourceCommand), nameof(CancelPassCommand),
-        nameof(RecheckPeopleCommand))]
+        nameof(RecheckPeopleCommand), nameof(FindDuplicatesCommand))]
     private bool _isRefreshing;
 
     /// <summary>
@@ -115,7 +115,7 @@ public sealed partial class MainViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(IsIdle), nameof(IsOverlayVisible), nameof(CanStopPass))]
     [NotifyCanExecuteChangedFor(nameof(ScanAllCommand), nameof(ScanSourceCommand),
         nameof(AddSourceCommand), nameof(RemoveSourceCommand), nameof(CancelPassCommand),
-        nameof(RecheckPeopleCommand))]
+        nameof(RecheckPeopleCommand), nameof(FindDuplicatesCommand))]
     private bool _isDetaching;
 
     /// <summary>
@@ -127,7 +127,7 @@ public sealed partial class MainViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(IsIdle), nameof(IsOverlayVisible), nameof(CanStopPass))]
     [NotifyCanExecuteChangedFor(nameof(ScanAllCommand), nameof(ScanSourceCommand),
         nameof(AddSourceCommand), nameof(RemoveSourceCommand), nameof(CancelPassCommand),
-        nameof(RecheckPeopleCommand))]
+        nameof(RecheckPeopleCommand), nameof(FindDuplicatesCommand))]
     private bool _isDetecting;
 
     /// <summary>
@@ -144,7 +144,7 @@ public sealed partial class MainViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(IsIdle), nameof(IsOverlayVisible), nameof(CanStopPass))]
     [NotifyCanExecuteChangedFor(nameof(ScanAllCommand), nameof(ScanSourceCommand),
         nameof(AddSourceCommand), nameof(RemoveSourceCommand), nameof(CancelPassCommand),
-        nameof(RecheckPeopleCommand))]
+        nameof(RecheckPeopleCommand), nameof(FindDuplicatesCommand))]
     private bool _isDeleting;
 
     /// <summary>True while an album's originals are being checked or moved.</summary>
@@ -152,7 +152,7 @@ public sealed partial class MainViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(IsIdle), nameof(IsOverlayVisible), nameof(CanStopPass))]
     [NotifyCanExecuteChangedFor(nameof(ScanAllCommand), nameof(ScanSourceCommand),
         nameof(AddSourceCommand), nameof(RemoveSourceCommand), nameof(CancelPassCommand),
-        nameof(RecheckPeopleCommand))]
+        nameof(RecheckPeopleCommand), nameof(FindDuplicatesCommand))]
     private bool _isMovingAlbum;
 
     /// <summary>
@@ -269,7 +269,7 @@ public sealed partial class MainViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(IsIdle), nameof(IsOverlayVisible), nameof(CanStopPass))]
     [NotifyCanExecuteChangedFor(nameof(CancelPassCommand), nameof(ScanAllCommand),
         nameof(ScanSourceCommand), nameof(AddSourceCommand), nameof(RemoveSourceCommand),
-        nameof(RecheckPeopleCommand))]
+        nameof(RecheckPeopleCommand), nameof(FindDuplicatesCommand))]
     private bool _isTidying;
 
     private const string TidyingHint = "Updating the screens - this can take a few seconds.";

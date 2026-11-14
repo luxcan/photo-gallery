@@ -58,6 +58,37 @@ public sealed class MainViewModelTests : IDisposable
         Assert.Null(_main.Gallery.OpenPicture);
     }
 
+    /// <summary>
+    /// "Look for duplicates" comes back after any other pass, not only its own.
+    /// </summary>
+    /// <remarks>
+    /// The toolkit's commands never ask again by themselves: a button that last
+    /// asked while the sync on opening was taking changes stayed disabled for the
+    /// rest of the session, so a click did nothing - no overlay, nothing
+    /// measured, and no suggestion on the screen.
+    /// </remarks>
+    [Theory]
+    [InlineData(nameof(MainViewModel.IsRefreshing))]
+    [InlineData(nameof(MainViewModel.IsDetaching))]
+    [InlineData(nameof(MainViewModel.IsDetecting))]
+    [InlineData(nameof(MainViewModel.IsDeleting))]
+    [InlineData(nameof(MainViewModel.IsMovingAlbum))]
+    [InlineData(nameof(MainViewModel.IsTidying))]
+    [InlineData(nameof(MainViewModel.IsFindingDuplicates))]
+    public void LookForDuplicates_IsAskedAgainWhenAnyPassEnds(string busyFlag)
+    {
+        System.Reflection.PropertyInfo flag = typeof(MainViewModel).GetProperty(busyFlag)!;
+        int asked = 0;
+        _main.FindDuplicatesCommand.CanExecuteChanged += (_, _) => asked++;
+
+        flag.SetValue(_main, true);
+        Assert.False(_main.FindDuplicatesCommand.CanExecute(null));
+
+        flag.SetValue(_main, false);
+        Assert.True(_main.FindDuplicatesCommand.CanExecute(null));
+        Assert.True(asked >= 2, $"the button was told to ask again {asked} time(s) across {busyFlag} going on and off");
+    }
+
     [Fact]
     public void ChangingSection_WithNothingOpenDoesNotThrow()
     {
