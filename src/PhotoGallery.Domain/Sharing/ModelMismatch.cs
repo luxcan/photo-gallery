@@ -16,7 +16,7 @@ public sealed record ModelMismatch(MachineIdentity Machine, IReadOnlyList<string
     public string Explain() =>
         Models.Count == 1
             ? $"{Machine.Name} is running a different {Models[0]} model, so the faces it has "
-            + "already found were not taken. Its answers and pictures were."
+            + "already found were not taken. Its changes and pictures were."
             : $"{Machine.Name} is running different {string.Join(" and ", Models)} models, so "
-            + "the faces it has already found were not taken. Its answers and pictures were.";
+            + "the faces it has already found were not taken. Its changes and pictures were.";
 }

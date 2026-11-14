@@ -267,7 +267,7 @@ public sealed record RefreshResult(
 
     /// <summary>A count of answers, with one said as one.</summary>
     private static string AnswerCount(int count) =>
-        count == 1 ? "1 answer" : $"{count:N0} answers";
+        count == 1 ? "1 change" : $"{count:N0} changes";
 
     /// <summary>
     /// A duration at the precision somebody reading a scan log cares about.
@@ -340,7 +340,7 @@ public sealed record RefreshResult(
                 : string.Empty;
 
             string settled = AnswersSettled > 0
-                ? $", {AnswerCount(AnswersSettled)} needed no change"
+                ? $", {AnswerCount(AnswersSettled)} made no difference"
                 : string.Empty;
 
             string counted = $"{Added:N0} new, {Updated:N0} changed, {Removed:N0} gone, "
@@ -374,9 +374,9 @@ public sealed record RefreshResult(
             string waiting = AnswersWaiting switch
             {
                 0 => string.Empty,
-                1 => ". 1 answer is still waiting for something this library does not have "
+                1 => ". 1 change is still waiting for something this library does not have "
                      + "yet - the Sync screen says what",
-                _ => $". {AnswersWaiting:N0} answers are still waiting for something this "
+                _ => $". {AnswersWaiting:N0} changes are still waiting for something this "
                      + "library does not have yet - the Sync screen says what",
             };
 

@@ -8,7 +8,7 @@ namespace PhotoGallery.Tests.App;
 /// What the Sync screen says about answers waiting for their photographs.
 /// </summary>
 /// <remarks>
-/// There was one sentence for all of them: "N answers are waiting for photos
+/// There was one sentence for all of them: "N changes are waiting for photos
 /// this library has not indexed yet. Scanning will bring them in." On a real
 /// library it was false for every one of the thirty-eight it counted, and it had
 /// no test on a single word of it - while the sentence next to it, about the
@@ -49,7 +49,7 @@ public sealed class WaitingCopyTests : IDisposable
         _sharing.WaitingOnFaces = 4;
 
         Assert.Contains(
-            "4 answers are waiting on faces this computer has not found yet",
+            "4 changes are waiting on faces this computer has not found yet",
             _sharing.WaitingOnFacesLabel,
             StringComparison.Ordinal);
 
@@ -77,7 +77,7 @@ public sealed class WaitingCopyTests : IDisposable
         string said = _sharing.WaitingHereLabel;
 
         Assert.Contains(
-            "2 answers about photos that are already here are waiting",
+            "2 changes to photos that are already here are waiting",
             said,
             StringComparison.Ordinal);
         Assert.Contains("small copies to turn", said, StringComparison.Ordinal);
@@ -121,13 +121,13 @@ public sealed class WaitingCopyTests : IDisposable
         _sharing.WaitingOnPhotos = 37;
 
         Assert.Contains(
-            "37 answers are waiting for photos that are not in your folders",
+            "37 changes are waiting for photos that are not in your folders",
             _sharing.WaitingOnPhotosLabel,
             StringComparison.Ordinal);
 
         Assert.Contains("If they turn up", _sharing.WaitingOnPhotosLabel, StringComparison.Ordinal);
         Assert.Contains(
-            "under their old names, a scan brings the answers in",
+            "under their old names, a scan brings the changes in",
             _sharing.WaitingOnPhotosLabel,
             StringComparison.Ordinal);
     }
@@ -184,13 +184,13 @@ public sealed class WaitingCopyTests : IDisposable
         _sharing.WaitingElsewherePhotos = 1;
 
         Assert.Contains(
-            "1 answer is waiting on a face", _sharing.WaitingOnFacesLabel, StringComparison.Ordinal);
+            "1 change is waiting on a face", _sharing.WaitingOnFacesLabel, StringComparison.Ordinal);
         Assert.Contains(
-            "1 answer about a photo that is already here is waiting",
+            "1 change to a photo that is already here is waiting",
             _sharing.WaitingHereLabel,
             StringComparison.Ordinal);
         Assert.Contains(
-            "1 answer is waiting for a photo",
+            "1 change is waiting for a photo",
             _sharing.WaitingOnPhotosLabel,
             StringComparison.Ordinal);
         Assert.Contains(
@@ -200,7 +200,7 @@ public sealed class WaitingCopyTests : IDisposable
 
         foreach (string said in All())
         {
-            Assert.DoesNotContain("1 answers", said, StringComparison.Ordinal);
+            Assert.DoesNotContain("1 changes", said, StringComparison.Ordinal);
             Assert.DoesNotContain("1 photos", said, StringComparison.Ordinal);
         }
     }

@@ -30,7 +30,7 @@ public sealed record AssignmentResult(
         ? Settled
         : WasCapped
             ? $"{Settled}. {Matched:N0} more look like them - "
-              + $"showing the closest {Proposed:N0}, and the rest after you answer these."
+              + $"showing the closest {Proposed:N0}, and the rest after you go through these."
             : $"{Settled}, and {Waiting}";
 
     /// <summary>What was just decided, counted as a sentence rather than a sum.</summary>

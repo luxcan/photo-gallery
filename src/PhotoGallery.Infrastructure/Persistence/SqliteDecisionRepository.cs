@@ -94,7 +94,7 @@ public sealed class SqliteDecisionRepository : IDecisionRepository
         await ApplyRejectionsAsync(plan, cancellationToken).ConfigureAwait(false);
         await ApplyErasAsync(plan, cancellationToken).ConfigureAwait(false);
 
-        progress?.Report(new MergeProgress("Waiting answers", 0, plan.Held.Count));
+        progress?.Report(new MergeProgress("Waiting changes", 0, plan.Held.Count));
 
         int held = await HoldAsync(plan.Held, cancellationToken).ConfigureAwait(false);
 

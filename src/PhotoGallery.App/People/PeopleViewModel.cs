@@ -1194,7 +1194,7 @@ public sealed partial class PeopleViewModel : ObservableObject, IViewerGrid
             {
                 // The face stays in the queue: an answer that was not written is
                 // an answer still to give.
-                Status = $"That answer could not be saved: {ex.Message}";
+                Status = $"That change could not be saved: {ex.Message}";
                 return;
             }
 
@@ -1459,7 +1459,7 @@ public sealed partial class PeopleViewModel : ObservableObject, IViewerGrid
             }
             catch (Exception ex) when (LibraryFailure.IsExpected(ex))
             {
-                Status = $"That answer could not be saved: {ex.Message}";
+                Status = $"That change could not be saved: {ex.Message}";
                 return;
             }
 

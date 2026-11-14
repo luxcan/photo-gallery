@@ -113,8 +113,8 @@ public sealed record PoolResult(
             if (Swept is { Applied: > 0 } swept)
             {
                 parts.Add(swept.Applied == 1
-                    ? "1 waiting answer applied"
-                    : $"{swept.Applied:N0} waiting answers applied");
+                    ? "1 waiting change applied"
+                    : $"{swept.Applied:N0} waiting changes applied");
             }
 
             string done = parts.Count == 0
@@ -160,7 +160,7 @@ public sealed record PoolResult(
         string[] waitingOn =
         [
             .. FacesWaitFor,
-            .. Enumerable.Repeat("a computer whose answers could not be read", FacesWaitForUnreadable),
+            .. Enumerable.Repeat("a computer whose changes could not be read", FacesWaitForUnreadable),
         ];
 
         if (waitingOn.Length == 0)

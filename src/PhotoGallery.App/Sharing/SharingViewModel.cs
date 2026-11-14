@@ -239,9 +239,9 @@ public sealed partial class SharingViewModel : ObservableObject
                 : " - they are in a folder only another computer has";
 
             return WaitingElsewherePhotos == 1
-                ? $"1 photo this computer cannot see has an answer waiting{where}. Put that "
+                ? $"1 photo this computer cannot see has a change waiting{where}. Put that "
                   + "folder where every computer can reach it."
-                : $"{WaitingElsewherePhotos:N0} photos this computer cannot see have answers "
+                : $"{WaitingElsewherePhotos:N0} photos this computer cannot see have changes "
                   + $"waiting{where}. Put that folder where every computer can reach it.";
         }
     }
@@ -258,12 +258,12 @@ public sealed partial class SharingViewModel : ObservableObject
     /// </remarks>
     public string WaitingOnPhotosLabel =>
         WaitingOnPhotos == 1
-            ? "1 answer is waiting for a photo that is not in your folders - renamed, moved, "
+            ? "1 change is waiting for a photo that is not in your folders - renamed, moved, "
               + "or not arrived yet. If it turns up under its old name, a scan brings the "
-              + "answer in."
-            : $"{WaitingOnPhotos:N0} answers are waiting for photos that are not in your "
+              + "change in."
+            : $"{WaitingOnPhotos:N0} changes are waiting for photos that are not in your "
               + "folders - renamed, moved, or not arrived yet. If they turn up under their "
-              + "old names, a scan brings the answers in.";
+              + "old names, a scan brings the changes in.";
 
     /// <summary>
     /// Answers waiting on this computer's own face pass, the photograph being
@@ -282,9 +282,9 @@ public sealed partial class SharingViewModel : ObservableObject
     /// </remarks>
     public string WaitingOnFacesLabel =>
         WaitingOnFaces == 1
-            ? "1 answer is waiting on a face this computer has not found yet. The next scan "
+            ? "1 change is waiting on a face this computer has not found yet. The next scan "
               + "may pick it up."
-            : $"{WaitingOnFaces:N0} answers are waiting on faces this computer has not found "
+            : $"{WaitingOnFaces:N0} changes are waiting on faces this computer has not found "
               + "yet. The next scan may pick them up.";
 
     /// <summary>
@@ -309,10 +309,10 @@ public sealed partial class SharingViewModel : ObservableObject
     /// </remarks>
     public string WaitingHereLabel =>
         WaitingHere == 1
-            ? "1 answer about a photo that is already here is waiting for the end of a scan, "
+            ? "1 change to a photo that is already here is waiting for the end of a scan, "
               + "a small copy to turn, or an album to put it in. The next scan may pick it "
               + "up."
-            : $"{WaitingHere:N0} answers about photos that are already here are waiting for "
+            : $"{WaitingHere:N0} changes to photos that are already here are waiting for "
               + "the end of a scan, small copies to turn, or albums to put them in. The next "
               + "scan may pick them up.";
 
@@ -384,7 +384,7 @@ public sealed partial class SharingViewModel : ObservableObject
         {
             // Looking is not a thing anybody asked for, so it is not a thing
             // anybody should be told has failed.
-            _log.Append($"could not look for answers to sync: {ex.Message}");
+            _log.Append($"could not look for changes to sync: {ex.Message}");
 
             return null;
         }
@@ -626,8 +626,8 @@ public sealed partial class SharingViewModel : ObservableObject
             if (result.Merged.Unreadable.Count > 0)
             {
                 Status += result.Merged.Unreadable.Count == 1
-                    ? " One computer's answers could not be read this time."
-                    : $" {result.Merged.Unreadable.Count} computers' answers could not be read "
+                    ? " One computer's changes could not be read this time."
+                    : $" {result.Merged.Unreadable.Count} computers' changes could not be read "
                       + "this time.";
             }
 
@@ -696,7 +696,7 @@ public sealed partial class SharingViewModel : ObservableObject
             // answered question does not sit there being asked again.
             Offers = [.. Offers.Where(other => other != offer)];
             Status = "Those two folders are one from now on. Sync again to bring "
-                   + "everybody's answers across.";
+                   + "everybody's changes across.";
 
             await ReadAsync().ConfigureAwait(true);
         }

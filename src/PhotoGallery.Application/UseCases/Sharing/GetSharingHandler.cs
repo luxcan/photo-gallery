@@ -131,7 +131,7 @@ public sealed class GetSharingHandler
             standing.Add(new MachineStanding(
                 names.TryGetValue(machine, out string? name)
                     ? name
-                    : "A computer this library has not taken answers from yet",
+                    : "A computer this library has not taken changes from yet",
                 shared.TryGetValue(machine, out DateTime when) ? when : null,
                 names.ContainsKey(machine)));
         }

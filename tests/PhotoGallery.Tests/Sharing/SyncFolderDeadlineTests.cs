@@ -51,7 +51,7 @@ public sealed class SyncFolderDeadlineTests : IDisposable
 
         Assert.False(status.CanShare);
         Assert.Equal(_house.SharedFolder, status.Folder);
-        Assert.StartsWith("That folder did not answer within ", status.Problem, StringComparison.Ordinal);
+        Assert.StartsWith("That folder did not respond within ", status.Problem, StringComparison.Ordinal);
         Assert.EndsWith(_house.SharedFolder, status.Problem, StringComparison.Ordinal);
     }
 
@@ -87,7 +87,7 @@ public sealed class SyncFolderDeadlineTests : IDisposable
         ShareResult result = await Sharing(folder).HandleAsync().WaitAsync(s_bound);
 
         Assert.False(result.Shared);
-        Assert.StartsWith("That folder did not answer within ", result.Summary, StringComparison.Ordinal);
+        Assert.StartsWith("That folder did not respond within ", result.Summary, StringComparison.Ordinal);
         Assert.Empty(Dad.Db.FaceAssignments);
     }
 

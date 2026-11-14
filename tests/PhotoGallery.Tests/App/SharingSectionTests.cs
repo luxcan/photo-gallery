@@ -145,7 +145,7 @@ public sealed class SharingSectionTests
         string said = PhotoGallery.Application.UseCases.Sharing.SyncFolderAnswer.Silent(
             folder, PhotoGallery.Application.UseCases.Sharing.SyncFolderProbe.Deadline).Problem;
 
-        Assert.Equal($"That folder did not answer within 15 seconds: {folder}", said);
+        Assert.Equal($"That folder did not respond within 15 seconds: {folder}", said);
 
         foreach (string banned in Banned)
         {
@@ -206,6 +206,25 @@ public sealed class SharingSectionTests
         int here = waiting.IndexOf("WaitingHereLabel", StringComparison.Ordinal);
 
         Assert.True(elsewhere > 0 && photos > elsewhere && faces > photos && here > faces);
+    }
+
+    /// <summary>
+    /// What one computer sends another is its changes, never its "answers".
+    /// </summary>
+    /// <remarks>
+    /// "Answers" was the code's word for them and leaked onto the screen, where
+    /// it meant nothing to anybody outside the code; the user asked for it to be
+    /// replaced throughout the app. Read over every literal the window shows,
+    /// not just this screen, because the same word had spread to the overlay
+    /// and the notice. Bindings are skipped: an identifier is not copy.
+    /// </remarks>
+    [Fact]
+    public void NothingInTheWindowSaysAnswers()
+    {
+        foreach (Match text in Regex.Matches(s_window, "(?:Text|Content|ToolTip|Header|Title)=\"([^\"{][^\"]*)\""))
+        {
+            Assert.DoesNotContain("answer", text.Groups[1].Value, StringComparison.OrdinalIgnoreCase);
+        }
     }
 
     [Fact]
@@ -442,7 +461,7 @@ public sealed class SharingSectionTests
         string section = Section();
 
         int start = section.IndexOf(
-            "Answers waiting for their photos", StringComparison.Ordinal);
+            "Changes waiting for their photos", StringComparison.Ordinal);
         Assert.True(start > 0, "the waiting answers are not on the screen");
 
         int end = section.IndexOf(

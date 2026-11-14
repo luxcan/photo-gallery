@@ -93,7 +93,7 @@ public static class DecisionSetFile
         DecisionSet read = await JsonSerializer
             .DeserializeAsync<DecisionSet>(gzip, Shape, cancellationToken)
             .ConfigureAwait(false)
-            ?? throw new JsonException("The file held no answers.");
+            ?? throw new JsonException("The file held no changes.");
 
         return read.WithDeletedSuggestionsPutBack();
     }

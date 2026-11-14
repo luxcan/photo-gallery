@@ -55,7 +55,7 @@ public sealed class SyncScreenDeadlineTests : IDisposable
         await sharing.RefreshAsync().WaitAsync(s_bound);
 
         Assert.False(sharing.IsChecking);
-        Assert.StartsWith("That folder did not answer within ", sharing.Problem, StringComparison.Ordinal);
+        Assert.StartsWith("That folder did not respond within ", sharing.Problem, StringComparison.Ordinal);
         Assert.EndsWith(_house.SharedFolder, sharing.Problem, StringComparison.Ordinal);
         Assert.False(sharing.ShareCommand.CanExecute(null));
         Assert.False(sharing.FolderWasThere);
@@ -112,7 +112,7 @@ public sealed class SyncScreenDeadlineTests : IDisposable
         _folder.GoesQuiet();
         await sharing.ShareCommand.ExecuteAsync(null).WaitAsync(s_bound);
 
-        Assert.StartsWith("That folder did not answer within ", sharing.Problem, StringComparison.Ordinal);
+        Assert.StartsWith("That folder did not respond within ", sharing.Problem, StringComparison.Ordinal);
         Assert.False(sharing.IsBusy);
         Assert.False(sharing.ShareCommand.CanExecute(null));
         Assert.False(
@@ -173,7 +173,7 @@ public sealed class SyncScreenDeadlineTests : IDisposable
         string start = await sharing.FolderToBrowseFromAsync().WaitAsync(s_bound);
 
         Assert.Empty(start);
-        Assert.StartsWith("That folder did not answer within ", sharing.Problem, StringComparison.Ordinal);
+        Assert.StartsWith("That folder did not respond within ", sharing.Problem, StringComparison.Ordinal);
         Assert.False(sharing.ShareCommand.CanExecute(null));
         Assert.True(sharing.IsIdle);
 

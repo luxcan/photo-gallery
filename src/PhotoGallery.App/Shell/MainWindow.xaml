@@ -2697,7 +2697,7 @@
                             Visibility="{Binding Sharing.HasWaiting,
                                          Converter={StaticResource BoolToVisibility}}">
                   <TextBlock Style="{DynamicResource FieldLabel}"
-                             Text="Answers waiting for their photos" />
+                             Text="Changes waiting for their photos" />
 
                   <!-- The one with something to do about it: the pictures are on
                        one computer and nowhere else, and the fix is a folder

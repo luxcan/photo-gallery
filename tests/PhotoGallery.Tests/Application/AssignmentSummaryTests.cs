@@ -32,7 +32,7 @@ public sealed class AssignmentSummaryTests
         Assert.True(result.WasCapped);
         Assert.Equal(
             "4 faces are Ana. 812 more look like them - showing the closest 300, "
-            + "and the rest after you answer these.",
+            + "and the rest after you go through these.",
             result.Summary);
     }
 

@@ -1379,7 +1379,7 @@ public sealed partial class AlbumsViewModel : ObservableObject, IViewerGrid
         }
         catch (Exception ex) when (LibraryFailure.IsExpected(ex))
         {
-            SuggestionNote = $"That one could not be answered: {ex.Message}";
+            SuggestionNote = $"That one could not be saved: {ex.Message}";
             return false;
         }
 

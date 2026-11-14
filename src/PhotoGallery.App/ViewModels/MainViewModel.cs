@@ -2062,7 +2062,7 @@ public sealed partial class MainViewModel : ObservableObject
 
         IsTidying = true;
         IsSettling = true;
-        OverlayTitle = "Taking in answers from your other computer";
+        OverlayTitle = "Taking in changes from your other computer";
         OverlayTarget = string.Empty;
         OverlayStatus = "looking in the sync folder...";
         OverlayIsIndeterminate = true;
@@ -2091,14 +2091,14 @@ public sealed partial class MainViewModel : ObservableObject
                     .ConfigureAwait(false);
             }).ConfigureAwait(true);
 
-            Append($"took answers from the sync folder: {result.Summary}");
+            Append($"took changes from the sync folder: {result.Summary}");
             Sharing.Settled();
             Say(result.Summary);
         }
         catch (Exception ex) when (LibraryFailure.IsExpected(ex))
         {
-            Append($"could not take the answers to sync: {ex}");
-            Say($"Those answers could not be taken: {ex.Message}");
+            Append($"could not take the changes to sync: {ex}");
+            Say($"Those changes could not be taken: {ex.Message}");
         }
         finally
         {
@@ -2622,7 +2622,7 @@ public sealed partial class MainViewModel : ObservableObject
             // On a machine that shares with nobody this phase is one
             // count and is never seen. On one that does, it is where
             // another computer's answers land.
-            OverlayTitle = "Taking in answers from your other computer";
+            OverlayTitle = "Taking in changes from your other computer";
             OverlayTarget = p.Target.Length > 0
                 ? p.Target
                 : "names, albums, and what was waiting for these photos";

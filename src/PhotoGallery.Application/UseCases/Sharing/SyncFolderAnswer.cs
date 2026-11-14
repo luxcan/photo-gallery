@@ -59,6 +59,6 @@ public sealed record SyncFolderAnswer(string Folder, string Problem, string? Rea
     public static SyncFolderAnswer Silent(string folder, TimeSpan patience) =>
         new(
             folder,
-            $"That folder did not answer within {patience.TotalSeconds:N0} seconds: {folder}",
-            $"the sync folder did not answer within {patience.TotalSeconds:N0} seconds: {folder}");
+            $"That folder did not respond within {patience.TotalSeconds:N0} seconds: {folder}",
+            $"the sync folder did not respond within {patience.TotalSeconds:N0} seconds: {folder}");
 }

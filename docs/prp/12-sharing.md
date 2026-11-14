@@ -841,7 +841,7 @@ share carries only what is new.
 - **Merging is resumable and stoppable**, like every other pass. What has been
   applied is applied; what has not is picked up next time.
 - **The receiving machine reports what changed**, by count and by kind: names
-  gained, answers replaced, albums joined, decisions held. A merge that says
+  gained, names changed, albums joined, decisions held. A merge that says
   nothing is a merge nobody can trust or undo.
 - **A merge never removes a photograph from a library**, whatever the other
   machine did with its own files.
@@ -849,6 +849,29 @@ share carries only what is new.
   editable and carries no meaning.
 - **The UI names no device and no protocol**, per the app's copy rules. "The
   other computers in the house", not "the NAS", not "the peer", not "mDNS".
+- **On screen, what one computer sends another is its "changes", never its
+  "answers"** (the user, 14 November 2026). "Answers" is the code's word and
+  stays in identifiers; it had leaked onto the Sync screen, the overlay, the
+  scan summary and the notices, where it meant nothing to anybody. Where the
+  word meant something else, the copy says what it means: a folder that "did
+  not respond", "names changed" in a summary, and settled changes that "made
+  no difference". The sync folder's own `answers` directory keeps its name,
+  because renaming it would cut off every computer still on an older build. A
+  test reads every literal in the window and fails on the word.
+- **The sentence after a sync is the user's own** (14 November 2026):
+
+  | What happened | What the screen says |
+  |---|---|
+  | Nothing came in | You're up to date. |
+  | Something came in | 5 photos moved. You're up to date. |
+  | This computer's changes could not be sent | 5 photos moved, but you are unable to sync your changes with others. |
+
+  "Up to date" is said only when every other computer was heard from: not
+  after one was refused or could not be read, not when folders were filed at
+  different depths, and not before any other computer has synced. Each of
+  those leaves something unheard, and "up to date" beside it would be the
+  reassurance the sentence before it takes back. Why the changes could not be
+  sent goes to the log, not the screen.
 - The Sharing screen opens by saying what will and will not be sent, before
   anything is nominated.
 

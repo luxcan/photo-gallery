@@ -127,7 +127,7 @@ public sealed record MergeResult(
         {
             List<string> parts = [];
             Add(parts, Outcome.NamesGained, "name", "names");
-            Add(parts, Outcome.NamesReplaced, "answer replaced", "answers replaced");
+            Add(parts, Outcome.NamesReplaced, "name changed", "names changed");
             Add(parts, Outcome.PeopleGained, "person", "people");
             Add(parts, Outcome.FacesSetAside, "face set aside", "faces set aside");
             Add(parts, Outcome.PhotographsTurned, "photo turned", "photos turned");

@@ -528,7 +528,7 @@ public sealed class RefreshLibraryHandlerTests : IDisposable
 
         Assert.Equal(1, result.AnswersApplied);
         Assert.Equal(0, result.AnswersWaiting);
-        Assert.Contains(", 1 answer applied", result.Summary);
+        Assert.Contains(", 1 change applied", result.Summary);
         Assert.DoesNotContain("settled", result.Summary);
 
         _db.ChangeTracker.Clear();
@@ -563,7 +563,7 @@ public sealed class RefreshLibraryHandlerTests : IDisposable
         Assert.Equal(0, result.AnswersApplied);
         Assert.Equal(1, result.AnswersWaiting);
         Assert.Contains(
-            "1 answer is still waiting for something this library does not have yet",
+            "1 change is still waiting for something this library does not have yet",
             result.Summary);
 
         // Not the old sentence, which named one cause for every held answer and
@@ -620,7 +620,7 @@ public sealed class RefreshLibraryHandlerTests : IDisposable
         Assert.Equal(0, result.AnswersApplied);
         Assert.Equal(1, result.AnswersSettled);
         Assert.Equal(0, result.AnswersWaiting);
-        Assert.Contains(", 1 answer needed no change", result.Summary);
+        Assert.Contains(", 1 change made no difference", result.Summary);
         Assert.DoesNotContain("later", result.Summary);
         Assert.DoesNotContain("applied", result.Summary);
         Assert.Empty(_db.HeldDecisions);
@@ -628,7 +628,7 @@ public sealed class RefreshLibraryHandlerTests : IDisposable
     }
 
     /// <summary>
-    /// An answer settled by a deletion is said to have needed no change, not to
+    /// An answer settled by a deletion is said to have made no difference, not to
     /// have been beaten by a later answer.
     /// </summary>
     /// <remarks>
@@ -677,7 +677,7 @@ public sealed class RefreshLibraryHandlerTests : IDisposable
 
         Assert.Equal(0, result.AnswersApplied);
         Assert.Equal(1, result.AnswersSettled);
-        Assert.Contains(", 1 answer needed no change", result.Summary);
+        Assert.Contains(", 1 change made no difference", result.Summary);
         Assert.DoesNotContain("later", result.Summary);
         Assert.Empty(_db.HeldDecisions);
         Assert.Empty(_db.AlbumMembers);
@@ -969,7 +969,7 @@ public sealed class RefreshLibraryHandlerTests : IDisposable
 
         Assert.False(result.WasCancelled);
         Assert.Equal(1, result.Built);
-        Assert.Contains("did not answer", result.Taken!.Summary, StringComparison.Ordinal);
+        Assert.Contains("did not respond", result.Taken!.Summary, StringComparison.Ordinal);
         Assert.Null(result.Given);
     }
 

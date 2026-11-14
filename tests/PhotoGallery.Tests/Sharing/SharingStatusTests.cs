@@ -59,7 +59,7 @@ public sealed class SharingStatusTests : IDisposable
 
         // Described where a name would go, so it reads as a name does at the
         // start of its row: with a capital letter.
-        Assert.Equal("A computer this library has not taken answers from yet", waiting.Name);
+        Assert.Equal("A computer this library has not taken changes from yet", waiting.Name);
     }
 
     [Fact]
