@@ -49,9 +49,10 @@ public sealed class LibraryWallRefreshTests : IDisposable
         string library = Path.Combine(_root, "library");
         Directory.CreateDirectory(library);
 
+        string connection = $"Data Source={Path.Combine(library, "index.db")}";
         _db = new GalleryDbContext(
             new DbContextOptionsBuilder<GalleryDbContext>()
-                .UseSqlite($"Data Source={Path.Combine(library, "index.db")}")
+                .UseSqlite(connection)
                 .Options);
         _db.Database.Migrate();
 
@@ -64,12 +65,16 @@ public sealed class LibraryWallRefreshTests : IDisposable
         _filed = [Photo("bali-1.jpg"), Photo("bali-2.jpg"), Photo("bali-3.jpg")];
 
         // The real reader and the real repositories, because the claim is about
-        // one screen seeing what another screen wrote.
+        // one screen seeing what another screen wrote - each with a context of
+        // its own per scope, as the app registers them. One shared context made
+        // two overlapping reads of the wall use it from two threads at once,
+        // which the app never does and which failed this suite now and then.
         _services = new ServiceCollection()
-            .AddSingleton<IGalleryReader>(new SqliteGalleryReader(_db))
-            .AddSingleton<IAlbumRepository>(new SqliteAlbumRepository(_db))
-            .AddSingleton<ICollectionRepository>(new SqliteCollectionRepository(_db))
-            .AddSingleton<ILibraryIndex>(new SqliteLibraryIndex(_db))
+            .AddDbContext<GalleryDbContext>(options => options.UseSqlite(connection))
+            .AddScoped<IGalleryReader, SqliteGalleryReader>()
+            .AddScoped<IAlbumRepository, SqliteAlbumRepository>()
+            .AddScoped<ICollectionRepository, SqliteCollectionRepository>()
+            .AddScoped<ILibraryIndex, SqliteLibraryIndex>()
             .AddSingleton<IThumbnailStore>(thumbnails)
             .AddTransient<QueryGalleryHandler>()
             .AddTransient<GetFolderTreeHandler>()

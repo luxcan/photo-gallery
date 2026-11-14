@@ -284,11 +284,16 @@ public sealed class VideoPlaybackTests
     [Fact]
     public async Task AnAnswerForAClipLeftBehindIsNotApplied()
     {
-        GalleryViewModel gallery = Showing(
-            AssetKind.Video, reader: new FixedReader(new VideoOrientation(180, 1280, 720)));
+        // Held until the viewer has moved on, so the answer always arrives late.
+        // Answered at once, it could land on another thread at the very moment
+        // the test switched pictures - which the app's single window thread
+        // never allows, and which made this test fail one run in a few.
+        using var held = new HeldReader(new VideoOrientation(180, 1280, 720));
+        GalleryViewModel gallery = Showing(AssetKind.Video, reader: held);
         Task aligning = gallery.AlignPlaybackAsync(1280, 720, stillIsPortrait: false);
 
         gallery.OpenTile = Tile(AssetKind.Photo);
+        held.Answer();
         await aligning;
 
         Assert.Equal(0d, gallery.PlayingRotation);
@@ -404,5 +409,25 @@ public sealed class VideoPlaybackTests
     private sealed class FixedReader(VideoOrientation? says) : IVideoOrientationReader
     {
         public VideoOrientation? Read(string fullPath) => says;
+    }
+
+    /// <summary>A reader that does not answer until the test says so.</summary>
+    private sealed class HeldReader(VideoOrientation? says) : IVideoOrientationReader, IDisposable
+    {
+        private readonly ManualResetEventSlim _answer = new();
+
+        public void Answer() => _answer.Set();
+
+        public VideoOrientation? Read(string fullPath)
+        {
+            _answer.Wait(TimeSpan.FromSeconds(10));
+            return says;
+        }
+
+        public void Dispose()
+        {
+            _answer.Set();
+            _answer.Dispose();
+        }
     }
 }
