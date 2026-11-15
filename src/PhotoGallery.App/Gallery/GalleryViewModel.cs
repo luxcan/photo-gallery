@@ -88,12 +88,10 @@ public sealed partial class GalleryViewModel : ObservableObject
         nameof(IsFiltered), nameof(EmptyMessage))]
     private AssetKind? _kind;
 
-    /// <summary>Whether the wall is narrowed to photographs in no album.</summary>
-    /// <remarks>
-    /// The chip that pays for the row. 9,390 of the first real library's 20,269
-    /// photographs are in no album, and 5,774 of its 6,295 videos - so this and
-    /// the Videos chip together are the question that library most needs asked.
-    /// </remarks>
+    /// <summary>
+    /// Whether the wall is narrowed to photographs in no album somebody made or
+    /// kept. A suggestion does not count - see <see cref="GalleryQuery.OnlyOutsideAlbums"/>.
+    /// </summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsFiltered), nameof(EmptyMessage))]
     private bool _outsideAlbums;

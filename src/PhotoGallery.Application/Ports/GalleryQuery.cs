@@ -59,13 +59,14 @@ namespace PhotoGallery.Application.Ports;
 /// on a screen that has always been photographs only.</para>
 /// </param>
 /// <param name="OnlyOutsideAlbums">
-/// Only photographs in no album at all.
+/// Only photographs in no album somebody made or kept.
 ///
-/// <para>A suggested album counts as an album here. The alternative - counting
-/// only albums somebody kept - matched 17,876 of 20,269 photographs on the first
-/// real library, because almost every album in it is a suggestion nobody has
-/// answered yet. A filter that matches seven-eighths of the wall is not a
-/// filter.</para>
+/// <para>A suggested album does not count. It used to, on the grounds that
+/// counting only kept albums matches most of the wall - 13,276 of 15,386
+/// photographs on the real library in November 2026, against 303 suggestions
+/// and 14 kept or made albums. But a suggestion is the app's question, not
+/// filing, and counting it hid exactly the photographs somebody opens this
+/// filter to find: the ones nobody has put anywhere yet.</para>
 /// </param>
 /// <param name="OnlyWithoutNamedFaces">
 /// Only photographs with nobody named in them. Confirmed answers only, for the

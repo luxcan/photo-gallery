@@ -413,28 +413,31 @@ public sealed class QueryGalleryHandlerTests : IDisposable
     }
 
     /// <summary>
-    /// The wall narrowed to what is in no album at all.
+    /// The wall narrowed to what is in no album somebody made or kept.
     /// </summary>
     /// <remarks>
-    /// A suggested album counts as an album. Counting only albums somebody kept
-    /// matched 17,876 of the first real library's 20,269 photographs, because
-    /// almost every album in it is a suggestion nobody has answered - and a
-    /// filter that matches seven-eighths of the wall is not a filter.
+    /// A suggested album does not count: it is the app's question, not filing,
+    /// and counting it hid the very photographs somebody opens this filter to
+    /// find. A kept suggestion does count, because keeping it was the answer.
     /// </remarks>
     [Fact]
-    public async Task Query_OutsideAlbums_LeavesOutAnythingInOne()
+    public async Task Query_OutsideAlbums_LeavesOutOnlyMadeOrKeptAlbums()
     {
-        Add("filed.jpg");
+        Add("made.jpg");
+        Add("kept.jpg");
         Add("loose.jpg");
         Add("suggested.jpg");
 
         InAlbum(asset: 1, album: Album("Bali", AlbumOrigin.Made));
-        InAlbum(asset: 3, album: Album("A week in March", AlbumOrigin.Proposed));
+        InAlbum(asset: 2, album: Album("Penang", AlbumOrigin.Accepted));
+        InAlbum(asset: 4, album: Album("A week in March", AlbumOrigin.Proposed));
 
         GalleryPage page = await NewHandler()
             .HandleAsync(new GalleryQuery(OnlyOutsideAlbums: true));
 
-        Assert.Equal(["loose.jpg"], page.Items.Select(item => item.FileName));
+        Assert.Equal(
+            ["loose.jpg", "suggested.jpg"],
+            page.Items.Select(item => item.FileName).Order());
     }
 
     [Theory]

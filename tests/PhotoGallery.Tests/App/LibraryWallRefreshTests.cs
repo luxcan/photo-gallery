@@ -156,6 +156,33 @@ public sealed class LibraryWallRefreshTests : IDisposable
     }
 
     /// <summary>
+    /// A suggestion is not filing: its photographs stay on the narrowed wall
+    /// until somebody keeps it, and then leave it.
+    /// </summary>
+    [Fact]
+    public async Task KeepingASuggestion_TakesItsPhotographsOffTheWall()
+    {
+        await _db.Albums
+            .Where(album => album.Id == _album)
+            .ExecuteUpdateAsync(set => set.SetProperty(album => album.Origin, AlbumOrigin.Proposed));
+
+        // The update went past the tracker, which still holds the album as made.
+        _db.ChangeTracker.Clear();
+
+        await OpenAsync(ActivitySection.LibraryKey);
+        await TestWait.ForAsync(() => Shown().Count == 4, "the wall to be read");
+        await _main.Gallery.ShowOutsideAlbumsCommand.ExecuteAsync(null);
+        await TestWait.ForAsync(
+            () => Shown().Count == 4, "the suggestion's photographs to stay on the narrowed wall");
+
+        await new SqliteAlbumRepository(_db).AcceptAsync(_album);
+        await _main.Albums.SettleAfterDecidingAsync();
+
+        await TestWait.ForAsync(
+            () => Shown().SequenceEqual([_loose.Id]), "the kept album's photographs to leave the wall");
+    }
+
+    /// <summary>
     /// The wall's own changes are left alone, because they reload the wall
     /// themselves and a second read underneath the first would build it twice.
     /// </summary>

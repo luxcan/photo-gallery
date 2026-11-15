@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using PhotoGallery.Application.Ports;
 using PhotoGallery.Application.UseCases.Gallery;
+using PhotoGallery.Domain.Albums;
 using PhotoGallery.Domain.Assets;
 using PhotoGallery.Domain.Library;
 using PhotoGallery.Domain.People;
@@ -356,13 +357,16 @@ public sealed class SqliteGalleryReader : IGalleryReader
             rows = rows.Where(a => a.Kind == kind);
         }
 
-        // Not in any album, a suggestion counting as an album. AlbumMembers is
-        // keyed on AssetId alone - it is the rule that a photograph belongs to
-        // one album - so this is a rowid seek per row and needs no index of its
-        // own. The same shape as the content anti-join above.
+        // Not in any album somebody made or kept. A suggestion is a question,
+        // not filing, so a photograph only a suggestion holds still shows - the
+        // same rule the named-faces filter below keeps for proposed answers.
+        // AlbumMembers is keyed on AssetId alone - it is the rule that a
+        // photograph belongs to one album - so this is a rowid seek per row
+        // plus one primary-key seek for its album.
         if (query.OnlyOutsideAlbums)
         {
-            rows = rows.Where(a => !_db.AlbumMembers.Any(member => member.AssetId == a.Id));
+            rows = rows.Where(a => !_db.AlbumMembers.Any(member =>
+                member.AssetId == a.Id && member.Album!.Origin != AlbumOrigin.Proposed));
         }
 
         // Nobody named in it. Confirmed answers only, for the same reason the

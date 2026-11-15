@@ -618,7 +618,7 @@
                             Command="{Binding Gallery.ShowEverythingOnTheWallCommand}" />
 
               <ToggleButton Style="{DynamicResource FilterChip}" Content="Not in an album"
-                            ToolTip="Only photographs and videos that are in no album yet"
+                            ToolTip="Only photographs and videos in no album you have made or kept - a suggestion does not count"
                             IsChecked="{Binding Gallery.OutsideAlbums, Mode=OneWay}"
                             Command="{Binding Gallery.ShowOutsideAlbumsCommand}" />
 
