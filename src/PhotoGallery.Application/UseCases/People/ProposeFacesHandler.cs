@@ -59,18 +59,15 @@ public sealed class ProposeFacesHandler
         IReadOnlyList<Person> everyone =
             await _people.GetPeopleAsync(cancellationToken).ConfigureAwait(false);
 
-        // Withdrawn before anything is read back, so that a face proposed by the
-        // last round counts as unclaimed in this one. Reading first would make
-        // every already-proposed face invisible and the round a no-op.
-        foreach (Person person in everyone)
-        {
-            await _repository.ClearProposalsAsync(person.Id, cancellationToken)
-                .ConfigureAwait(false);
-        }
-
         List<Person> candidates = [.. everyone.Where(person => person.Eras.Count > 0)];
         if (candidates.Count == 0)
         {
+            // Nobody left to offer anything to, so whatever was offered before
+            // was offered on examples that no longer exist.
+            await _repository
+                .ReplaceProposalsAsync(new Dictionary<int, IReadOnlyList<ScoredFace>>(), cancellationToken)
+                .ConfigureAwait(false);
+
             return new ProposalRound(0, 0, 0, new Dictionary<int, PersonProposals>());
         }
 
@@ -95,6 +92,10 @@ public sealed class ProposeFacesHandler
             // as long as the work actually takes.
             cancellationToken.ThrowIfCancellationRequested();
 
+            // A face the last round proposed is open to this one. Its proposal
+            // is withdrawn and remade in the one write at the end, rather than
+            // cleared before this read, so nothing reading the library while
+            // this works sees it without its questions.
             if (!face.IsUnclaimed || face.DetectScore < MinimumProposalScore)
             {
                 continue;
@@ -127,6 +128,7 @@ public sealed class ProposeFacesHandler
         cancellationToken.ThrowIfCancellationRequested();
 
         Dictionary<int, PersonProposals> byPerson = [];
+        Dictionary<int, IReadOnlyList<ScoredFace>> proposals = [];
         int offered = 0;
 
         foreach ((int personId, List<ScoredFace> theirs) in routed)
@@ -134,13 +136,16 @@ public sealed class ProposeFacesHandler
             ScoredFace[] top =
                 [.. theirs.OrderByDescending(face => face.Score).Take(MaxProposals)];
 
-            await _repository
-                .AssignAsync(personId, top, AssignmentSource.Proposed, cancellationToken)
-                .ConfigureAwait(false);
-
+            proposals[personId] = top;
             byPerson[personId] = new PersonProposals(top.Length, theirs.Count);
             offered += top.Length;
         }
+
+        // Counted as chosen rather than as written: a face answered while this
+        // ran is skipped by the write, and the screens count what is on record
+        // once they are told the round is over.
+        await _repository.ReplaceProposalsAsync(proposals, cancellationToken)
+            .ConfigureAwait(false);
 
         return new ProposalRound(offered, matched, considered, byPerson);
     }

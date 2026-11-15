@@ -317,6 +317,8 @@ public sealed partial class MainViewModel : ObservableObject
         Albums = new AlbumsViewModel(scopeFactory, thumbnails);
         Models = new ModelsViewModel(scopeFactory);
         Sharing = new SharingViewModel(scopeFactory, activityLog);
+        Suggestions = new SuggestionRounds(RunSuggestionRoundAsync);
+        Suggestions.RoundFinished += OnSuggestionsUpdated;
 
         // The nav and the search box both gate on what is installed, and neither
         // of them owns it.
@@ -379,6 +381,12 @@ public sealed partial class MainViewModel : ObservableObject
                 NotifyChoosingBar();
             }
 
+            // The corner above the viewer's own buttons while it is open.
+            if (e.PropertyName == nameof(GalleryViewModel.IsViewerOpen))
+            {
+                OnPropertyChanged(nameof(NoticeMargin));
+            }
+
             // Proposals answered one at a time are already saved; what is not
             // done is the album's own screen, which is deliberately left until
             // the viewer is out of the way rather than rebuilt behind it after
@@ -416,6 +424,11 @@ public sealed partial class MainViewModel : ObservableObject
         People.LibraryChanged += OnLibraryChanged;
         People.SavingAnswers += OnPeopleSavingAnswers;
         People.AnswersSaved += OnPeopleAnswersSaved;
+
+        // Both places a name is given ask for the suggestions to be worked out
+        // again, and neither waits for it.
+        Gallery.SuggestionsOutdated += (_, _) => Suggestions.Request();
+        People.SuggestionsOutdated += (_, _) => Suggestions.Request();
         Duplicates.LibraryChanged += OnLibraryChanged;
         Albums.LibraryChanged += OnLibraryChanged;
         Albums.Looking += OnAlbumsLooking;
@@ -845,8 +858,31 @@ public sealed partial class MainViewModel : ObservableObject
     /// Both are pinned to the bottom right of the same area and the bar is
     /// drawn later, so without this the bar simply covers the notice - and the
     /// notice is what carries the answer to a question somebody was asked.
+    ///
+    /// <para>The suggestions bar shares this corner, stacked above the notice,
+    /// and both float over an open photograph - where the viewer's Close,
+    /// delete and turn buttons sit along the bottom right. So while the viewer
+    /// is open the corner starts above that row instead of on top of it.</para>
     /// </remarks>
-    public Thickness NoticeMargin => new(0, 0, 22, ShowChoosingBar ? ChoosingBarHeight + 22 : 22);
+    public Thickness NoticeMargin => new(
+        0,
+        0,
+        22,
+        Gallery.IsViewerOpen ? ViewerButtonsClearance
+        : ShowChoosingBar ? ChoosingBarHeight + 22
+        : 22);
+
+    /// <summary>
+    /// How far above the bottom of the content row the viewer's buttons reach,
+    /// with a gap.
+    /// </summary>
+    /// <remarks>
+    /// The viewer spans the status bar too: its 16 margin and its 38-high row
+    /// of buttons reach 54 up from the window's foot, which is 32 above the
+    /// content row the corner is measured in once the 22 of the status bar is
+    /// taken off. Twelve more to stand clear of them.
+    /// </remarks>
+    private const double ViewerButtonsClearance = 44;
 
     /// <summary>
     /// The room the wall leaves for the bar.
@@ -2170,6 +2206,66 @@ public sealed partial class MainViewModel : ObservableObject
     }
 
     /// <summary>
+    /// The suggestion rounds, and the small bar in the bottom-right corner that
+    /// says one is running.
+    /// </summary>
+    public SuggestionRounds Suggestions { get; }
+
+    /// <summary>
+    /// The screens catching up with the last round that finished, done once the
+    /// counts and the open photograph's boxes have been read again.
+    /// </summary>
+    /// <remarks>Internal so a test can wait for it.</remarks>
+    internal Task SuggestionsShown { get; private set; } = Task.CompletedTask;
+
+    /// <summary>One suggestion round, off the UI thread and in a scope of its own.</summary>
+    private Task<ProposalRound> RunSuggestionRoundAsync() =>
+        Task.Run(async () =>
+        {
+            using IServiceScope scope = _scopeFactory.CreateScope();
+            return await scope.ServiceProvider
+                .GetRequiredService<ProposeFacesHandler>()
+                .HandleAsync()
+                .ConfigureAwait(false);
+        });
+
+    private void OnSuggestionsUpdated(object? sender, ProposalRound round)
+    {
+        Append($"people: {round.Summary}");
+        SuggestionsShown = ShowUpdatedSuggestionsAsync();
+    }
+
+    /// <summary>
+    /// Puts the new suggestions on whatever is showing them, without moving
+    /// anybody from where they are.
+    /// </summary>
+    /// <remarks>
+    /// The counts on People, and the open photograph's boxes - a face proposed
+    /// as somebody reads "Shirley?" there. Nothing is rebuilt: the round lands
+    /// whenever it lands, and the user may be half way through a queue.
+    /// </remarks>
+    private async Task ShowUpdatedSuggestionsAsync()
+    {
+        try
+        {
+            await People.RecountSuggestionsAsync().ConfigureAwait(true);
+
+            if (Gallery.IsViewerOpen)
+            {
+                await Gallery.RereadOpenFacesAsync().ConfigureAwait(true);
+            }
+        }
+        catch (Exception ex)
+        {
+            // Every exception, not only the expected library failures: nobody
+            // awaits this - it runs whenever a round lands - so anything let
+            // through would fault the task unobserved and leave the counts
+            // stale with nothing in the log to say why.
+            DiagnosticLog.Write("could not show the updated suggestions", ex);
+        }
+    }
+
+    /// <summary>
     /// Runs a screen's own slow work under the shared overlay.
     /// </summary>
     /// <remarks>
@@ -2235,10 +2331,12 @@ public sealed partial class MainViewModel : ObservableObject
     /// queue on screen has been read back.
     /// </summary>
     /// <remarks>
-    /// Straight away, with no delay before it as a look has: saving a batch
-    /// took two and a half to three seconds on a copy of the real library, so
-    /// there is no quick answer for it to flash over. No Stop - a half-saved
-    /// answer is not something to offer, and the save is one write.
+    /// Straight away, with no delay before it as a look has. It covers the save
+    /// and the queue being read back - 0.6 to 0.7 s for eight faces on a copy of
+    /// the real library - and no longer the suggestion round, which used to be
+    /// most of the two and a half to three seconds it stayed up and now runs
+    /// behind the small bar in the corner. No Stop - a half-saved answer is not
+    /// something to offer, and the save is one write.
     /// </remarks>
     private void OnPeopleSavingAnswers(object? sender, string what)
     {
@@ -2412,8 +2510,12 @@ public sealed partial class MainViewModel : ObservableObject
                 scope.ServiceProvider.GetRequiredService<RecheckPeopleHandler>();
             CancellationToken token = _detectCancellation.Token;
 
-            RecheckResult result = await Task
-                .Run(() => handler.HandleAsync(progress, token), CancellationToken.None)
+            // Never alongside a round started by an answer: both withdraw and
+            // remake every proposal, and SQLite has one writer. This waits for
+            // one already running rather than racing it.
+            RecheckResult result = await Suggestions
+                .RunExclusiveAsync(() => Task
+                    .Run(() => handler.HandleAsync(progress, token), CancellationToken.None))
                 .ConfigureAwait(true);
 
             Append($"people: {result.Summary}");

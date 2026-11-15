@@ -5,8 +5,8 @@ using PhotoGallery.Domain.People;
 namespace PhotoGallery.Application.UseCases.People;
 
 /// <summary>
-/// Records who some faces are, then works out what that tells the app about the
-/// rest of the library.
+/// Records who some faces are, and rebuilds what that teaches the app about the
+/// person named.
 /// </summary>
 /// <remarks>
 /// Naming a group, confirming a proposal and rejecting one are the same
@@ -15,39 +15,42 @@ namespace PhotoGallery.Application.UseCases.People;
 /// which changes what should be proposed next - and that chain is the whole
 /// reason naming gets easier the more of it is done.
 ///
-/// <para>Who gets offered what is not decided here. One person's examples cannot
-/// answer a question about the whole field - a face that looks like them may
-/// look a great deal more like somebody else - so proposing is a sweep over
-/// everybody, and it lives in <see cref="ProposeFacesHandler"/>.</para>
+/// <para>Who gets offered what is not decided here, and no longer waited for
+/// here either. One person's examples cannot answer a question about the whole
+/// field - a face that looks like them may look a great deal more like somebody
+/// else - so proposing is a sweep over everybody, in
+/// <see cref="ProposeFacesHandler"/>. Run inside every answer it made naming
+/// ten faces in a row ten waits: an answer took 1.2 s with it on a copy of the
+/// real library, and 0.2 to 0.35 s without. The caller asks for it once the answer is saved, and it
+/// runs in the background.</para>
 /// </remarks>
 public sealed class AssignFacesHandler
 {
     private readonly IPeopleReader _people;
     private readonly IPeopleRepository _repository;
-    private readonly ProposeFacesHandler _propose;
 
-    public AssignFacesHandler(
-        IPeopleReader people, IPeopleRepository repository, ProposeFacesHandler propose)
+    public AssignFacesHandler(IPeopleReader people, IPeopleRepository repository)
     {
         _people = people;
         _repository = repository;
-        _propose = propose;
     }
 
     public async Task<AssignmentResult> HandleAsync(
         AssignFacesRequest request, CancellationToken cancellationToken = default)
     {
         int personId = await RecordAsync(request, cancellationToken).ConfigureAwait(false);
+        int eras = await RebuildErasAsync(personId, cancellationToken).ConfigureAwait(false);
+        string displayName = await NameOfAsync(personId, cancellationToken).ConfigureAwait(false);
 
         // What is reported back is how many questions were answered, not how
         // many rows that came to - the user answered one face, whatever number
         // of files that photograph happens to exist as.
-        return await RefreshAsync(
-                personId,
-                request.FaceIds.Count,
-                request.Source == AssignmentSource.Rejected,
-                cancellationToken)
-            .ConfigureAwait(false);
+        return new AssignmentResult(
+            personId,
+            displayName,
+            request.FaceIds.Count,
+            eras,
+            request.Source == AssignmentSource.Rejected);
     }
 
     /// <summary>
@@ -267,19 +270,6 @@ public sealed class AssignFacesHandler
     }
 
     /// <summary>
-    /// Rebuilds a person from the examples given for them, without changing any
-    /// of those examples.
-    /// </summary>
-    /// <remarks>
-    /// What "check again" does for one person. Naming a face in one photograph
-    /// teaches the app what they looked like at that date; this is what takes
-    /// that lesson out across the rest of the library.
-    /// </remarks>
-    public Task<AssignmentResult> RefreshAsync(
-        int personId, CancellationToken cancellationToken = default) =>
-        RefreshAsync(personId, assigned: 0, rejected: false, cancellationToken);
-
-    /// <summary>
     /// Works out afresh what one person looked like over their life, from the
     /// faces confirmed as theirs.
     /// </summary>
@@ -300,20 +290,6 @@ public sealed class AssignFacesHandler
             .ConfigureAwait(false);
 
         return eras.Count;
-    }
-
-    private async Task<AssignmentResult> RefreshAsync(
-        int personId, int assigned, bool rejected, CancellationToken cancellationToken)
-    {
-        int eras = await RebuildErasAsync(personId, cancellationToken).ConfigureAwait(false);
-        ProposalRound round = await _propose.HandleAsync(cancellationToken).ConfigureAwait(false);
-
-        string displayName = await NameOfAsync(personId, cancellationToken).ConfigureAwait(false);
-        PersonProposals theirs = round.For(personId);
-
-        return new AssignmentResult(
-            personId, displayName, assigned, eras,
-            theirs.Offered, theirs.Matched, round.Considered, rejected);
     }
 
     private async Task<string> NameOfAsync(int personId, CancellationToken cancellationToken)

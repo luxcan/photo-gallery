@@ -96,6 +96,17 @@ app on a hang.
   a video takes about a second, so "every tenth" meant ten seconds with
   nothing moving. Report once before the work starts and once at the end.
 - **Every long pass names its step, shows a count and offers a safe Stop.**
+- **Pick the feedback by what a click during the wait could do:**
+  - *Overlay panel* (blocks the window) - when acting mid-way could use stale
+    information or leave work half done: a refresh, deleting, moving files,
+    saving answers. It names the step and shows a count; it offers Stop only
+    when stopping is safe.
+  - *Bottom-right bar* (never blocks) - background work whose result can
+    arrive a moment later, such as updating face suggestions. One pass at a
+    time; it shows "N of M" when more is queued and disappears when all is
+    done.
+  - *In-place "Updating..."* - a re-read under about a second, such as a
+    filter click. No panel and no bar.
 - **A list that can outgrow the screen is virtualised**: its own scroller and
   a recycling `VirtualizingStackPanel`, never an `ItemsControl` inside an outer
   `ScrollViewer`. The duplicates list built all 503 sets at once that way and

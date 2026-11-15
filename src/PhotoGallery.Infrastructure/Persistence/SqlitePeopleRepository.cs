@@ -154,12 +154,80 @@ public sealed class SqlitePeopleRepository : IPeopleRepository
         _db.ChangeTracker.Clear();
     }
 
-    public async Task ClearProposalsAsync(int personId, CancellationToken cancellationToken = default) =>
+    public async Task ReplaceProposalsAsync(
+        IReadOnlyDictionary<int, IReadOnlyList<ScoredFace>> proposals,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(proposals);
+
+        // One transaction over the withdrawing and the writing, so nothing that
+        // reads in between sees a library with no questions in it. A round runs
+        // in the background now, and the People screen reads its queue back
+        // after every answer: with the old proposals deleted seconds before the
+        // new ones arrived, that read found nothing and closed the queue under
+        // the user. BEGIN IMMEDIATE also holds the write lock from the check
+        // below to the commit, so an answer cannot land between the two.
+        await using IDbContextTransaction transaction =
+            await _db.Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+
         await _db.FaceAssignments
-            .Where(assignment => assignment.PersonId == personId
-                              && assignment.Source == AssignmentSource.Proposed)
+            .Where(assignment => assignment.Source == AssignmentSource.Proposed)
             .ExecuteDeleteAsync(cancellationToken)
             .ConfigureAwait(false);
+
+        DateTime decided = DateTime.UtcNow;
+
+        foreach ((int personId, IReadOnlyList<ScoredFace> faces) in proposals)
+        {
+            // Removed while the round was weighing faces against them.
+            bool present = await _db.Set<Person>()
+                .AnyAsync(person => person.Id == personId && person.DeletedUtc == null, cancellationToken)
+                .ConfigureAwait(false);
+
+            if (!present)
+            {
+                continue;
+            }
+
+            Dictionary<int, ScoredFace> byFace = faces
+                .DistinctBy(face => face.FaceId)
+                .ToDictionary(face => face.FaceId);
+
+            // Checked here, inside the write, rather than trusted from what the
+            // round read when it started. The round takes seconds and the user
+            // keeps answering while it runs: a face confirmed, refused for this
+            // person or set aside in that time is an answer, and a guess made
+            // before it must not be written over it. Gone faces are dropped too -
+            // a photograph deleted meanwhile takes its faces with it.
+            foreach (int[] chunk in byFace.Keys.Chunk(400))
+            {
+                List<int> open = await _db.Faces
+                    .Where(face => chunk.Contains(face.Id)
+                                && face.IgnoredUtc == null
+                                && !_db.FaceAssignments.Any(assignment =>
+                                    assignment.FaceId == face.Id
+                                    && (assignment.Source == AssignmentSource.Confirmed
+                                        || (assignment.Source == AssignmentSource.Rejected
+                                            && assignment.PersonId == personId))))
+                    .Select(face => face.Id)
+                    .ToListAsync(cancellationToken)
+                    .ConfigureAwait(false);
+
+                _db.FaceAssignments.AddRange(open.Select(faceId => new FaceAssignment
+                {
+                    FaceId = faceId,
+                    PersonId = personId,
+                    Source = AssignmentSource.Proposed,
+                    Score = byFace[faceId].Score,
+                    DecidedUtc = decided,
+                }));
+            }
+        }
+
+        await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+        _db.ChangeTracker.Clear();
+    }
 
     public async Task UnassignAsync(
         IReadOnlyList<int> faceIds, CancellationToken cancellationToken = default)

@@ -1,5 +1,8 @@
 using Microsoft.Extensions.DependencyInjection;
+using PhotoGallery.App.Duplicates;
 using PhotoGallery.App.Gallery;
+using PhotoGallery.App.People;
+using PhotoGallery.App.ViewModels;
 using PhotoGallery.Application.Ports;
 using PhotoGallery.Application.UseCases.People;
 using PhotoGallery.Domain.Assets;
@@ -15,10 +18,11 @@ namespace PhotoGallery.Tests.App;
 /// <remarks>
 /// Two people in one picture is the ordinary case, and nobody waits between
 /// them: you name one, the box changes, you click the other. Confirming a face
-/// is not a quick write, though - it offers that person to everything else in
-/// the library that looks like them, which is seconds on a real library - and
-/// when it finishes it re-reads the faces on the open picture to settle the
-/// boxes the confirmation may have changed.
+/// is not an instant write, though - it reads every copy of the photograph and
+/// rebuilds the person - and when it finishes it re-reads the faces on the open
+/// picture to settle the boxes the confirmation may have changed. Offering the
+/// person to everything else that looks like them, which is seconds on a real
+/// library, is no longer part of it: that runs afterwards, in the background.
 ///
 /// <para>That re-read cleared the face being named. By then it was the second
 /// face, with its list already up: choosing a name hit the guard at the top of
@@ -58,6 +62,7 @@ public sealed class NamingTwoFacesTests : IDisposable
             .AddSingleton<IPeopleRepository>(_repository)
             .AddTransient<ProposeFacesHandler>()
             .AddTransient<AssignFacesHandler>()
+            .AddTransient<GetPeopleBoardHandler>()
             .BuildServiceProvider();
 
         _thumbnails = new FileSystemThumbnailStore(workingFolder);
@@ -176,6 +181,142 @@ public sealed class NamingTwoFacesTests : IDisposable
         Assert.Equal(2, _gallery.OpenFaces.Count);
     }
 
+    /// <summary>
+    /// Naming a face saves the name and asks for a round, and runs no round of
+    /// its own.
+    /// </summary>
+    /// <remarks>
+    /// The round weighs every face in the library against everybody. Run inside
+    /// the save, naming ten faces in a row queued ten of them.
+    /// </remarks>
+    [Fact]
+    public async Task NamingAFace_AsksForARoundRatherThanRunningOne()
+    {
+        int asked = 0;
+        _gallery.SuggestionsOutdated += (_, _) => asked++;
+        await ShowTheFacesAsync();
+
+        _gallery.BeginNamingFaceCommand.Execute(Face(FirstFace));
+        _gallery.Picker.Typed = "Shirley";
+        Task saving = _gallery.Picker.AddCommand.ExecuteAsync(null);
+        await Started(_repository.Entered);
+        _repository.Release();
+        await saving;
+
+        Assert.Equal(1, asked);
+        Assert.Equal(0, _repository.Rounds);
+        Assert.Contains(_repository.Assigned, told => told.FaceId == FirstFace);
+    }
+
+    /// <summary>
+    /// Names given faster than they save ask for one round between them, once
+    /// the last of them is saved.
+    /// </summary>
+    /// <remarks>
+    /// Each save is a few hundred milliseconds, so asking after every one spread
+    /// ten quick names over longer than a round takes and the runner never saw
+    /// them together: measured on a copy of the real library, ten names ran
+    /// eight rounds that way, and one when the last save asks.
+    /// </remarks>
+    [Fact]
+    public async Task ASaveThatFailsUnexpectedly_DoesNotStopLaterNamesAskingForARound()
+    {
+        int asked = 0;
+        _gallery.SuggestionsOutdated += (_, _) => asked++;
+        await ShowTheFacesAsync();
+        _repository.Release();
+        _repository.FailNext(new InvalidCastException("not a failure the screen expects"));
+
+        _gallery.BeginNamingFaceCommand.Execute(Face(FirstFace));
+        _gallery.Picker.Typed = "Shirley";
+        await Assert.ThrowsAsync<InvalidCastException>(
+            () => _gallery.Picker.AddCommand.ExecuteAsync(null));
+
+        _gallery.BeginNamingFaceCommand.Execute(Face(SecondFace));
+        _gallery.Picker.Typed = "Ta Tong";
+        await _gallery.Picker.AddCommand.ExecuteAsync(null);
+
+        Assert.Equal(1, asked);
+    }
+
+    [Fact]
+    public async Task NamesQueuedBehindEachOther_AskForOneRound()
+    {
+        int asked = 0;
+        _gallery.SuggestionsOutdated += (_, _) => asked++;
+        await ShowTheFacesAsync();
+
+        _gallery.BeginNamingFaceCommand.Execute(Face(FirstFace));
+        _gallery.Picker.Typed = "Shirley";
+        Task first = _gallery.Picker.AddCommand.ExecuteAsync(null);
+        await Started(_repository.Entered);
+
+        // The second name is given while the first is still being written, so it
+        // waits its turn behind it.
+        _gallery.BeginNamingFaceCommand.Execute(Face(SecondFace));
+        _gallery.Picker.Typed = "Ta Tong";
+        Task second = _gallery.Picker.AddCommand.ExecuteAsync(null);
+
+        Assert.Equal(0, asked);
+
+        _repository.Release();
+        await Task.WhenAll(first, second);
+
+        Assert.Equal(1, asked);
+        Assert.Contains(_repository.Assigned, told => told.FaceId == SecondFace);
+    }
+
+    /// <summary>
+    /// In the app, the name is saved and the viewer handed back while the round
+    /// it asked for is still running - and the corner bar says so.
+    /// </summary>
+    [Fact]
+    public async Task NamingAFace_ReturnsBeforeTheRoundItAskedForHasFinished()
+    {
+        MainViewModel shell = TheShell();
+        await ShowTheFacesAsync();
+
+        _gallery.BeginNamingFaceCommand.Execute(Face(FirstFace));
+        _gallery.Picker.Typed = "Shirley";
+        Task saving = _gallery.Picker.AddCommand.ExecuteAsync(null);
+        await Started(_repository.Entered);
+        _repository.Release();
+        await saving;
+
+        // The round is held at its write by the test, so it cannot have finished.
+        await Started(_repository.Proposing);
+        Assert.True(shell.Suggestions.IsVisible, "nothing said a round was running");
+        Assert.Equal(SuggestionRounds.RunningCaption, shell.Suggestions.Caption);
+        Assert.Equal(2, _gallery.OpenFaces.Count);
+
+        // The corner it is drawn in starts above the viewer's own buttons -
+        // Close, delete and the turns sit along the bottom right, reaching 32
+        // above the content row.
+        Assert.True(shell.NoticeMargin.Bottom > 32, "the bar would sit on the viewer's Close button");
+
+        _repository.FinishRound();
+        await shell.Suggestions.Settled;
+        await shell.SuggestionsShown;
+
+        Assert.False(shell.Suggestions.IsVisible);
+        Assert.Equal(1, _repository.Rounds);
+    }
+
+    /// <summary>The shell around this viewer, which runs the rounds it asks for.</summary>
+    private MainViewModel TheShell()
+    {
+        IServiceScopeFactory scopeFactory = _services.GetRequiredService<IServiceScopeFactory>();
+        var workingFolder = new WorkingFolder(_root);
+
+        return new MainViewModel(
+            scopeFactory,
+            _gallery,
+            new PeopleViewModel(scopeFactory, _thumbnails),
+            new DuplicatesViewModel(scopeFactory, _thumbnails),
+            _thumbnails,
+            new FileActivityLog(workingFolder));
+    }
+
     /// <summary>Opens the picture with its faces drawn, as the viewer would.</summary>
     private async Task ShowTheFacesAsync()
     {
@@ -223,6 +364,7 @@ public sealed class NamingTwoFacesTests : IDisposable
     public void Dispose()
     {
         _repository.Release();
+        _repository.FinishRound();
         _services.Dispose();
 
         try
@@ -304,6 +446,11 @@ public sealed class NamingTwoFacesTests : IDisposable
 
         public void Release() => _released.TrySetResult();
 
+        private Exception? _failNext;
+
+        /// <summary>Makes the next write throw this, once.</summary>
+        public void FailNext(Exception failure) => _failNext = failure;
+
         public async Task AssignAsync(
             int personId,
             IReadOnlyList<ScoredFace> faces,
@@ -312,6 +459,11 @@ public sealed class NamingTwoFacesTests : IDisposable
         {
             _entered.TrySetResult();
             await _released.Task.ConfigureAwait(false);
+
+            if (Interlocked.Exchange(ref _failNext, null) is Exception failure)
+            {
+                throw failure;
+            }
 
             if (source != AssignmentSource.Confirmed)
             {
@@ -337,8 +489,33 @@ public sealed class NamingTwoFacesTests : IDisposable
             return Task.FromResult(id);
         }
 
-        public Task ClearProposalsAsync(int personId, CancellationToken token = default) =>
-            Task.CompletedTask;
+        /// <summary>Completes once a suggestion round has reached its write.</summary>
+        public Task Proposing => _proposing.Task;
+
+        /// <summary>Lets a suggestion round held at its write finish.</summary>
+        public void FinishRound() => _roundReleased.TrySetResult();
+
+        /// <summary>How many suggestion rounds reached their write.</summary>
+        public int Rounds { get; private set; }
+
+        private readonly TaskCompletionSource _proposing =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        private readonly TaskCompletionSource _roundReleased =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        /// <summary>
+        /// Held until the test lets it go, so a test can tell the name being
+        /// saved apart from the round that follows it.
+        /// </summary>
+        public async Task ReplaceProposalsAsync(
+            IReadOnlyDictionary<int, IReadOnlyList<ScoredFace>> proposals,
+            CancellationToken token = default)
+        {
+            Rounds++;
+            _proposing.TrySetResult();
+            await _roundReleased.Task.ConfigureAwait(false);
+        }
 
         public Task ReplaceErasAsync(
             int personId, IReadOnlyList<PersonEra> eras, CancellationToken token = default) =>

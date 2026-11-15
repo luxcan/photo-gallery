@@ -40,5 +40,9 @@ public sealed record FaceRecord(
     /// A face still worth asking about: nobody has named it, and nobody has set
     /// it aside as a stranger.
     /// </summary>
-    public bool IsUnclaimed => Source is null && !IsIgnored;
+    /// <remarks>
+    /// A proposal does not claim a face - it is the app's own guess, and every
+    /// round remakes it - so a face that is only proposed is still open.
+    /// </remarks>
+    public bool IsUnclaimed => !IsNamed && !IsIgnored;
 }

@@ -4047,47 +4047,86 @@
          the bottom stay readable beside it.
 
          Below the pass overlay in the markup, so a pass covers it: work already
-         running outranks a question, and the question keeps until it is over. -->
-    <Border Grid.Row="0" Margin="{Binding NoticeMargin}"
-            HorizontalAlignment="Right" VerticalAlignment="Bottom"
-            MaxWidth="420"
-            Background="{DynamicResource Status.InfoBack}"
-            BorderBrush="{DynamicResource Status.Info}" BorderThickness="1"
-            CornerRadius="4" Padding="12,10"
-            Visibility="{Binding HasNotice,
-                         Converter={StaticResource BoolToVisibility}}">
-      <StackPanel>
-        <StackPanel Orientation="Horizontal">
-          <TextBlock Text="&#xE896;" FontFamily="Segoe MDL2 Assets" FontSize="12"
-                     VerticalAlignment="Top" Margin="0,2,9,0"
-                     Foreground="{DynamicResource Status.Info}" />
-          <!-- Editor.Foreground rather than HintText, for the reason the other
-               notices give: this sits on the info tint rather than on the page. -->
-          <TextBlock FontSize="12" TextWrapping="Wrap" MaxWidth="360"
-                     Foreground="{DynamicResource Editor.Foreground}"
-                     Text="{Binding Notice}" />
-        </StackPanel>
+         running outranks a question, and the question keeps until it is over.
 
-        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right"
-                    Margin="0,10,0,0">
-          <!-- Only while it is asking. Once it is reporting what was taken,
-               there is nothing left to agree to. -->
-          <Button Style="{DynamicResource PrimaryButton}" MinWidth="110"
-                  Content="{Binding NoticeAction}"
-                  Visibility="{Binding NoticeAsks,
-                               Converter={StaticResource BoolToVisibility}}"
-                  Command="{Binding AnswerNoticeCommand}" />
-          <!-- "Not now" only while it is asking. On a report of work already
-               done it read as though the work might be taken back. -->
-          <Button Style="{DynamicResource LinkButton}" Margin="14,0,2,0" FontSize="12"
-                  Padding="0" VerticalAlignment="Center"
-                  VerticalContentAlignment="Center"
-                  Content="{Binding NoticeDismiss}"
-                  ToolTip="{Binding NoticeDismissTip}"
-                  Command="{Binding DismissNoticeCommand}" />
+         The corner is shared with the suggestions bar, stacked above the notice
+         so neither covers the other, and the margin lifts both clear of the
+         choosing bar and of the open viewer's buttons. -->
+    <StackPanel Grid.Row="0" Margin="{Binding NoticeMargin}"
+                HorizontalAlignment="Right" VerticalAlignment="Bottom">
+
+      <!-- That who the faces look like is being worked out again, after a name was
+           given. A strip rather than a panel, and nothing to press: it is the one
+           thing in this corner that asks nothing, and it must not take a click
+           from the screen under it, so it is not hit-testable at all. "1 of 2"
+           only while one more round is waiting behind this one. -->
+      <Border x:Name="SuggestionsBar" HorizontalAlignment="Right" Margin="0,0,0,8"
+              Width="260" IsHitTestVisible="False"
+              Background="{DynamicResource Status.InfoBack}"
+              BorderBrush="{DynamicResource Status.Info}" BorderThickness="1"
+              CornerRadius="4" Padding="12,8"
+              AutomationProperties.Name="Suggestions progress"
+              Visibility="{Binding Suggestions.IsVisible,
+                           Converter={StaticResource BoolToVisibility}}">
+        <StackPanel>
+          <DockPanel>
+            <TextBlock DockPanel.Dock="Right" Margin="8,0,0,0" FontSize="12"
+                       FontFamily="{StaticResource Font.Mono}"
+                       Foreground="{DynamicResource Status.Info}"
+                       Text="{Binding Suggestions.Count}"
+                       Visibility="{Binding Suggestions.HasCount,
+                                    Converter={StaticResource BoolToVisibility}}" />
+            <TextBlock FontSize="12" TextWrapping="Wrap"
+                       Foreground="{DynamicResource Editor.Foreground}"
+                       Text="{Binding Suggestions.Caption}" />
+          </DockPanel>
+          <ProgressBar Style="{DynamicResource PassProgress}" Height="3" Margin="0,7,0,0"
+                       IsIndeterminate="True"
+                       Visibility="{Binding Suggestions.HasFailed,
+                                    Converter={StaticResource InverseBoolToVisibility}}" />
         </StackPanel>
-      </StackPanel>
-    </Border>
+      </Border>
+
+      <Border HorizontalAlignment="Right"
+              MaxWidth="420"
+              Background="{DynamicResource Status.InfoBack}"
+              BorderBrush="{DynamicResource Status.Info}" BorderThickness="1"
+              CornerRadius="4" Padding="12,10"
+              Visibility="{Binding HasNotice,
+                           Converter={StaticResource BoolToVisibility}}">
+        <StackPanel>
+          <StackPanel Orientation="Horizontal">
+            <TextBlock Text="&#xE896;" FontFamily="Segoe MDL2 Assets" FontSize="12"
+                       VerticalAlignment="Top" Margin="0,2,9,0"
+                       Foreground="{DynamicResource Status.Info}" />
+            <!-- Editor.Foreground rather than HintText, for the reason the other
+                 notices give: this sits on the info tint rather than on the page. -->
+            <TextBlock FontSize="12" TextWrapping="Wrap" MaxWidth="360"
+                       Foreground="{DynamicResource Editor.Foreground}"
+                       Text="{Binding Notice}" />
+          </StackPanel>
+
+          <StackPanel Orientation="Horizontal" HorizontalAlignment="Right"
+                      Margin="0,10,0,0">
+            <!-- Only while it is asking. Once it is reporting what was taken,
+                 there is nothing left to agree to. -->
+            <Button Style="{DynamicResource PrimaryButton}" MinWidth="110"
+                    Content="{Binding NoticeAction}"
+                    Visibility="{Binding NoticeAsks,
+                                 Converter={StaticResource BoolToVisibility}}"
+                    Command="{Binding AnswerNoticeCommand}" />
+            <!-- "Not now" only while it is asking. On a report of work already
+                 done it read as though the work might be taken back. -->
+            <Button Style="{DynamicResource LinkButton}" Margin="14,0,2,0" FontSize="12"
+                    Padding="0" VerticalAlignment="Center"
+                    VerticalContentAlignment="Center"
+                    Content="{Binding NoticeDismiss}"
+                    ToolTip="{Binding NoticeDismissTip}"
+                    Command="{Binding DismissNoticeCommand}" />
+          </StackPanel>
+        </StackPanel>
+      </Border>
+    </StackPanel>
 
     <!-- Both long passes cover the whole window: each rewrites the library's
          shape and neither may be raced by the other. Last child of the root grid

@@ -160,6 +160,11 @@ public sealed class ConfirmQueueRefreshTests : IDisposable
         await OpenTheQueueAsync();
         _people.Proposals.Single(crop => crop.FaceId == LeftOut).IsChosen = false;
 
+        // The round the answer asks for is held, so the reads counted below are
+        // the save's own and not the recount that follows the round.
+        var round = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        _library.Proposing = () => round.Task;
+
         var saving = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         _library.Assigning = () => saving.Task;
         var coveredWhileReading = new List<bool>();
@@ -184,6 +189,92 @@ public sealed class ConfirmQueueRefreshTests : IDisposable
         Assert.False(shell.IsOverlayVisible);
         Assert.True(shell.IsIdle);
         Assert.Equal(LeftOut, Assert.Single(_people.Proposals).FaceId);
+
+        _library.Reading = null;
+        round.SetResult();
+        await shell.Suggestions.Settled;
+    }
+
+    /// <summary>
+    /// The cover comes down once the answers are saved and the queue read back,
+    /// while the round they asked for is still running - and when the round
+    /// lands it changes the counts and leaves the open queue alone.
+    /// </summary>
+    /// <remarks>
+    /// The round is a sweep over the whole library, and most of the time the
+    /// cover used to stay up for: 1.2 s of saving on a copy of the real library
+    /// against 0.2 s without it. It now runs behind the small
+    /// bar in the corner, and finishes whenever it finishes - by which time the
+    /// user may be part way through the questions on screen, so it must not
+    /// pull them out from under them.
+    /// </remarks>
+    [Fact]
+    public async Task TheRoundRunsAfterTheCoverIsDown_AndOnlyRecountsTheQueue()
+    {
+        MainViewModel shell = TheShell();
+        await OpenTheQueueAsync();
+        _people.Proposals.Single(crop => crop.FaceId == LeftOut).IsChosen = false;
+
+        var round = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var reached = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        _library.Proposing = () =>
+        {
+            reached.TrySetResult();
+            return round.Task;
+        };
+
+        await _people.ConfirmProposalsCommand.ExecuteAsync(null);
+        await reached.Task.WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.False(shell.IsOverlayVisible, "the cover waited for the round");
+        Assert.True(shell.IsIdle);
+        Assert.True(shell.Suggestions.IsVisible, "nothing said a round was running");
+        Assert.Equal(1, _people.Named.Single(person => person.Id == Ana).AwaitingReview);
+
+        round.SetResult();
+        await shell.Suggestions.Settled;
+        await shell.SuggestionsShown;
+
+        Assert.False(shell.Suggestions.IsVisible);
+
+        // The round withdrew the last question, and the count beside the name
+        // says so - but the queue open on screen is the user's place, and stays.
+        Assert.Equal(0, _people.Named.Single(person => person.Id == Ana).AwaitingReview);
+        Assert.False(_people.HasPendingConfirm);
+        Assert.True(_people.IsConfirming);
+        Assert.Equal(LeftOut, Assert.Single(_people.Proposals).FaceId);
+    }
+
+    /// <summary>
+    /// A recount that fails after a round is caught and logged, not left to
+    /// fault a task nobody awaits.
+    /// </summary>
+    [Fact]
+    public async Task ARecountThatFailsUnexpectedly_IsNotLostUnobserved()
+    {
+        MainViewModel shell = TheShell();
+        await OpenTheQueueAsync();
+
+        var round = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var reached = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        _library.Proposing = () =>
+        {
+            reached.TrySetResult();
+            return round.Task;
+        };
+
+        await _people.ConfirmProposalsCommand.ExecuteAsync(null);
+        await reached.Task.WaitAsync(TimeSpan.FromSeconds(10));
+
+        // Not one of the expected library failures: a bug in the recount.
+        _library.Reading = () => throw new ArgumentException("an id seen twice");
+        round.SetResult();
+        await shell.Suggestions.Settled;
+
+        Exception? fault = await Record.ExceptionAsync(() => shell.SuggestionsShown);
+        Assert.Null(fault);
+
+        _library.Reading = null;
     }
 
     [Theory]
@@ -261,12 +352,10 @@ public sealed class ConfirmQueueRefreshTests : IDisposable
     /// been recorded, and that cannot be seen through a double which only
     /// remembers what it was told.
     ///
-    /// <para>Nobody is given an era, so the proposal sweep that follows every
-    /// assignment finds no one to propose for and returns without offering
-    /// anything - which is also why withdrawing the outstanding proposals is
-    /// counted here rather than carried out. The round therefore leaves exactly
-    /// the questions that were not answered, which is what the real sweep does
-    /// when nothing else about the library has changed.</para>
+    /// <para>Nobody is given an era, so a suggestion round finds no one to
+    /// propose for: it withdraws every outstanding question and offers nothing.
+    /// Answering no longer runs one - the shell does, afterwards - so a screen
+    /// with no shell around it never sees a round at all.</para>
     /// </remarks>
     private sealed class InMemoryLibrary : IPeopleReader, IPeopleRepository
     {
@@ -353,13 +442,26 @@ public sealed class ConfirmQueueRefreshTests : IDisposable
             }
         }
 
-        /// <summary>Counted rather than carried out - see the remarks above.</summary>
-        public int ProposalsCleared { get; private set; }
+        /// <summary>
+        /// Run when a suggestion round reaches its write, to hold it there.
+        /// </summary>
+        public Func<Task>? Proposing { get; set; }
 
-        public Task ClearProposalsAsync(int personId, CancellationToken token = default)
+        /// <summary>
+        /// A round's write: every outstanding proposal withdrawn, and whatever
+        /// it chose put in their place - which, with nobody given an era, is
+        /// nothing.
+        /// </summary>
+        public async Task ReplaceProposalsAsync(
+            IReadOnlyDictionary<int, IReadOnlyList<ScoredFace>> proposals,
+            CancellationToken token = default)
         {
-            ProposalsCleared++;
-            return Task.CompletedTask;
+            if (Proposing is not null)
+            {
+                await Proposing();
+            }
+
+            WithdrawProposals();
         }
 
         private static FaceRecord Face(int faceId, AssignmentSource source) => new(

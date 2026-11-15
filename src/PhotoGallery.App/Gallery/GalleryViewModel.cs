@@ -173,6 +173,16 @@ public sealed partial class GalleryViewModel : ObservableObject
     public event EventHandler? LibraryChanged;
 
     /// <summary>
+    /// Raised when a name given here has been saved, so who the other faces look
+    /// like wants working out again.
+    /// </summary>
+    /// <remarks>
+    /// The shell runs that round, in the background and one at a time for the
+    /// whole app, and tells the viewer when it is over.
+    /// </remarks>
+    public event EventHandler? SuggestionsOutdated;
+
+    /// <summary>
     /// Raised when a turn was refused because the photograph's folder is away,
     /// carrying the folders that could not be reached.
     /// </summary>
@@ -1333,6 +1343,18 @@ public sealed partial class GalleryViewModel : ObservableObject
             ShowFaceNames ? LoadOpenFacesAsync(open.Item.Id) : Task.CompletedTask);
     }
 
+    /// <summary>
+    /// Reads the open photograph's faces again, after a suggestion round has
+    /// changed who they are proposed as.
+    /// </summary>
+    /// <remarks>
+    /// The faces only, and only for the photograph open when this is called:
+    /// the round finishes in the background, and the album and the details
+    /// beside the picture are not something it touches.
+    /// </remarks>
+    internal Task RereadOpenFacesAsync() =>
+        OpenTile is { } open ? LoadOpenFacesAsync(open.Item.Id) : Task.CompletedTask;
+
     /// <summary>Reads which album the open photograph is in.</summary>
     /// <remarks>
     /// Only the picture still open may fill it in, for the same reason the
@@ -1936,11 +1958,10 @@ public sealed partial class GalleryViewModel : ObservableObject
         int? assetId = OpenTile?.Item.Id;
         IViewerGrid? from = _viewerSource;
 
-        // The screen first, the database after. Naming a face is not a small
-        // write - it confirms this face and then offers the same person to
-        // everything else that looks like them across the library - and holding
-        // the picker open until that returns made a click that is answering an
-        // obvious question feel like it had not registered.
+        // The screen first, the database after. Naming a face is a write that
+        // reads every copy of the photograph and rebuilds the person, and
+        // holding the picker open until that returns made a click that is
+        // answering an obvious question feel like it had not registered.
         //
         // Nothing here is guessed: the user has just said who this is, and the
         // box shows exactly what they said. The only thing still in doubt is
@@ -1963,13 +1984,18 @@ public sealed partial class GalleryViewModel : ObservableObject
 
         try
         {
-            // Off the dispatcher, and one at a time. Off, because confirming a
-            // face re-proposes that person across the whole library and doing
-            // that on the UI thread is the freeze this change exists to remove.
-            // One at a time, because the turn and delete buttons write the same
-            // face rows - and the user can reach them the moment this returns
-            // control to the screen. Two writers on one SQLite file is a locked
+            // Off the dispatcher, and one at a time. Off, because recording
+            // reads every copy of the photograph and rebuilds the person. One at
+            // a time, because the turn and delete buttons write the same face
+            // rows - and the user can reach them the moment this returns control
+            // to the screen. Two writers on one SQLite file is a locked
             // database, or boxes moved by one and rewritten by the other.
+            //
+            // What it no longer waits for is the sweep of the whole library that
+            // offers the person to everything else that looks like them: that
+            // is asked for below and runs in the background, so naming ten faces
+            // in a row is not ten waits for it.
+            Interlocked.Increment(ref _namesSaving);
             await _viewerWrites.WaitAsync().ConfigureAwait(true);
             try
             {
@@ -1991,6 +2017,7 @@ public sealed partial class GalleryViewModel : ObservableObject
         catch (Exception ex) when (LibraryFailure.IsExpected(ex))
         {
             DiagnosticLog.Write($"could not record {displayName} on face {face.FaceId}", ex);
+            OneNameSaved(saved: false);
 
             // Put the question back. A name left on screen that never reached
             // the disk is worse than the lag this replaced: the user would think
@@ -2001,6 +2028,14 @@ public sealed partial class GalleryViewModel : ObservableObject
             }
 
             return;
+        }
+        catch
+        {
+            // Anything else still comes off the queue before it goes on up. Left
+            // counted, the queue would never read empty again, and no name given
+            // in the viewer would ask for suggestions for the rest of the session.
+            OneNameSaved(saved: false);
+            throw;
         }
 
         // Naming somebody takes this photograph out of "No faces named", and
@@ -2014,14 +2049,46 @@ public sealed partial class GalleryViewModel : ObservableObject
         // Naming a face here can create somebody who did not exist a moment ago,
         // which the status bar's people count is showing.
         LibraryChanged?.Invoke(this, EventArgs.Empty);
+        OneNameSaved(saved: true);
 
-        // Re-read once the write is done, because confirming one face can change
-        // what is proposed on the others in this same picture. The boxes are
-        // already right about the one that was just named, so this settles the
-        // rest without anybody waiting on it.
+        // Re-read once the write is done, so the boxes show what is on record
+        // rather than what was assumed a moment ago. What naming changes about
+        // the other faces in this picture - who they are proposed as - arrives
+        // with the round, which reads them again for the open picture when it
+        // is over.
         if (assetId is int id)
         {
             await LoadOpenFacesAsync(id).ConfigureAwait(true);
+        }
+    }
+
+    /// <summary>How many names given in the viewer are queued or being saved.</summary>
+    private int _namesSaving;
+
+    /// <summary>Whether a name has reached the disk since a round was last asked for.</summary>
+    private bool _nameSavedSinceAsking;
+
+    /// <summary>
+    /// Counts one name off the queue, and asks for a round once the queue is
+    /// empty and something in it was saved.
+    /// </summary>
+    /// <remarks>
+    /// Asked once per burst rather than once per name. The picker hands the
+    /// screen back at once, so naming ten faces quickly queues ten saves of a
+    /// few hundred milliseconds each - measured at 0.2 to 0.8 s on a copy of the
+    /// real library, slower while a round is writing. Asking after each one
+    /// spread the requests over seconds, longer than a round takes, so the
+    /// runner's coalescing never saw them together: ten names ran eight rounds.
+    /// The last save in the queue asks for all of them.
+    /// </remarks>
+    private void OneNameSaved(bool saved)
+    {
+        _nameSavedSinceAsking |= saved;
+
+        if (Interlocked.Decrement(ref _namesSaving) == 0 && _nameSavedSinceAsking)
+        {
+            _nameSavedSinceAsking = false;
+            SuggestionsOutdated?.Invoke(this, EventArgs.Empty);
         }
     }
 

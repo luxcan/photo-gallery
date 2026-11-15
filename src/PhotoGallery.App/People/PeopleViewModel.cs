@@ -305,6 +305,16 @@ public sealed partial class PeopleViewModel : ObservableObject, IViewerGrid
     public event EventHandler? AnswersSaved;
 
     /// <summary>
+    /// Raised when an answer has been saved that changes who the other faces
+    /// look like, so the suggestions want working out again.
+    /// </summary>
+    /// <remarks>
+    /// The round is the shell's to run, in the background and one at a time for
+    /// the whole app; this screen only says one is needed.
+    /// </remarks>
+    public event EventHandler? SuggestionsOutdated;
+
+    /// <summary>
     /// Raised when a turn was refused because the photograph's folder is away.
     /// </summary>
     /// <remarks>
@@ -1874,6 +1884,55 @@ public sealed partial class PeopleViewModel : ObservableObject, IViewerGrid
 
         await ReloadAsync().ConfigureAwait(true);
         await RefreshQuestionsAsync().ConfigureAwait(true);
+
+        // Asked for once the queue has been read back, not inside the save. The
+        // round is a sweep over the whole library and was most of the time the
+        // overlay stayed up; the questions still to answer are
+        // already on screen, and what the round adds arrives as counts.
+        SuggestionsOutdated?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>
+    /// Brings the counts of faces waiting for an answer up to date after a
+    /// suggestion round, and nothing else.
+    /// </summary>
+    /// <remarks>
+    /// The round finishes in the background, whenever it finishes, and the user
+    /// may be half way through the queue or the face inspector by then. A
+    /// reload rebuilds every row and closes the inspector, and re-reading the
+    /// queue would pull the questions out from under them - so this only
+    /// recounts the rows already on screen. A queue that is open keeps what it
+    /// is asking; the new ones are there next time it is opened.
+    /// </remarks>
+    internal async Task RecountSuggestionsAsync()
+    {
+        PeopleBoard board;
+        try
+        {
+            using IServiceScope scope = _scopeFactory.CreateScope();
+            GetPeopleBoardHandler handler =
+                scope.ServiceProvider.GetRequiredService<GetPeopleBoardHandler>();
+
+            board = await Task.Run(() => handler.HandleAsync()).ConfigureAwait(true);
+        }
+        catch (Exception ex) when (LibraryFailure.IsExpected(ex))
+        {
+            DiagnosticLog.Write("could not recount the faces waiting for an answer", ex);
+            return;
+        }
+
+        Dictionary<int, PersonSummary> fresh = board.People.ToDictionary(person => person.Id);
+        foreach (PersonItem person in Named)
+        {
+            if (fresh.TryGetValue(person.Id, out PersonSummary? summary))
+            {
+                person.Recount(summary);
+            }
+        }
+
+        OnPropertyChanged(nameof(HasPendingConfirm));
+        OnPropertyChanged(nameof(ReviewNotice));
+        OnPropertyChanged(nameof(ReviewCaption));
     }
 
     /// <summary>

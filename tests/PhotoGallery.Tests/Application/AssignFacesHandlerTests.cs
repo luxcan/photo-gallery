@@ -83,12 +83,104 @@ public sealed class AssignFacesHandlerTests : IDisposable
         int stranger = AddFace(4, 120);
 
         AssignmentResult result = await Name(named, "Ana Lim");
+        ProposalRound round = await Round();
 
-        Assert.Equal(1, result.Proposed);
+        Assert.Equal(1, round.For(result.PersonId).Offered);
         Assert.Equal(
             AssignmentSource.Proposed,
             (await _db.FaceAssignments.FirstAsync(a => a.FaceId == looksAlike)).Source);
         Assert.False(await _db.FaceAssignments.AnyAsync(a => a.FaceId == stranger));
+    }
+
+    [Fact]
+    public async Task Name_SavesTheAnswerWithoutRunningARound()
+    {
+        // The round is a sweep over the whole library, and running it inside
+        // every answer made naming ten faces in a row ten waits. The answer and the person's eras are saved
+        // here; who else looks like them is the background round's to decide.
+        int[] named = [AddFace(0, 0), AddFace(1, 2), AddFace(2, 4)];
+        int looksAlike = AddFace(3, 6);
+
+        AssignmentResult result = await Name(named, "Ana Lim");
+
+        Assert.Equal(1, result.Eras);
+        Assert.False(await _db.FaceAssignments.AnyAsync(a => a.FaceId == looksAlike));
+        Assert.Equal("3 faces are Ana Lim", result.Summary);
+    }
+
+    [Fact]
+    public async Task Round_NeverWritesOverAnAnswerGivenWhileItRan()
+    {
+        // The round reads the library, spends seconds weighing it, then writes.
+        // Answers keep arriving in that time now that it runs in the background,
+        // and what it chose from its first read must not land on a face the user
+        // has since confirmed, refused for that person, or set aside.
+        AssignmentResult ana = await Name([AddFace(0, 0), AddFace(1, 2), AddFace(2, 4)], "Ana Lim");
+        int confirmed = AddFace(3, 5);
+        int refused = AddFace(4, 6);
+        int setAside = AddFace(5, 4);
+        int untouched = AddFace(6, 5);
+
+        var held = new HeldAtTheWrite(_repository);
+        Task<ProposalRound> running = new ProposeFacesHandler(_reader, held).HandleAsync();
+        await held.Reached.WaitAsync(TimeSpan.FromSeconds(10));
+
+        // Answered on a connection of its own, as the screen's write would be.
+        await using (GalleryDbContext other = NewContext())
+        {
+            var reader = new SqlitePeopleReader(other);
+            var repository = new SqlitePeopleRepository(other);
+            var answer = new AssignFacesHandler(reader, repository);
+
+            await answer.HandleAsync(new AssignFacesRequest(
+                [confirmed], AssignmentSource.Confirmed, PersonId: ana.PersonId));
+            await answer.HandleAsync(new AssignFacesRequest(
+                [refused], AssignmentSource.Rejected, PersonId: ana.PersonId));
+            await repository.SetIgnoredAsync([setAside], ignored: true);
+        }
+
+        held.Release();
+        ProposalRound round = await running;
+
+        // The round had chosen all four from what it read.
+        Assert.Equal(4, round.For(ana.PersonId).Offered);
+
+        Assert.False(await _db.FaceAssignments.AnyAsync(a =>
+            a.Source == AssignmentSource.Proposed
+            && (a.FaceId == confirmed || a.FaceId == refused || a.FaceId == setAside)));
+        Assert.True(await _db.FaceAssignments.AnyAsync(a =>
+            a.FaceId == confirmed && a.Source == AssignmentSource.Confirmed));
+        Assert.True(await _db.FaceAssignments.AnyAsync(a =>
+            a.FaceId == refused && a.Source == AssignmentSource.Rejected));
+        Assert.True(await _db.FaceAssignments.AnyAsync(a =>
+            a.FaceId == untouched && a.Source == AssignmentSource.Proposed));
+    }
+
+    [Fact]
+    public async Task Round_KeepsTheLastRoundsQuestionsUntilItWritesItsOwn()
+    {
+        // A round no longer clears every proposal before it reads. Something
+        // reading the library while it works - the People screen putting its
+        // queue back after an answer - found no questions at all and closed the
+        // queue under the user.
+        AssignmentResult ana = await Name([AddFace(0, 0), AddFace(1, 2), AddFace(2, 4)], "Ana Lim");
+        int proposed = AddFace(3, 5);
+        await Round();
+
+        var held = new HeldAtTheWrite(_repository);
+        Task<ProposalRound> running = new ProposeFacesHandler(_reader, held).HandleAsync();
+        await held.Reached.WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.True(await _db.FaceAssignments.AnyAsync(a =>
+            a.FaceId == proposed && a.PersonId == ana.PersonId && a.Source == AssignmentSource.Proposed));
+
+        held.Release();
+        await running;
+
+        Assert.Equal(
+            1,
+            await _db.FaceAssignments.CountAsync(a =>
+                a.FaceId == proposed && a.Source == AssignmentSource.Proposed));
     }
 
     [Fact]
@@ -98,15 +190,18 @@ public sealed class AssignFacesHandlerTests : IDisposable
         int proposed = AddFace(3, 6);
         AssignmentResult first = await Name(named, "Ana Lim");
 
-        AssignmentResult confirmed = await NewHandler().HandleAsync(new AssignFacesRequest(
+        await Round();
+
+        await NewHandler().HandleAsync(new AssignFacesRequest(
             [proposed], AssignmentSource.Confirmed, PersonId: first.PersonId));
+        ProposalRound round = await Round();
 
         Assert.Equal(
             4,
             await _db.FaceAssignments.CountAsync(a =>
                 a.PersonId == first.PersonId && a.Source == AssignmentSource.Confirmed));
         Assert.Equal(4, (await _db.Set<PersonEra>().FirstAsync()).SampleCount);
-        Assert.Equal(0, confirmed.Proposed);
+        Assert.Equal(0, round.For(first.PersonId).Offered);
     }
 
     [Fact]
@@ -117,15 +212,15 @@ public sealed class AssignFacesHandlerTests : IDisposable
         int[] named = [AddFace(0, 0), AddFace(1, 2), AddFace(2, 4)];
         int wrong = AddFace(3, 6);
         AssignmentResult first = await Name(named, "Ana Lim");
-        Assert.Equal(1, first.Proposed);
+        Assert.Equal(1, (await Round()).For(first.PersonId).Offered);
 
         await NewHandler().HandleAsync(new AssignFacesRequest(
             [wrong], AssignmentSource.Rejected, PersonId: first.PersonId));
 
-        AssignmentResult again = await NewHandler().HandleAsync(new AssignFacesRequest(
+        await NewHandler().HandleAsync(new AssignFacesRequest(
             [AddFace(4, 1)], AssignmentSource.Confirmed, PersonId: first.PersonId));
 
-        Assert.Equal(0, again.Proposed);
+        Assert.Equal(0, (await Round()).For(first.PersonId).Offered);
         Assert.Equal(
             AssignmentSource.Rejected,
             (await _db.FaceAssignments.FirstAsync(a => a.FaceId == wrong)).Source);
@@ -157,7 +252,7 @@ public sealed class AssignFacesHandlerTests : IDisposable
 
         AssignmentResult his = await Name([AddFace(3, 3), AddFace(4, 5), AddFace(5, 7)], "Dad");
 
-        Assert.Equal(0, his.Proposed);
+        Assert.Equal(0, (await Round()).For(his.PersonId).Offered);
     }
 
     [Fact]
@@ -188,11 +283,13 @@ public sealed class AssignFacesHandlerTests : IDisposable
         }
 
         AssignmentResult result = await Name(named, "Ana Lim");
+        ProposalRound round = await Round();
+        PersonProposals theirs = round.For(result.PersonId);
 
-        Assert.True(result.WasCapped);
-        Assert.Equal(ProposeFacesHandler.MaxProposals, result.Proposed);
-        Assert.True(result.Matched > result.Proposed);
-        Assert.Contains("showing the closest", result.Summary, StringComparison.Ordinal);
+        Assert.True(round.WasCapped);
+        Assert.Equal(ProposeFacesHandler.MaxProposals, theirs.Offered);
+        Assert.True(theirs.Matched > theirs.Offered);
+        Assert.Contains("showing the closest", round.Summary, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -205,7 +302,7 @@ public sealed class AssignFacesHandlerTests : IDisposable
 
         AssignmentResult result = await Name([AddFace(0, 0), AddFace(1, 2), AddFace(2, 4)], "Ana Lim");
 
-        Assert.Equal(0, result.Proposed);
+        Assert.Equal(0, (await Round()).For(result.PersonId).Offered);
         Assert.False(await _db.FaceAssignments.AnyAsync(a => a.FaceId == stranger));
     }
 
@@ -231,6 +328,7 @@ public sealed class AssignFacesHandlerTests : IDisposable
         int[] named = [AddFace(0, 0), AddFace(1, 2), AddFace(2, 4)];
         int proposed = AddFace(3, 6);
         await Name(named, "Ana Lim");
+        await Round();
         Assert.True(await _db.FaceAssignments.AnyAsync(a => a.FaceId == proposed));
 
         await _repository.SetIgnoredAsync([proposed], ignored: true);
@@ -285,6 +383,7 @@ public sealed class AssignFacesHandlerTests : IDisposable
         int sure = AddFace(4, 6, score: 0.85f);
 
         await Name(named, "Ana Lim");
+        await Round();
 
         Assert.False(await _db.FaceAssignments.AnyAsync(a => a.FaceId == barely));
         Assert.True(await _db.FaceAssignments.AnyAsync(a => a.FaceId == sure));
@@ -309,7 +408,7 @@ public sealed class AssignFacesHandlerTests : IDisposable
         AssignmentResult ben = await Name([AddFace(3, 50), AddFace(4, 52), AddFace(5, 54)], "Ben");
 
         int contested = AddFace(6, 45);
-        await NewHandler().RefreshAsync(ben.PersonId);
+        await Round();
 
         FaceAssignment claim = await _db.FaceAssignments
             .AsNoTracking().FirstAsync(a => a.FaceId == contested);
@@ -328,7 +427,7 @@ public sealed class AssignFacesHandlerTests : IDisposable
         AssignmentResult ben = await Name([AddFace(3, 50), AddFace(4, 52), AddFace(5, 54)], "Ben");
 
         int between = AddFace(6, 27);
-        await NewHandler().RefreshAsync(ben.PersonId);
+        await Round();
 
         Assert.False(await _db.FaceAssignments.AnyAsync(a => a.FaceId == between));
     }
@@ -343,13 +442,14 @@ public sealed class AssignFacesHandlerTests : IDisposable
         AssignmentResult ben = await Name([AddFace(3, 50), AddFace(4, 52), AddFace(5, 54)], "Ben");
 
         int face = AddFace(6, 5);
-        await NewHandler().RefreshAsync(anna.PersonId);
+        await Round();
         Assert.Equal(
             anna.PersonId,
             (await _db.FaceAssignments.AsNoTracking().FirstAsync(a => a.FaceId == face)).PersonId);
 
         await NewHandler().HandleAsync(new AssignFacesRequest(
             [face], AssignmentSource.Rejected, PersonId: anna.PersonId));
+        await Round();
 
         Assert.Equal(
             ben.PersonId,
@@ -366,8 +466,11 @@ public sealed class AssignFacesHandlerTests : IDisposable
             && a.Source == AssignmentSource.Rejected));
     }
 
-    private AssignFacesHandler NewHandler() =>
-        new(_reader, _repository, new ProposeFacesHandler(_reader, _repository));
+    private AssignFacesHandler NewHandler() => new(_reader, _repository);
+
+    /// <summary>One suggestion round, as the app runs after an answer is saved.</summary>
+    private Task<ProposalRound> Round() =>
+        new ProposeFacesHandler(_reader, _repository).HandleAsync();
 
     [Fact]
     public async Task Name_SettlesEveryCopyOfThePhotographItWasGivenOn()
@@ -471,8 +574,7 @@ public sealed class AssignFacesHandlerTests : IDisposable
 
         var calls = new System.Collections.Concurrent.ConcurrentDictionary<string, int>();
         IPeopleReader counted = CallCounter<IPeopleReader>.Wrap(_reader, calls);
-        var handler = new AssignFacesHandler(
-            counted, _repository, new ProposeFacesHandler(counted, _repository));
+        var handler = new AssignFacesHandler(counted, _repository);
 
         int ana = await handler.RecordAsync(
             new AssignFacesRequest([asked], AssignmentSource.Confirmed, DisplayName: "Ana"));
@@ -673,6 +775,75 @@ public sealed class AssignFacesHandlerTests : IDisposable
         _db.ChangeTracker.Clear();
 
         return face.Id;
+    }
+
+    /// <summary>A second context on the same index, as another screen's write would use.</summary>
+    private GalleryDbContext NewContext() =>
+        new(new DbContextOptionsBuilder<GalleryDbContext>()
+            .UseSqlite($"Data Source={Path.Combine(_tempRoot, "index.db")}")
+            .Options);
+
+    /// <summary>
+    /// The real repository, with a round's write held until the test lets it go.
+    /// </summary>
+    /// <remarks>
+    /// Holds the round between the read it decided from and the write, which is
+    /// exactly where an answer given while it runs lands.
+    /// </remarks>
+    private sealed class HeldAtTheWrite(IPeopleRepository inner) : IPeopleRepository
+    {
+        private readonly TaskCompletionSource _reached =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        private readonly TaskCompletionSource _released =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public Task Reached => _reached.Task;
+
+        public void Release() => _released.TrySetResult();
+
+        public async Task ReplaceProposalsAsync(
+            IReadOnlyDictionary<int, IReadOnlyList<ScoredFace>> proposals,
+            CancellationToken cancellationToken = default)
+        {
+            _reached.TrySetResult();
+            await _released.Task.WaitAsync(TimeSpan.FromSeconds(10), cancellationToken);
+            await inner.ReplaceProposalsAsync(proposals, cancellationToken);
+        }
+
+        public Task<int> EnsurePersonAsync(
+            string displayName, CancellationToken cancellationToken = default) =>
+            inner.EnsurePersonAsync(displayName, cancellationToken);
+
+        public Task RenamePersonAsync(
+            int personId, string displayName, CancellationToken cancellationToken = default) =>
+            inner.RenamePersonAsync(personId, displayName, cancellationToken);
+
+        public Task SetBirthYearAsync(
+            int personId, int? birthYear, CancellationToken cancellationToken = default) =>
+            inner.SetBirthYearAsync(personId, birthYear, cancellationToken);
+
+        public Task AssignAsync(
+            int personId,
+            IReadOnlyList<ScoredFace> faces,
+            AssignmentSource source,
+            CancellationToken cancellationToken = default) =>
+            inner.AssignAsync(personId, faces, source, cancellationToken);
+
+        public Task UnassignAsync(
+            IReadOnlyList<int> faceIds, CancellationToken cancellationToken = default) =>
+            inner.UnassignAsync(faceIds, cancellationToken);
+
+        public Task SetIgnoredAsync(
+            IReadOnlyList<int> faceIds, bool ignored, CancellationToken cancellationToken = default) =>
+            inner.SetIgnoredAsync(faceIds, ignored, cancellationToken);
+
+        public Task ReplaceErasAsync(
+            int personId, IReadOnlyList<PersonEra> eras, CancellationToken cancellationToken = default) =>
+            inner.ReplaceErasAsync(personId, eras, cancellationToken);
+
+        public Task RemovePersonAsync(int personId, CancellationToken cancellationToken = default) =>
+            inner.RemovePersonAsync(personId, cancellationToken);
     }
 
     public void Dispose()

@@ -1,20 +1,12 @@
 namespace PhotoGallery.Application.UseCases.People;
 
 /// <summary>What saying who someone is changed.</summary>
-/// <param name="Proposed">
-/// How many more faces the app now believes are this person, offered for review
-/// rather than treated as settled.
-/// </param>
-/// <param name="Considered">
-/// How many unnamed faces were weighed to arrive at those proposals, so a round
-/// that offers nothing can say whether it looked.
-/// </param>
-/// <param name="Matched">
-/// How many faces cleared the threshold altogether, which can be more than
-/// <paramref name="Proposed"/>. Reported rather than hidden: three people all
-/// showing exactly three hundred is a cap being met, and a number that stops at
-/// a round figure without saying so reads as the whole answer.
-/// </param>
+/// <remarks>
+/// Only what was decided. What the answer means for the rest of the library -
+/// how many more faces look like them - is worked out by a suggestion round that
+/// runs after the answer is saved, so it is not known when this is written, and
+/// a sentence that guessed at it would be wrong as often as not.
+/// </remarks>
 /// <param name="WereRejected">
 /// True when the answer was "no, they are not", so the sentence says that
 /// rather than the opposite of what was just decided.
@@ -24,35 +16,18 @@ public sealed record AssignmentResult(
     string DisplayName,
     int Assigned,
     int Eras,
-    int Proposed,
-    int Matched,
-    int Considered,
     bool WereRejected = false)
 {
-    public bool WasCapped => Matched > Proposed;
-
-    public string Summary => Proposed == 0
-        ? Settled
-        : WasCapped
-            ? $"{Settled}. {Matched:N0} more look like them - "
-              + $"showing the closest {Proposed:N0}, and the rest after you go through these."
-            : $"{Settled}, and {Waiting}";
-
     /// <summary>What was just decided, counted as a sentence rather than a sum.</summary>
     /// <remarks>
     /// Answering the last question about somebody is the most likely of all of
     /// these to be read, and it said "1 faces are Vera".
     /// </remarks>
-    private string Settled => (Assigned == 1, WereRejected) switch
+    public string Summary => (Assigned == 1, WereRejected) switch
     {
         (true, false) => $"1 face is {DisplayName}",
         (true, true) => $"1 face is not {DisplayName}",
         (false, false) => $"{Assigned:N0} faces are {DisplayName}",
         (false, true) => $"{Assigned:N0} faces are not {DisplayName}",
     };
-
-    /// <summary>What is left to answer, counted the same way.</summary>
-    private string Waiting => Proposed == 1
-        ? "1 more looks like them"
-        : $"{Proposed:N0} more look like them";
 }

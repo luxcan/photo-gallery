@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using PhotoGallery.Application.Ports;
 using PhotoGallery.Domain.Albums;
 using PhotoGallery.Domain.Assets;
@@ -533,6 +534,17 @@ public sealed class SqliteDecisionRepository : IDecisionRepository
             return (0, 0);
         }
 
+        // One transaction from the read to the save, the one stage that is not
+        // staged. This step reads every assignment, proposals included, then
+        // edits them in place - and a suggestion round can be writing beside it
+        // in the background, replacing every proposal with new rows. Landing
+        // between the read and the save, that made this update rows that were
+        // gone and insert pairs that had just been made, and the merge failed
+        // half-applied. BEGIN IMMEDIATE takes the write lock before the read, so
+        // the round waits for this commit and then skips the faces it named.
+        await using IDbContextTransaction transaction =
+            await _db.Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+
         Dictionary<FaceKey, int> faces =
             await FaceRowsAsync(cancellationToken).ConfigureAwait(false);
         Dictionary<Guid, int> people = await _db.People
@@ -590,6 +602,7 @@ public sealed class SqliteDecisionRepository : IDecisionRepository
         }
 
         await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
         _db.ChangeTracker.Clear();
 
         return (gained, replaced);

@@ -28,6 +28,25 @@ public sealed partial class PersonItem : ObservableObject
         OnPropertyChanged(nameof(Summary));
     }
 
+    /// <summary>
+    /// Takes the counts from a fresh read of this person, keeping the row.
+    /// </summary>
+    /// <remarks>
+    /// The row stays rather than being replaced, because it is the list's
+    /// selected item: swapping it for a new one would read as somebody else
+    /// being chosen, and its picture would have to be decoded again.
+    /// </remarks>
+    public void Recount(PersonSummary summary)
+    {
+        ArgumentNullException.ThrowIfNull(summary);
+
+        Summary = summary;
+        OnPropertyChanged(nameof(Summary));
+        OnPropertyChanged(nameof(AwaitingReview));
+        OnPropertyChanged(nameof(HasReview));
+        OnPropertyChanged(nameof(Caption));
+    }
+
     public int Id => Summary.Id;
 
     public string DisplayName => Summary.DisplayName;

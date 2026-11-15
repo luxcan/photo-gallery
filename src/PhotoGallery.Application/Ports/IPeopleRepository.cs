@@ -44,14 +44,21 @@ public interface IPeopleRepository
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Drops every proposal made to one person.
+    /// Withdraws every proposal and puts these in their place, in one write.
     /// </summary>
     /// <remarks>
-    /// Proposals are a question, not a record. Once the person's eras change the
-    /// old question was asked on out-of-date information, so it is withdrawn
-    /// rather than left alongside the new one.
+    /// Proposals are a question, not a record. Once anybody's eras change the
+    /// old questions were asked on out-of-date information, so they are all
+    /// withdrawn rather than left alongside the new ones.
+    ///
+    /// <para>A face that has an answer by the time this writes - confirmed as
+    /// anybody, refused for the person it is offered to, or set aside - is
+    /// skipped, whatever it was when the round that chose it began.</para>
     /// </remarks>
-    Task ClearProposalsAsync(int personId, CancellationToken cancellationToken = default);
+    /// <param name="proposals">The faces to offer, keyed by the person offered them.</param>
+    Task ReplaceProposalsAsync(
+        IReadOnlyDictionary<int, IReadOnlyList<ScoredFace>> proposals,
+        CancellationToken cancellationToken = default);
 
     /// <summary>Forgets what was said about some faces entirely.</summary>
     Task UnassignAsync(

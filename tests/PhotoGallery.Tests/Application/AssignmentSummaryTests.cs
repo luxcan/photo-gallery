@@ -3,7 +3,8 @@ using PhotoGallery.Application.UseCases.People;
 namespace PhotoGallery.Tests.Application;
 
 /// <summary>
-/// The sentence the People screen shows after an answer has been recorded.
+/// The sentence the People screen shows after an answer has been recorded, and
+/// the line the log gets once the round it asked for is over.
 /// </summary>
 /// <remarks>
 /// It is the only confirmation the user gets that the button did anything, so it
@@ -14,43 +15,37 @@ namespace PhotoGallery.Tests.Application;
 public sealed class AssignmentSummaryTests
 {
     [Theory]
-    [InlineData(1, 0, "1 face is Ana")]
-    [InlineData(16, 0, "16 faces are Ana")]
-    [InlineData(1, 1, "1 face is Ana, and 1 more looks like them")]
-    [InlineData(16, 7, "16 faces are Ana, and 7 more look like them")]
-    public void Summary_SpellsBothOfItsCounts(int assigned, int proposed, string expected) =>
-        Assert.Equal(expected, Result(assigned, proposed, matched: proposed).Summary);
+    [InlineData(1, false, "1 face is Ana")]
+    [InlineData(16, false, "16 faces are Ana")]
+    [InlineData(1, true, "1 face is not Ana")]
+    [InlineData(16, true, "16 faces are not Ana")]
+    public void Summary_SaysOnlyWhatWasDecided(int assigned, bool rejected, string expected) =>
+        Assert.Equal(
+            expected,
+            new AssignmentResult(PersonId: 1, DisplayName: "Ana", assigned, Eras: 1, rejected).Summary);
 
     [Fact]
-    public void Summary_SaysSoWhenThereWereMoreThanItIsShowing()
+    public void RoundSummary_SaysSoWhenThereWereMoreThanItIsShowing()
     {
         // Three people all showing exactly three hundred is a cap being met, and
         // a number that stops at a round figure without saying so reads as the
-        // whole answer.
-        AssignmentResult result = Result(assigned: 4, proposed: 300, matched: 812);
+        // whole answer. Said by the round now, because the answer no longer
+        // waits for one.
+        ProposalRound round = Round(offered: 300, matched: 812);
 
-        Assert.True(result.WasCapped);
+        Assert.True(round.WasCapped);
         Assert.Equal(
-            "4 faces are Ana. 812 more look like them - showing the closest 300, "
-            + "and the rest after you go through these.",
-            result.Summary);
+            "suggestions updated; 812 faces look like somebody, showing the closest 300",
+            round.Summary);
     }
 
-    [Fact]
-    public void Summary_OfAnAnswerThatOpenedNoNewQuestionsStopsThere()
-    {
-        // Nothing more to say, and "and 0 more look like them" would read as a
-        // failure to find something.
-        Assert.Equal("2 faces are Ana", Result(assigned: 2, proposed: 0, matched: 0).Summary);
-    }
+    [Theory]
+    [InlineData(0, "suggestions updated; nothing new to look at")]
+    [InlineData(1, "suggestions updated; 1 face to look at")]
+    [InlineData(7, "suggestions updated; 7 faces to look at")]
+    public void RoundSummary_CountsWhatIsWaiting(int offered, string expected) =>
+        Assert.Equal(expected, Round(offered, matched: offered).Summary);
 
-    private static AssignmentResult Result(int assigned, int proposed, int matched) =>
-        new(
-            PersonId: 1,
-            DisplayName: "Ana",
-            Assigned: assigned,
-            Eras: 1,
-            Proposed: proposed,
-            Matched: matched,
-            Considered: 1_000);
+    private static ProposalRound Round(int offered, int matched) =>
+        new(offered, matched, Considered: 1_000, new Dictionary<int, PersonProposals>());
 }

@@ -717,7 +717,9 @@ public sealed class FaceInspectionTests : IDisposable
             return Task.CompletedTask;
         }
 
-        public Task ClearProposalsAsync(int personId, CancellationToken token = default)
+        public Task ReplaceProposalsAsync(
+            IReadOnlyDictionary<int, IReadOnlyList<ScoredFace>> proposals,
+            CancellationToken token = default)
         {
             ProposalsCleared++;
             return Task.CompletedTask;
