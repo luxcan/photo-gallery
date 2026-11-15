@@ -37,6 +37,13 @@ public sealed class ModalParityTests
     private const string Running = "IsOverlayVisible";
 
     /// <summary>
+    /// What gates the card saying the Library wall is loading. Like the long
+    /// pass it goes away by itself when the work is done, and there is nothing
+    /// for Escape to put down - it cannot stop a read half way.
+    /// </summary>
+    private const string Loading = "Gallery.IsLoading";
+
+    /// <summary>
     /// A panel centred in both directions is floating over something, whatever
     /// it holds - which is the one thing every modal here has in common, and the
     /// only one a reader of the markup can be sure of.
@@ -200,7 +207,7 @@ public sealed class ModalParityTests
 
         foreach (string opener in ModalOpeners())
         {
-            if (opener == Running)
+            if (opener is Running or Loading)
             {
                 continue;
             }

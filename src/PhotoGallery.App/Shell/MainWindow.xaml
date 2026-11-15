@@ -822,6 +822,33 @@
                         Visibility="{Binding Gallery.IsLoading,
                                      Converter={StaticResource BoolToVisibility}}" />
 
+                <!-- Says the wall is being read, in the same card the long passes
+                     use, so it reads as the app working rather than a dimmed
+                     screen. Over the faded wall, which already takes the clicks,
+                     so no shade of its own. Shown at once rather than faded in:
+                     a delayed fade was still mostly transparent for the whole of
+                     a typical half-second read, which is the problem it was
+                     meant to solve. -->
+                <Grid HorizontalAlignment="Center" VerticalAlignment="Center"
+                      IsHitTestVisible="False"
+                      AutomationProperties.Name="Loading your pictures"
+                      Visibility="{Binding Gallery.IsLoading,
+                                   Converter={StaticResource BoolToVisibility}}">
+                  <!-- The same parts, sizes and spacing as the long passes' panel -
+                       title, the grey line naming what is being worked on, the
+                       bar - so the two read as one design. -->
+                  <Border Style="{DynamicResource ModalSurface}" MinWidth="320" MaxWidth="520">
+                    <StackPanel>
+                      <TextBlock Text="Loading your pictures" Style="{DynamicResource ModalTitle}" />
+                      <TextBlock Text="{Binding Gallery.LoadingTarget}" Margin="0,6,0,0" FontSize="12"
+                                 TextTrimming="CharacterEllipsis"
+                                 Foreground="{DynamicResource Editor.Placeholder}" />
+                      <ProgressBar Style="{DynamicResource PassProgress}" Margin="0,18,0,0"
+                                   IsIndeterminate="True" />
+                    </StackPanel>
+                  </Border>
+                </Grid>
+
                 <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center"
                            FontSize="13" TextAlignment="Center" MaxWidth="380"
                            TextWrapping="Wrap"

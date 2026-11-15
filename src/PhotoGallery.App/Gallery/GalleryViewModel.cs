@@ -143,8 +143,55 @@ public sealed partial class GalleryViewModel : ObservableObject
     private PhotoDetails? _openDetails;
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ShowsEmptyMessage))]
+    [NotifyPropertyChangedFor(nameof(ShowsEmptyMessage), nameof(LoadingTarget))]
     private bool _isLoading;
+
+    /// <summary>
+    /// What the wall is being read for, in the words of the controls that chose
+    /// it - the second line of the loading card, as the long passes' panel names
+    /// what it is working on under its title.
+    /// </summary>
+    public string LoadingTarget
+    {
+        get
+        {
+            List<string> parts = [];
+
+            if (PersonName.Length > 0)
+            {
+                parts.Add(PersonName);
+            }
+            else if (PlaceName.Length > 0)
+            {
+                parts.Add(PlaceName);
+            }
+            else if (SelectedFolder is FolderItem folder && folder.RelativeFolder.Length > 0)
+            {
+                parts.Add(folder.Name);
+            }
+
+            if (Kind == AssetKind.Photo)
+            {
+                parts.Add("Photos");
+            }
+            else if (Kind == AssetKind.Video)
+            {
+                parts.Add("Videos");
+            }
+
+            if (OutsideAlbums)
+            {
+                parts.Add("Not in an album");
+            }
+
+            if (WithoutNamedFaces)
+            {
+                parts.Add("No faces named");
+            }
+
+            return parts.Count == 0 ? "Everything" : string.Join(" · ", parts);
+        }
+    }
 
     public GalleryViewModel(IServiceScopeFactory scopeFactory, IThumbnailStore thumbnails)
     {
