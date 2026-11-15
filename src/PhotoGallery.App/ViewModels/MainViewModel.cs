@@ -1830,7 +1830,16 @@ public sealed partial class MainViewModel : ObservableObject
         _noticeAnswer = null;
         _noticeDeclined = null;
 
-        await answer().ConfigureAwait(true);
+        // After the answer, not before: answering a sync ends by saying how it
+        // went in this same corner, which would replace an offer made now.
+        try
+        {
+            await answer().ConfigureAwait(true);
+        }
+        finally
+        {
+            OfferWaitingRelease();
+        }
     }
 
     /// <summary>Puts the notice down, and tells whoever asked that it was.</summary>
@@ -1842,6 +1851,7 @@ public sealed partial class MainViewModel : ObservableObject
         _noticeAnswer = null;
         Notice = string.Empty;
         NoticeAction = string.Empty;
+        OfferWaitingRelease();
     }
 
     /// <summary>
@@ -1957,7 +1967,7 @@ public sealed partial class MainViewModel : ObservableObject
     /// often on a network that reaches nothing, and a complaint about that on
     /// every launch is how a notice teaches people to close it unread.</para>
     /// </remarks>
-    private async Task LookForANewVersionAsync()
+    internal async Task LookForANewVersionAsync()
     {
         try
         {
@@ -1979,26 +1989,18 @@ public sealed partial class MainViewModel : ObservableObject
                 return;
             }
 
-            _versionOffered = published.Number;
-
-            if (installable)
+            // The corner shows one notice at a time, and on opening the app the
+            // sync folder is looked at first - so its question is often already
+            // up when this one is found. Dropped then, as it once was, the offer
+            // was also counted as made, and nothing offered it again until the
+            // app was restarted. It waits for the corner instead.
+            if (HasNotice)
             {
-                Ask(
-                    $"{published.Name} is available. You are running {AppVersion.Number}. "
-                    + "Do you want to update?",
-                    "Update",
-                    () => UpdateAsync(published));
+                _releaseWaiting = (published, installable);
                 return;
             }
 
-            Ask(
-                $"{published.Name} is available. You are running {AppVersion.Number}.",
-                "See what is new",
-                () =>
-                {
-                    PageInBrowser.Open(published.Page);
-                    return Task.CompletedTask;
-                });
+            OfferRelease(published, installable);
         }
         catch (Exception ex) when (LibraryFailure.IsExpected(ex))
         {
@@ -2011,6 +2013,51 @@ public sealed partial class MainViewModel : ObservableObject
     /// once for the life of the window rather than every hour.
     /// </summary>
     private Version _versionOffered = new(0, 0);
+
+    /// <summary>A release found while another notice held the corner.</summary>
+    private (PublishedRelease Release, bool Installable)? _releaseWaiting;
+
+    /// <summary>Puts a release to the user, and counts it as offered.</summary>
+    private void OfferRelease(PublishedRelease published, bool installable)
+    {
+        _releaseWaiting = null;
+        _versionOffered = published.Number;
+
+        if (installable)
+        {
+            Ask(
+                $"{published.Name} is available. You are running {AppVersion.Number}. "
+                + "Do you want to update?",
+                "Update",
+                () => UpdateAsync(published));
+            return;
+        }
+
+        Ask(
+            $"{published.Name} is available. You are running {AppVersion.Number}.",
+            "See what is new",
+            () =>
+            {
+                PageInBrowser.Open(published.Page);
+                return Task.CompletedTask;
+            });
+    }
+
+    /// <summary>Offers a release that was waiting, now the corner is free.</summary>
+    /// <remarks>
+    /// Called once the notice before it has been cleared completely - text,
+    /// button and answer - rather than the moment its text goes, which would
+    /// have the rest of the clearing wipe the button off the offer just made.
+    /// </remarks>
+    private void OfferWaitingRelease()
+    {
+        if (!HasNotice
+            && _releaseWaiting is var (release, installable)
+            && release.Number > _versionOffered)
+        {
+            OfferRelease(release, installable);
+        }
+    }
 
     /// <summary>
     /// Closes the app, set by the window. An update ends with the new version
