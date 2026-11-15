@@ -160,15 +160,16 @@ public sealed class ConfirmQueueRefreshTests : IDisposable
         await OpenTheQueueAsync();
         _people.Proposals.Single(crop => crop.FaceId == LeftOut).IsChosen = false;
 
-        // The round the answer asks for is held, so the reads counted below are
-        // the save's own and not the recount that follows the round.
-        var round = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        _library.Proposing = () => round.Task;
-
         var saving = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         _library.Assigning = () => saving.Task;
         var coveredWhileReading = new List<bool>();
-        _library.Reading = () => coveredWhileReading.Add(shell.IsOverlayVisible);
+        _library.Reading = () =>
+        {
+            lock (coveredWhileReading)
+            {
+                coveredWhileReading.Add(shell.IsOverlayVisible);
+            }
+        };
 
         Task answering = _people.ConfirmProposalsCommand.ExecuteAsync(null);
 
@@ -184,32 +185,38 @@ public sealed class ConfirmQueueRefreshTests : IDisposable
         saving.SetResult();
         await answering;
 
-        Assert.NotEmpty(coveredWhileReading);
-        Assert.All(coveredWhileReading, Assert.True);
+        // Only the reads made before the save returned: the recount that the
+        // round's end sets off runs on its own and may land after the cover.
+        bool[] readsDuringTheSave;
+        lock (coveredWhileReading)
+        {
+            readsDuringTheSave = [.. coveredWhileReading];
+        }
+
+        Assert.NotEmpty(readsDuringTheSave);
+        Assert.All(readsDuringTheSave, Assert.True);
         Assert.False(shell.IsOverlayVisible);
         Assert.True(shell.IsIdle);
-        Assert.Equal(LeftOut, Assert.Single(_people.Proposals).FaceId);
+
+        // Read back after the round, so it shows what the round left: never an
+        // answered face (the one left out may or may not still be offered).
+        Assert.All(_people.Proposals, crop => Assert.Equal(LeftOut, crop.FaceId));
 
         _library.Reading = null;
-        round.SetResult();
-        await shell.Suggestions.Settled;
+        await shell.SuggestionsShown;
     }
 
     /// <summary>
-    /// The cover comes down once the answers are saved and the queue read back,
-    /// while the round they asked for is still running - and when the round
-    /// lands it changes the counts and leaves the open queue alone.
+    /// The saving panel stays up until the round the answers asked for is done,
+    /// and no bar appears in the corner for it.
     /// </summary>
     /// <remarks>
-    /// The round is a sweep over the whole library, and most of the time the
-    /// cover used to stay up for: 1.2 s of saving on a copy of the real library
-    /// against 0.2 s without it. It now runs behind the small
-    /// bar in the corner, and finishes whenever it finishes - by which time the
-    /// user may be part way through the questions on screen, so it must not
-    /// pull them out from under them.
+    /// The user's choice, having seen both: one panel from the click until
+    /// everything is finished reads as one thing happening, where a panel and
+    /// then a bar read as two. Names given in the photo viewer still use the bar.
     /// </remarks>
     [Fact]
-    public async Task TheRoundRunsAfterTheCoverIsDown_AndOnlyRecountsTheQueue()
+    public async Task TheCoverStaysUpUntilTheRoundIsDone_WithNoBarInTheCorner()
     {
         MainViewModel shell = TheShell();
         await OpenTheQueueAsync();
@@ -223,26 +230,24 @@ public sealed class ConfirmQueueRefreshTests : IDisposable
             return round.Task;
         };
 
-        await _people.ConfirmProposalsCommand.ExecuteAsync(null);
+        Task answering = _people.ConfirmProposalsCommand.ExecuteAsync(null);
         await reached.Task.WaitAsync(TimeSpan.FromSeconds(10));
 
-        Assert.False(shell.IsOverlayVisible, "the cover waited for the round");
-        Assert.True(shell.IsIdle);
-        Assert.True(shell.Suggestions.IsVisible, "nothing said a round was running");
-        Assert.Equal(1, _people.Named.Single(person => person.Id == Ana).AwaitingReview);
+        Assert.True(shell.IsOverlayVisible, "the cover came down before the round was done");
+        Assert.False(shell.IsIdle);
+        Assert.False(shell.Suggestions.IsVisible, "the corner bar showed under the cover");
 
         round.SetResult();
-        await shell.Suggestions.Settled;
+        await answering;
         await shell.SuggestionsShown;
 
+        Assert.False(shell.IsOverlayVisible);
         Assert.False(shell.Suggestions.IsVisible);
 
-        // The round withdrew the last question, and the count beside the name
-        // says so - but the queue open on screen is the user's place, and stays.
+        // The round withdrew the last question, and both the count and the
+        // queue, read back after it, say so.
         Assert.Equal(0, _people.Named.Single(person => person.Id == Ana).AwaitingReview);
         Assert.False(_people.HasPendingConfirm);
-        Assert.True(_people.IsConfirming);
-        Assert.Equal(LeftOut, Assert.Single(_people.Proposals).FaceId);
     }
 
     /// <summary>
@@ -263,7 +268,8 @@ public sealed class ConfirmQueueRefreshTests : IDisposable
             return round.Task;
         };
 
-        await _people.ConfirmProposalsCommand.ExecuteAsync(null);
+        // A round asked for in the background, as naming in the viewer does.
+        shell.Suggestions.Request();
         await reached.Task.WaitAsync(TimeSpan.FromSeconds(10));
 
         // Not one of the expected library failures: a bug in the recount.

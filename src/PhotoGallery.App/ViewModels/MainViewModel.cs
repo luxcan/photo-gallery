@@ -429,6 +429,11 @@ public sealed partial class MainViewModel : ObservableObject
         // again, and neither waits for it.
         Gallery.SuggestionsOutdated += (_, _) => Suggestions.Request();
         People.SuggestionsOutdated += (_, _) => Suggestions.Request();
+
+        // Answers on People wait for their round under the saving panel - one
+        // panel until everything is done, as the user preferred to a panel and
+        // then the bar. Names given in the photo viewer still use the bar.
+        People.UpdateSuggestionsAsync = () => Suggestions.RunNowAsync();
         Duplicates.LibraryChanged += OnLibraryChanged;
         Albums.LibraryChanged += OnLibraryChanged;
         Albums.Looking += OnAlbumsLooking;

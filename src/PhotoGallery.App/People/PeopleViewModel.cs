@@ -315,6 +315,17 @@ public sealed partial class PeopleViewModel : ObservableObject, IViewerGrid
     public event EventHandler? SuggestionsOutdated;
 
     /// <summary>
+    /// Works the suggestions out again and waits for it; set by the shell.
+    /// </summary>
+    /// <remarks>
+    /// Answers given here wait for it under the saving panel, as the user asked:
+    /// one panel that stays until everything is done, not a panel and then the
+    /// bar in the corner. Null where there is no shell, as in a test of this
+    /// screen alone - the answers are saved all the same.
+    /// </remarks>
+    public Func<Task>? UpdateSuggestionsAsync { get; set; }
+
+    /// <summary>
     /// Raised when a turn was refused because the photograph's folder is away.
     /// </summary>
     /// <remarks>
@@ -1879,17 +1890,33 @@ public sealed partial class PeopleViewModel : ObservableObject, IViewerGrid
             IsBusy = false;
         }
 
+        // Before the board and the queue are read back, so they show what the
+        // answers changed about everybody else's suggestions too. The answers
+        // are already saved; a round that fails leaves them so and says it.
+        if (UpdateSuggestionsAsync is { } update)
+        {
+            try
+            {
+                await update().ConfigureAwait(true);
+            }
+            catch (Exception ex) when (LibraryFailure.IsExpected(ex))
+            {
+                DiagnosticLog.Write("could not update the suggestions after an answer", ex);
+                Status = $"{Status}. The suggestions could not be updated - they will be after your next answer.";
+            }
+        }
+
         // Naming a group can create somebody who did not exist a moment ago.
         LibraryChanged?.Invoke(this, EventArgs.Empty);
 
         await ReloadAsync().ConfigureAwait(true);
         await RefreshQuestionsAsync().ConfigureAwait(true);
 
-        // Asked for once the queue has been read back, not inside the save. The
-        // round is a sweep over the whole library and was most of the time the
-        // overlay stayed up; the questions still to answer are
-        // already on screen, and what the round adds arrives as counts.
-        SuggestionsOutdated?.Invoke(this, EventArgs.Empty);
+        // With no shell to run the round in step, ask for it the usual way.
+        if (UpdateSuggestionsAsync is null)
+        {
+            SuggestionsOutdated?.Invoke(this, EventArgs.Empty);
+        }
     }
 
     /// <summary>

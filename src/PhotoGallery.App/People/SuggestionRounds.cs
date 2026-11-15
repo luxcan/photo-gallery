@@ -141,6 +141,24 @@ public sealed partial class SuggestionRounds : ObservableObject
         }
     }
 
+    /// <summary>
+    /// Runs one round now and waits for it, without the bar in the corner.
+    /// </summary>
+    /// <remarks>
+    /// For answers given on People, where the window is already covered by the
+    /// panel saying the answers are being saved: the user asked for that one
+    /// panel to stay up until the suggestions are done too, rather than a panel
+    /// and then a bar. Still one round at a time - it waits for one already
+    /// running - and still tells everything showing suggestions when it is over.
+    /// </remarks>
+    public Task<ProposalRound> RunNowAsync() =>
+        RunExclusiveAsync(async () =>
+        {
+            ProposalRound round = await _round().ConfigureAwait(true);
+            RoundFinished?.Invoke(this, round);
+            return round;
+        });
+
     private async Task RunAsync()
     {
         // Out of the caller's frame before anything else, so Request returns
