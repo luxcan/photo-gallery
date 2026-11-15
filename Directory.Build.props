@@ -9,7 +9,7 @@
 
          The build appends the commit, giving 1.0.0+<sha>: the number is the
          decision, and the commit says which build carried it. -->
-    <Version>1.0.0</Version>
+    <Version>1.1.0</Version>
 
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
