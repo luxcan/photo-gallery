@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using PhotoGallery.App.Gallery;
 using PhotoGallery.Application.Ports;
 using PhotoGallery.Domain.Assets;
@@ -16,9 +15,6 @@ namespace PhotoGallery.Tests.App;
 /// </remarks>
 public sealed class TileWindowFreshFillTests
 {
-    /// <summary>Comfortably under the one-second pause, so a wait shows.</summary>
-    private const int QuickerThanThePauseMs = 800;
-
     [Fact]
     public void MarkPrepared_MarksOnlyTheTilesTheStoreListed()
     {
@@ -39,14 +35,10 @@ public sealed class TileWindowFreshFillTests
 
         Assert.True(window.IsFresh);
 
-        var clock = Stopwatch.StartNew();
         Task showing = window.ShowRangeAsync(0);
         await UntilAsync(() => !window.IsFresh);
-        clock.Stop();
 
-        Assert.True(
-            clock.ElapsedMilliseconds < QuickerThanThePauseMs,
-            $"the first screen of a fresh wall waited {clock.ElapsedMilliseconds} ms");
+        Assert.Equal(0, window.SettlePausesStarted);
         await showing;
     }
 
@@ -63,7 +55,6 @@ public sealed class TileWindowFreshFillTests
         window.SetColumns(4);
         window.Fill(Tiles(100));
 
-        var clock = Stopwatch.StartNew();
         _ = window.ShowRangeAsync(0);
         window.SetVisibleRows(9);
         window.SetColumns(5);
@@ -72,11 +63,8 @@ public sealed class TileWindowFreshFillTests
         Assert.True(window.IsFresh, "re-asking for the same screen ended the fresh state");
 
         await UntilAsync(() => !window.IsFresh);
-        clock.Stop();
 
-        Assert.True(
-            clock.ElapsedMilliseconds < QuickerThanThePauseMs,
-            $"a re-ask on a fresh wall waited: the first screen took {clock.ElapsedMilliseconds} ms");
+        Assert.Equal(0, window.SettlePausesStarted);
         await last;
     }
 
@@ -99,6 +87,7 @@ public sealed class TileWindowFreshFillTests
 
         await scrolled;
         Assert.True(store.Reads > 0);
+        Assert.Equal(1, window.SettlePausesStarted);
     }
 
     [Fact]

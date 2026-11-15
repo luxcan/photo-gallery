@@ -59,6 +59,13 @@ public sealed class TileWindow
     /// </remarks>
     private static readonly TimeSpan VisibleSettle = TimeSpan.FromSeconds(1);
 
+    /// <summary>How many times a decode has started waiting out that pause.</summary>
+    /// <remarks>
+    /// For tests, which need to know whether the pause was taken. Timing it
+    /// with a stopwatch instead failed whenever the machine was busy.
+    /// </remarks>
+    internal int SettlePausesStarted { get; private set; }
+
     /// <summary>
     /// How long before the pages either side are decoded too.
     /// </summary>
@@ -388,6 +395,7 @@ public sealed class TileWindow
             // wall that has just been filled.
             if (settle)
             {
+                SettlePausesStarted++;
                 await Task.Delay(VisibleSettle, mine.Token);
             }
 
