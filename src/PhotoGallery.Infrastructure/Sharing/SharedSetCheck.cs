@@ -1,4 +1,4 @@
-﻿using PhotoGallery.Domain.Sharing;
+using PhotoGallery.Domain.Sharing;
 
 namespace PhotoGallery.Infrastructure.Sharing;
 

@@ -93,14 +93,14 @@ public sealed class CollectionsScreenTests : IDisposable
     public async Task TheWallShowsOnlyTheAlbumsOnNoShelf()
     {
         int genting = await _albumStore.CreateAsync("Genting");
-        await _albumStore.CreateAsync("Chingay");
+        await _albumStore.CreateAsync("Carnival");
         int holiday = await _shelves.CreateAsync("Holiday");
         await _shelves.SetAlbumsAsync(holiday, [genting]);
 
         await _albums.ReloadAsync();
 
         Assert.Equal(2, _albums.Mine.Count);
-        Assert.Equal("Chingay", Assert.Single(_albums.Wall).Name);
+        Assert.Equal("Carnival", Assert.Single(_albums.Wall).Name);
         Assert.True(_albums.ShowingTheBand);
     }
 
@@ -108,7 +108,7 @@ public sealed class CollectionsScreenTests : IDisposable
     public async Task OpeningACollectionShowsTheAlbumsOnIt()
     {
         int genting = await _albumStore.CreateAsync("Genting");
-        await _albumStore.CreateAsync("Chingay");
+        await _albumStore.CreateAsync("Carnival");
         int holiday = await _shelves.CreateAsync("Holiday");
         await _shelves.SetAlbumsAsync(holiday, [genting]);
         await _albums.ReloadAsync();
@@ -125,7 +125,7 @@ public sealed class CollectionsScreenTests : IDisposable
     public async Task ComingOutOfACollectionShowsTheLooseAlbumsAgain()
     {
         int genting = await _albumStore.CreateAsync("Genting");
-        await _albumStore.CreateAsync("Chingay");
+        await _albumStore.CreateAsync("Carnival");
         int holiday = await _shelves.CreateAsync("Holiday");
         await _shelves.SetAlbumsAsync(holiday, [genting]);
         await _albums.ReloadAsync();
@@ -133,7 +133,7 @@ public sealed class CollectionsScreenTests : IDisposable
         _albums.Collections.OpenShelfCommand.Execute(_albums.Collections.All.Single());
         _albums.Collections.CloseCommand.Execute(null);
 
-        Assert.Equal("Chingay", Assert.Single(_albums.Wall).Name);
+        Assert.Equal("Carnival", Assert.Single(_albums.Wall).Name);
         Assert.True(_albums.ShowingTheStrip);
     }
 
@@ -311,7 +311,7 @@ public sealed class CollectionsScreenTests : IDisposable
     public async Task TheListOffersEveryAlbumAndSaysWhereEachOneIs()
     {
         int genting = await _albumStore.CreateAsync("Genting");
-        int chingay = await _albumStore.CreateAsync("Chingay");
+        int carnival = await _albumStore.CreateAsync("Carnival");
         int bali = await _albumStore.CreateAsync("Bali");
         int holiday = await _shelves.CreateAsync("Holiday");
         int weekends = await _shelves.CreateAsync("Weekends");
@@ -325,10 +325,10 @@ public sealed class CollectionsScreenTests : IDisposable
 
         Assert.True(_albums.Collections.IsPicking);
         Assert.Equal(
-            ["Bali", "Chingay", "Genting"],
+            ["Bali", "Carnival", "Genting"],
             _albums.Collections.Choices.Select(choice => choice.Name).Order());
         Assert.True(_albums.Collections.Choices.Single(c => c.Id == genting).IsChosen);
-        Assert.False(_albums.Collections.Choices.Single(c => c.Id == chingay).IsChosen);
+        Assert.False(_albums.Collections.Choices.Single(c => c.Id == carnival).IsChosen);
         Assert.Contains(
             "on Weekends",
             _albums.Collections.Choices.Single(c => c.Id == bali).Caption,
@@ -695,7 +695,7 @@ public sealed class CollectionsScreenTests : IDisposable
     [Fact]
     public async Task AnEmptyShelfIsDrawnAsSomewhereToPutSomething()
     {
-        await _shelves.CreateAsync("Chingay");
+        await _shelves.CreateAsync("Carnival");
         await _albums.ReloadAsync();
 
         CollectionItem shelf = Assert.Single(_albums.Collections.All);

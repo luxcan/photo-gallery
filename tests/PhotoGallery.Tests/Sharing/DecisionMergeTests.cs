@@ -520,7 +520,7 @@ public sealed class DecisionMergeTests
     public void APhotographInTwoAlbumsEndsInTheLaterOneAndTheAppSaysWhichItLeft()
     {
         Guid genting = Guid.NewGuid();
-        Guid chingay = Guid.NewGuid();
+        Guid carnival = Guid.NewGuid();
         AssetKey photo = Pictures.Photo(@"2019\a.jpg");
 
         MergePlan plan = Merge(
@@ -528,13 +528,13 @@ public sealed class DecisionMergeTests
                 .HasAlbum(Pictures.Album(genting, "Genting", Monday))
                 .Puts(photo, genting, Monday),
             theirs: new Machine("Mum")
-                .HasAlbum(Pictures.Album(chingay, "Chingay", Tuesday))
-                .Puts(photo, chingay, Wednesday),
+                .HasAlbum(Pictures.Album(carnival, "Carnival", Tuesday))
+                .Puts(photo, carnival, Wednesday),
             here: Pictures.Indexed(photo));
 
         SharedAlbumMove move = Assert.Single(plan.Moves);
         Assert.Equal(genting, move.From);
-        Assert.Equal(chingay, move.To);
+        Assert.Equal(carnival, move.To);
     }
 
     /// <summary>
@@ -1464,22 +1464,22 @@ public sealed class DecisionMergeTests
     public void TwoWaitingMovesForOnePhotographAreOneMoveAndOneSettled()
     {
         Guid genting = Guid.NewGuid();
-        Guid chingay = Guid.NewGuid();
+        Guid carnival = Guid.NewGuid();
         AssetKey photo = Pictures.Photo(@"2019\a.jpg");
         Guid mum = Guid.NewGuid();
 
         var earlier = new SharedAlbumMembership(photo, genting, Monday, mum);
-        var later = new SharedAlbumMembership(photo, chingay, Tuesday, mum);
+        var later = new SharedAlbumMembership(photo, carnival, Tuesday, mum);
 
         MergePlan plan = DecisionMerge.Rejoin(
             new Machine("Dad")
                 .HasAlbum(Pictures.Album(genting, "Genting", Monday))
-                .HasAlbum(Pictures.Album(chingay, "Chingay", Monday))
+                .HasAlbum(Pictures.Album(carnival, "Carnival", Monday))
                 .Set(),
             Waiting(later, earlier),
             Pictures.Indexed(photo));
 
-        Assert.Equal(chingay, Assert.Single(plan.Moves).To);
+        Assert.Equal(carnival, Assert.Single(plan.Moves).To);
         Assert.Equal(earlier, Assert.Single(plan.Settled.Memberships));
     }
 

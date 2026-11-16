@@ -361,7 +361,7 @@ public sealed class HeldAnswersTests : IDisposable
     public async Task TwoWaitingMovesForOnePhotographCountAsOne()
     {
         Album genting = Mum.Album("Genting", Monday);
-        Album chingay = Mum.Album("Chingay", Monday);
+        Album carnival = Mum.Album("Carnival", Monday);
         Asset photo = Mum.Prepared(@"2019\a.jpg", "aaa.jpg");
         Mum.Put(genting, photo, Monday);
 
@@ -369,7 +369,7 @@ public sealed class HeldAnswersTests : IDisposable
         await Dad.Merging.HandleAsync();
 
         Mum.Db.AlbumMembers.ExecuteDelete();
-        Mum.Put(chingay, photo, Tuesday);
+        Mum.Put(carnival, photo, Tuesday);
 
         await Mum.Publishing.HandleAsync();
         await Dad.Merging.HandleAsync();
@@ -380,7 +380,7 @@ public sealed class HeldAnswersTests : IDisposable
         HeldResult swept = await Dad.Waiting.HandleAsync();
 
         AlbumMember landed = Assert.Single(Dad.Db.AlbumMembers);
-        Assert.Equal(Dad.Db.Albums.Single(a => a.PublicId == chingay.PublicId).Id, landed.AlbumId);
+        Assert.Equal(Dad.Db.Albums.Single(a => a.PublicId == carnival.PublicId).Id, landed.AlbumId);
         Assert.Empty(Dad.Db.HeldDecisions);
         Assert.Equal(1, swept.Applied);
         Assert.Equal(1, swept.Settled);

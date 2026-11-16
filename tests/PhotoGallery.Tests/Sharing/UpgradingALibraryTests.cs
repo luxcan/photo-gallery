@@ -41,7 +41,7 @@ public sealed class UpgradingALibraryTests : IDisposable
     private const string BeforeKeepsWereDated = "AddAlbumCoverChosenUtc";
 
     /// <summary>The last release before another computer had to be confirmed.</summary>
-    private const string BeforeComputersWereConfirmed = "AddEyesAndPreviewQuality";
+    private const string BeforeComputersWereConfirmed = "UpgradeToEfCore10";
 
     private readonly string _root;
     private readonly GalleryDbContext _db;
