@@ -1144,14 +1144,21 @@ public partial class MainWindow : Window
     /// <para>The command sets the source through the binding, which applies
     /// before this returns, so <c>Play</c> has something to act on.</para>
     /// </remarks>
-    private void OnStartVideoClicked(object sender, RoutedEventArgs e)
+    private async void OnStartVideoClicked(object sender, RoutedEventArgs e)
     {
-        _viewModel.Gallery.PlayVideoCommand.Execute(null);
+        await _viewModel.Gallery.PlayVideoCommand.ExecuteAsync(null);
 
         DiagnosticLog.Write(
             $"play asked: path={_viewModel.Gallery.PlayingPath ?? "<none>"} "
             + $"playing={_viewModel.Gallery.IsPlayingVideo} "
             + $"error={_viewModel.Gallery.PlaybackError ?? "<none>"}");
+
+        // Not found, or the viewer moved on while the share was being asked.
+        // Telling the element to play now would start whatever it is given next.
+        if (!_viewModel.Gallery.IsPlayingVideo)
+        {
+            return;
+        }
 
         // Back to the start. A clip that has been watched through is sitting at
         // its end, and playing from there is a video that does nothing - which

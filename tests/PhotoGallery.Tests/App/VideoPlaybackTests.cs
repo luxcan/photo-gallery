@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 using PhotoGallery.App.Gallery;
 using PhotoGallery.Application.Ports;
@@ -35,12 +36,13 @@ public sealed class VideoPlaybackTests
     }
 
     [Fact]
-    public void OpeningAVideoWarmsThePlayerWithoutStartingIt()
+    public async Task OpeningAVideoWarmsThePlayerWithoutStartingIt()
     {
         // The header and first read over a share are seconds. They are spent
         // here, while the poster is on screen, instead of after somebody has
         // asked to watch.
         GalleryViewModel gallery = Showing(AssetKind.Video);
+        await gallery.Warming;
 
         Assert.Equal(_clip, gallery.PlayingPath);
         Assert.NotNull(gallery.PlayingSource);
@@ -60,22 +62,86 @@ public sealed class VideoPlaybackTests
     }
 
     [Fact]
-    public void AVideoWhoseFileHasGoneIsNotWarmedAndSaysNothingYet()
+    public async Task AVideoWhoseFileHasGoneIsNotWarmedAndSaysNothingYet()
     {
         // Silent on open: somebody who has not asked to watch anything should
         // not be told that they cannot.
         GalleryViewModel gallery = Showing(AssetKind.Video, exists: false);
+        await gallery.Warming;
 
         Assert.Null(gallery.PlayingPath);
         Assert.False(gallery.HasPlaybackError);
     }
 
     [Fact]
-    public void PlayingTakesTheBadgeAwayAndNamesTheFile()
+    public void SteppingOntoAVideoOnAShareThatDoesNotAnswerDoesNotWait()
+    {
+        // The share switched off: Windows takes 21 seconds to say a file there
+        // does not exist, and asked on the window's thread that froze the
+        // viewer on every video stepped onto. 192.0.2.1 is reserved for
+        // documentation and never answers.
+        var stepping = Stopwatch.StartNew();
+
+        GalleryViewModel gallery = Showing(AssetKind.Video, fullPath: UnansweredClip);
+
+        Assert.True(
+            stepping.Elapsed < TimeSpan.FromSeconds(2),
+            $"opening the video waited {stepping.Elapsed.TotalSeconds:N1} s for the share");
+        Assert.Null(gallery.PlayingPath);
+    }
+
+    [Fact]
+    public void PressingPlayOnAShareThatDoesNotAnswerDoesNotWaitEither()
+    {
+        GalleryViewModel gallery = Showing(AssetKind.Video, fullPath: UnansweredClip);
+        var pressing = Stopwatch.StartNew();
+
+        gallery.PlayVideoCommand.Execute(null);
+
+        Assert.True(
+            pressing.Elapsed < TimeSpan.FromSeconds(2),
+            $"pressing play waited {pressing.Elapsed.TotalSeconds:N1} s for the share");
+        Assert.False(gallery.IsPlayingVideo);
+    }
+
+    [Fact]
+    public async Task AClipLeftBeforeTheShareAnswersIsNotHandedToThePlayer()
+    {
+        // The answer arrives for a picture the viewer has already left, and a
+        // late answer must not load the old clip under the new photograph.
+        GalleryViewModel gallery = Showing(AssetKind.Video);
+        Task warming = gallery.Warming;
+
+        gallery.OpenTile = Tile(AssetKind.Photo);
+        await warming;
+
+        Assert.Null(gallery.PlayingPath);
+    }
+
+    [Fact]
+    public async Task PlayingAClipThatWasNotWarmedFindsItThen()
+    {
+        // The file was not there when the picture opened - the share was still
+        // waking - and is by the time somebody presses play.
+        string later = Path.Combine(Path.GetDirectoryName(_clip)!, "later.MOV");
+        GalleryViewModel gallery = Showing(AssetKind.Video, fullPath: later);
+        await gallery.Warming;
+        File.WriteAllBytes(later, [0]);
+
+        await gallery.PlayVideoCommand.ExecuteAsync(null);
+
+        Assert.True(gallery.IsPlayingVideo);
+        Assert.Equal(later, gallery.PlayingPath);
+    }
+
+    private const string UnansweredClip = @"\\192.0.2.1\PhotoGallery\clip.MOV";
+
+    [Fact]
+    public async Task PlayingTakesTheBadgeAwayAndNamesTheFile()
     {
         GalleryViewModel gallery = Showing(AssetKind.Video);
 
-        gallery.PlayVideoCommand.Execute(null);
+        await gallery.PlayVideoCommand.ExecuteAsync(null);
 
         Assert.True(gallery.IsPlayingVideo);
         Assert.Equal(_clip, gallery.PlayingPath);
@@ -85,13 +151,13 @@ public sealed class VideoPlaybackTests
     }
 
     [Fact]
-    public void ThePathBecomesAUriThePlayerCanTake()
+    public async Task ThePathBecomesAUriThePlayerCanTake()
     {
         // The folder has a space in its name, as every folder in this library
         // does - "20210710 - Zoo Visit" - and a path that converted wrongly would
         // fail as a codec problem rather than as the path problem it is.
         GalleryViewModel gallery = Showing(AssetKind.Video);
-        gallery.PlayVideoCommand.Execute(null);
+        await gallery.PlayVideoCommand.ExecuteAsync(null);
 
         Assert.NotNull(gallery.PlayingSource);
         Assert.True(gallery.PlayingSource!.IsAbsoluteUri);
@@ -99,14 +165,14 @@ public sealed class VideoPlaybackTests
     }
 
     [Fact]
-    public void AClipWhoseFileHasGoneSaysItIsNotAvailable()
+    public async Task AClipWhoseFileHasGoneSaysItIsNotAvailable()
     {
         // The share is off, or the file was moved outside the app. The still is
         // this app's own copy and looks entirely present, so this is the moment
         // that has to be plain rather than a badge that does nothing.
         GalleryViewModel gallery = Showing(AssetKind.Video, exists: false);
 
-        gallery.PlayVideoCommand.Execute(null);
+        await gallery.PlayVideoCommand.ExecuteAsync(null);
 
         Assert.False(gallery.IsPlayingVideo);
         Assert.True(gallery.HasPlaybackError);
@@ -114,23 +180,23 @@ public sealed class VideoPlaybackTests
     }
 
     [Fact]
-    public void AClipWhoseFolderIsUnknownSaysSoToo()
+    public async Task AClipWhoseFolderIsUnknownSaysSoToo()
     {
         // FullPath is empty exactly when the row's source has gone, which is the
         // one case where the app cannot even say where to look.
         GalleryViewModel gallery = Showing(AssetKind.Video, fullPath: string.Empty);
 
-        gallery.PlayVideoCommand.Execute(null);
+        await gallery.PlayVideoCommand.ExecuteAsync(null);
 
         Assert.False(gallery.IsPlayingVideo);
         Assert.Contains("not available", gallery.PlaybackError!, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void StoppingPutsTheStillBackButKeepsTheClipLoaded()
+    public async Task StoppingPutsTheStillBackButKeepsTheClipLoaded()
     {
         GalleryViewModel gallery = Showing(AssetKind.Video);
-        gallery.PlayVideoCommand.Execute(null);
+        await gallery.PlayVideoCommand.ExecuteAsync(null);
 
         gallery.StopVideo();
 
@@ -143,12 +209,12 @@ public sealed class VideoPlaybackTests
     }
 
     [Fact]
-    public void MovingOnReleasesTheFileOnTheShare()
+    public async Task MovingOnReleasesTheFileOnTheShare()
     {
         // The other side of keeping it loaded. Holding a file open on somebody's
         // network share while they browse their library is not a cache.
         GalleryViewModel gallery = Showing(AssetKind.Video);
-        gallery.PlayVideoCommand.Execute(null);
+        await gallery.PlayVideoCommand.ExecuteAsync(null);
         gallery.StopVideo();
 
         gallery.OpenTile = Tile(AssetKind.Photo);
@@ -158,12 +224,12 @@ public sealed class VideoPlaybackTests
     }
 
     [Fact]
-    public void MovingToAnotherPictureStopsTheSound()
+    public async Task MovingToAnotherPictureStopsTheSound()
     {
         // The failure this exists for: a clip playing on under the photograph
         // that replaced it, with nothing on screen to stop it.
         GalleryViewModel gallery = Showing(AssetKind.Video);
-        gallery.PlayVideoCommand.Execute(null);
+        await gallery.PlayVideoCommand.ExecuteAsync(null);
 
         gallery.OpenTile = Tile(AssetKind.Photo);
 
@@ -172,10 +238,10 @@ public sealed class VideoPlaybackTests
     }
 
     [Fact]
-    public void ClosingTheViewerStopsItToo()
+    public async Task ClosingTheViewerStopsItToo()
     {
         GalleryViewModel gallery = Showing(AssetKind.Video);
-        gallery.PlayVideoCommand.Execute(null);
+        await gallery.PlayVideoCommand.ExecuteAsync(null);
 
         gallery.ClosePhoto();
 
@@ -183,10 +249,10 @@ public sealed class VideoPlaybackTests
     }
 
     [Fact]
-    public void AContainerThatWillNotPlaySaysSoAndOffersSomethingElse()
+    public async Task AContainerThatWillNotPlaySaysSoAndOffersSomethingElse()
     {
         GalleryViewModel gallery = Showing(AssetKind.Video);
-        gallery.PlayVideoCommand.Execute(null);
+        await gallery.PlayVideoCommand.ExecuteAsync(null);
 
         gallery.ReportPlaybackFailed();
 
@@ -199,10 +265,10 @@ public sealed class VideoPlaybackTests
     }
 
     [Fact]
-    public void TheRefusalDoesNotFollowTheUserToTheNextClip()
+    public async Task TheRefusalDoesNotFollowTheUserToTheNextClip()
     {
         GalleryViewModel gallery = Showing(AssetKind.Video);
-        gallery.PlayVideoCommand.Execute(null);
+        await gallery.PlayVideoCommand.ExecuteAsync(null);
         gallery.ReportPlaybackFailed();
 
         gallery.OpenTile = Tile(AssetKind.Video);
@@ -219,6 +285,7 @@ public sealed class VideoPlaybackTests
         GalleryViewModel gallery = Showing(
             AssetKind.Video, reader: new FixedReader(new VideoOrientation(180, 1280, 720)));
 
+        await gallery.Warming;
         await gallery.AlignPlaybackAsync(1280, 720, stillIsPortrait: false);
 
         Assert.Equal(180d, gallery.PlayingRotation);
@@ -232,6 +299,7 @@ public sealed class VideoPlaybackTests
             reader: new FixedReader(new VideoOrientation(180, 1280, 720)),
             rotation: 90);
 
+        await gallery.Warming;
         await gallery.AlignPlaybackAsync(1280, 720, stillIsPortrait: true);
 
         Assert.Equal(270d, gallery.PlayingRotation);
@@ -243,6 +311,7 @@ public sealed class VideoPlaybackTests
         GalleryViewModel gallery = Showing(
             AssetKind.Video, reader: new FixedReader(new VideoOrientation(90, 1920, 1080)));
 
+        await gallery.Warming;
         await gallery.AlignPlaybackAsync(1080, 1920, stillIsPortrait: true);
 
         Assert.Equal(0d, gallery.PlayingRotation);
@@ -256,6 +325,7 @@ public sealed class VideoPlaybackTests
         // poster over a landscape stream needs a quarter turn.
         GalleryViewModel gallery = Showing(AssetKind.Video);
 
+        await gallery.Warming;
         await gallery.AlignPlaybackAsync(1920, 1080, stillIsPortrait: true);
 
         Assert.Equal(90d, gallery.PlayingRotation);
@@ -266,6 +336,7 @@ public sealed class VideoPlaybackTests
     {
         GalleryViewModel gallery = Showing(AssetKind.Video);
 
+        await gallery.Warming;
         await gallery.AlignPlaybackAsync(1920, 1080, stillIsPortrait: false);
 
         Assert.Equal(0d, gallery.PlayingRotation);
@@ -276,6 +347,7 @@ public sealed class VideoPlaybackTests
     {
         GalleryViewModel gallery = Showing(AssetKind.Video);
 
+        await gallery.Warming;
         await gallery.AlignPlaybackAsync(1080, 1920, stillIsPortrait: true);
 
         Assert.Equal(0d, gallery.PlayingRotation);
@@ -290,6 +362,7 @@ public sealed class VideoPlaybackTests
         // never allows, and which made this test fail one run in a few.
         using var held = new HeldReader(new VideoOrientation(180, 1280, 720));
         GalleryViewModel gallery = Showing(AssetKind.Video, reader: held);
+        await gallery.Warming;
         Task aligning = gallery.AlignPlaybackAsync(1280, 720, stillIsPortrait: false);
 
         gallery.OpenTile = Tile(AssetKind.Photo);
@@ -323,10 +396,10 @@ public sealed class VideoPlaybackTests
     }
 
     [Fact]
-    public void TheTurnDoesNotFollowTheUserToTheNextPicture()
+    public async Task TheTurnDoesNotFollowTheUserToTheNextPicture()
     {
         GalleryViewModel gallery = Showing(AssetKind.Video);
-        gallery.PlayVideoCommand.Execute(null);
+        await gallery.PlayVideoCommand.ExecuteAsync(null);
         gallery.TurnPlayingVideo(90);
 
         gallery.OpenTile = Tile(AssetKind.Video);

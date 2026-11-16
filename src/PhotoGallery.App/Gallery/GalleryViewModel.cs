@@ -879,8 +879,13 @@ public sealed partial class GalleryViewModel : ObservableObject
     public bool HasPlaybackError => PlaybackError is not null;
 
     /// <summary>Starts the open clip playing in place.</summary>
+    /// <remarks>
+    /// Whether the file is there is asked off the window's thread, like the warm:
+    /// with the share switched off Windows takes 21 seconds to say so, and the
+    /// window must stay usable while it does.
+    /// </remarks>
     [RelayCommand]
-    private void PlayVideo()
+    private async Task PlayVideoAsync()
     {
         if (OpenTile is not GalleryTile tile || !tile.IsVideo)
         {
@@ -902,20 +907,36 @@ public sealed partial class GalleryViewModel : ObservableObject
             return;
         }
 
-        if (!File.Exists(path))
-        {
-            PlaybackError = "This video is not available - the folder it lives in cannot be "
-                            + "reached. Reconnect and try again.";
-            return;
-        }
+        // The warm is already asking the same question; one wait on the share,
+        // not two.
+        await Warming.ConfigureAwait(true);
 
         // Setting the same path again would close the file and fetch it over the
         // share a second time for a clip the player already has - which is both
         // the second watch of one clip and, now, every first watch, because
-        // opening the picture warmed it.
+        // opening the picture warmed it. A warmed clip is also one already found.
         if (!string.Equals(PlayingPath, path, StringComparison.OrdinalIgnoreCase))
         {
+            bool found = await Task.Run(() => File.Exists(path)).ConfigureAwait(true);
+
+            if (!ReferenceEquals(OpenTile, tile))
+            {
+                return;
+            }
+
+            if (!found)
+            {
+                PlaybackError = "This video is not available - the folder it lives in cannot be "
+                                + "reached. Reconnect and try again.";
+                return;
+            }
+
             PlayingPath = path;
+        }
+
+        if (!ReferenceEquals(OpenTile, tile))
+        {
+            return;
         }
 
         IsPlayingVideo = true;
@@ -934,6 +955,12 @@ public sealed partial class GalleryViewModel : ObservableObject
     ///
     /// <para>Silent about a file it cannot find, unlike pressing play. Somebody
     /// who has not asked to watch anything should not be told that they cannot.</para>
+    ///
+    /// <para>Nothing here touches the share on the window's thread. With the
+    /// share switched off, asking whether a file exists takes Windows 21 seconds
+    /// to answer, and asked here it froze the window on every video stepped onto
+    /// - while the photographs either side, drawn from this computer's own
+    /// copies, showed perfectly well.</para>
     /// </remarks>
     private void WarmPlayer(GalleryTile? tile)
     {
@@ -941,25 +968,27 @@ public sealed partial class GalleryViewModel : ObservableObject
         _warming?.Cancel();
         _warming?.Dispose();
         _warming = null;
+        Warming = Task.CompletedTask;
 
-        if (tile?.IsVideo != true)
+        if (tile?.IsVideo != true || tile.Item.FullPath.Length == 0)
         {
             return;
         }
 
+        _warming = new CancellationTokenSource();
+        Warming = WarmPlayerAsync(tile, _warming.Token);
+    }
+
+    private async Task WarmPlayerAsync(GalleryTile tile, CancellationToken cancellationToken)
+    {
         string path = tile.Item.FullPath;
 
-        try
+        bool found = await Task.Run(() => File.Exists(path), CancellationToken.None)
+            .ConfigureAwait(true);
+
+        // The viewer may have moved on in the seconds the share took to answer.
+        if (!found || cancellationToken.IsCancellationRequested || !ReferenceEquals(OpenTile, tile))
         {
-            if (path.Length == 0 || !File.Exists(path))
-            {
-                return;
-            }
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            // A share that cannot be asked is one this simply does not warm.
-            DiagnosticLog.Write($"could not reach {path} to warm the player", ex);
             return;
         }
 
@@ -968,12 +997,18 @@ public sealed partial class GalleryViewModel : ObservableObject
         // that is not on screen does not open its file.
         PlayingPath = path;
 
-        _warming = new CancellationTokenSource();
-        _ = VideoPrefetch.WarmAsync(path, _warming.Token);
+        // On a worker as well: opening the stream is another call to the share.
+        _ = Task.Run(() => VideoPrefetch.WarmAsync(path, cancellationToken), CancellationToken.None);
     }
 
     /// <summary>Cancels the read-ahead when the viewer moves on.</summary>
     private CancellationTokenSource? _warming;
+
+    /// <summary>
+    /// The open video's warm, finished once the share has answered and the
+    /// player has been given the clip, or found it is not there.
+    /// </summary>
+    internal Task Warming { get; private set; } = Task.CompletedTask;
 
     /// <summary>Puts the still back, and stops the sound with it.</summary>
     [RelayCommand]

@@ -107,7 +107,7 @@ public sealed class TurningAPlayingVideoTests : IDisposable
         _gallery.StopVideo();
 
         await _gallery.TurnPhotoCommand.ExecuteAsync("-90");
-        _gallery.PlayVideoCommand.Execute(null);
+        await _gallery.PlayVideoCommand.ExecuteAsync(null);
 
         Assert.Equal(90d, _gallery.PlayingRotation);
         Assert.Equal(270, await RotationOnRecordAsync());
@@ -120,7 +120,7 @@ public sealed class TurningAPlayingVideoTests : IDisposable
     private async Task PlayAsync(GalleryTile tile)
     {
         _gallery.OpenTile = tile;
-        _gallery.PlayVideoCommand.Execute(null);
+        await _gallery.PlayVideoCommand.ExecuteAsync(null);
         await _gallery.AlignPlaybackAsync(1280, 720, stillIsPortrait: false);
     }
 
