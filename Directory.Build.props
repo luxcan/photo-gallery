@@ -16,6 +16,17 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
+
+    <!-- The csproj files ask for ranges such as 10.*, and a range alone means
+         whatever nuget.org has newest on the day of the build - so a release
+         could ship a package version nobody ever ran the tests against. Each
+         project's packages.lock.json pins what was actually tested, and
+         publish.ps1 restores in locked mode, refusing anything else.
+
+         To take newer packages on purpose, run dotnet restore with its
+         force-evaluate switch, run the tests, and commit the changed lock
+         files. -->
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
   </PropertyGroup>
 
   <!-- The app ships as one self-contained file; nothing is installed on the

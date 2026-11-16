@@ -9,6 +9,9 @@
 # installed copy offers to update itself from. The version is <Version> in
 # Directory.Build.props: bump it and commit, push, then run this. It refuses to
 # release uncommitted or unpushed work, or a version that already has a release.
+#
+# Packages are restored in locked mode, so the build uses exactly the versions in
+# the packages.lock.json files the tests ran against - see Directory.Build.props.
 
 param([switch] $Release)
 
@@ -63,7 +66,7 @@ if (Test-Path $install) {
     Get-ChildItem $install -Recurse -Force | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
 }
 
-dotnet publish $project -c Release -o $install --nologo | Out-Null
+dotnet publish $project -c Release -o $install --nologo -p:RestoreLockedMode=true | Out-Null
 if ($LASTEXITCODE -ne 0) { throw "publish failed with exit code $LASTEXITCODE" }
 
 # Everything the single-file build does not need at runtime. The .lib files come
