@@ -2619,6 +2619,13 @@
                            TextWrapping="Wrap"
                            Text="A network drive or a cloud folder that every computer can reach. It must not be inside a photo folder, or contain one." />
 
+                <!-- Said before a folder is chosen, because the folder is the
+                     only lock on any of it: the files are plain, and whoever
+                     the drive lets in can read them without this app. -->
+                <TextBlock Style="{DynamicResource HintText}" Margin="0,0,0,8"
+                           TextWrapping="Wrap"
+                           Text="This computer leaves its own name, the names and birth years of the people you have named, what their faces look like to the app, where and when each photo was taken, the names of your photo folders, and small copies of your photos in that folder. Anyone who can open the folder can read them, so choose one only your family can open." />
+
                 <Border Background="{DynamicResource Panel.Background}"
                         BorderBrush="{DynamicResource Panel.Border}" BorderThickness="1"
                         CornerRadius="4" Padding="12,9" Margin="0,0,0,8">
@@ -2629,6 +2636,14 @@
                             ToolTip="Choose the folder this library syncs through"
                             IsEnabled="{Binding Sharing.IsIdle}"
                             Click="OnChooseSharedFolderClicked" />
+                    <Button DockPanel.Dock="Right" Style="{DynamicResource SecondaryButton}"
+                            MinWidth="100" Margin="12,0,0,0" VerticalAlignment="Center"
+                            Content="Stop syncing"
+                            ToolTip="Stop syncing through this folder"
+                            IsEnabled="{Binding Sharing.IsIdle}"
+                            Visibility="{Binding Sharing.HasFolder,
+                                         Converter={StaticResource BoolToVisibility}}"
+                            Click="OnStopSyncingClicked" />
                     <TextBlock VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
                                Style="{DynamicResource BodyText}"
                                FontFamily="{StaticResource Font.Mono}" FontSize="12"

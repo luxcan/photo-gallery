@@ -511,6 +511,108 @@ public sealed partial class SharingViewModel : ObservableObject
     }
 
     /// <summary>
+    /// Stops syncing, keeping everything already brought in.
+    /// </summary>
+    /// <remarks>
+    /// Nothing is taken out of the folder here. Whether this computer's files
+    /// should go with it is asked separately, by the window, the same way it is
+    /// asked when somebody chooses a different folder.
+    /// </remarks>
+    public async Task StopSyncingAsync()
+    {
+        await _gate.WaitAsync().ConfigureAwait(true);
+        IsBusy = true;
+
+        try
+        {
+            await Task.Run(async () =>
+            {
+                using IServiceScope scope = _scopeFactory.CreateScope();
+                await scope.ServiceProvider
+                    .GetRequiredService<SetSharedFolderHandler>()
+                    .ClearAsync()
+                    .ConfigureAwait(false);
+            }).ConfigureAwait(true);
+
+            Status = "This computer has stopped syncing. Choose a folder to start again.";
+            await ReadAsync().ConfigureAwait(true);
+        }
+        catch (Exception ex) when (LibraryFailure.IsExpected(ex))
+        {
+            Status = $"Syncing could not be stopped: {ex.Message}";
+        }
+        finally
+        {
+            IsBusy = false;
+            _gate.Release();
+        }
+    }
+
+    /// <summary>
+    /// Whether this library has stopped syncing through a folder it used to,
+    /// so that its files there are worth offering to remove.
+    /// </summary>
+    /// <remarks>
+    /// Judged on what the screen read after the change rather than on what was
+    /// asked for: a folder that was refused leaves the old one in place, and
+    /// choosing the same folder again leaves nothing behind.
+    /// </remarks>
+    public bool HasLeft(string before) =>
+        !string.IsNullOrWhiteSpace(before)
+        && !string.Equals(before, Folder, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Takes this computer's own files out of a folder it no longer syncs
+    /// through, and says what came of it.
+    /// </summary>
+    /// <remarks>
+    /// Off the window's thread, because the folder is usually on another
+    /// machine, and one that has gone away holds whoever asks it. The small
+    /// copies of photographs are left and the sentence says so, since they are
+    /// named after the photograph and another computer may have left the same
+    /// ones.
+    /// </remarks>
+    public async Task RemoveOwnFilesAsync(string folder)
+    {
+        if (string.IsNullOrWhiteSpace(folder))
+        {
+            return;
+        }
+
+        await _gate.WaitAsync().ConfigureAwait(true);
+        IsBusy = true;
+
+        try
+        {
+            int removed = await Task.Run(async () =>
+            {
+                using IServiceScope scope = _scopeFactory.CreateScope();
+                return await scope.ServiceProvider
+                    .GetRequiredService<RemoveOwnSyncFilesHandler>()
+                    .HandleAsync(folder)
+                    .ConfigureAwait(false);
+            }).ConfigureAwait(true);
+
+            Status = removed == 0
+                ? $"There was nothing of this computer's left in {folder}."
+                : $"This computer's files have been removed from {folder}. The small copies of "
+                  + "photos stay, because other computers may have left the same ones.";
+
+            _log.Append($"removed {removed} of this computer's files from {folder}");
+        }
+        catch (Exception ex) when (LibraryFailure.IsExpected(ex))
+        {
+            Status = $"This computer's files could not be removed from {folder}: {ex.Message}";
+            _log.Append($"could not remove this computer's files from {folder}: {ex.Message}");
+        }
+        finally
+        {
+            IsBusy = false;
+            _gate.Release();
+        }
+    }
+
+    /// <summary>
     /// Where the folder picker opens: at the sync folder where a look made just
     /// now finds it there, and nowhere in particular otherwise.
     /// </summary>

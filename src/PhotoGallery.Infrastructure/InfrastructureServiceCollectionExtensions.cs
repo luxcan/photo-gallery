@@ -92,6 +92,7 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddScoped<IDecisionRepository, SqliteDecisionRepository>();
         services.AddScoped<IDecisionExchange, SharedFolderExchange>();
         services.AddScoped<IRenditionPool, SharedFolderPool>();
+        services.AddScoped<ISyncFolderCleanup, SharedFolderCleanup>();
 
         services.AddSingleton(ModelManifest.Default);
         services.AddSingleton<IModelFolder, ModelFolder>();

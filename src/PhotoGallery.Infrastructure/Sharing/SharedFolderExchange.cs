@@ -180,9 +180,10 @@ public sealed class SharedFolderExchange : IDecisionExchange
 
     /// <summary>
     /// A machine's file is named after the machine, which is what makes one
-    /// writer per file true.
+    /// writer per file true - and what lets a machine find its own file again to
+    /// take it away.
     /// </summary>
-    private static string NameOf(Guid machine) => $"{machine:D}{DecisionSetFile.Extension}";
+    internal static string NameOf(Guid machine) => $"{machine:D}{DecisionSetFile.Extension}";
 
     private async Task<string> AnswersPathAsync(CancellationToken cancellationToken)
     {

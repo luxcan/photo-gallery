@@ -86,6 +86,76 @@ public sealed class SharingSectionTests
         Assert.True(purpose < picker, "the purpose is stated after the folder is chosen");
     }
 
+    /// <summary>
+    /// The screen says what this computer leaves in the folder, and that anyone
+    /// who can open the folder can read it, before a folder is chosen.
+    /// </summary>
+    /// <remarks>
+    /// The files are plain and the folder is the only lock on them, so the
+    /// choice of folder is the whole of the decision about who can read the
+    /// family's names, faces and whereabouts.
+    /// </remarks>
+    [Fact]
+    public void TheScreenSaysWhatTheFolderHoldsAndWhoCanReadItBeforeItIsChosen()
+    {
+        string section = Section();
+
+        int holds = section.IndexOf("birth years", StringComparison.Ordinal);
+        int readable = section.IndexOf(
+            "Anyone who can open the folder can read them", StringComparison.Ordinal);
+        int picker = section.IndexOf("OnChooseSharedFolderClicked", StringComparison.Ordinal);
+
+        Assert.True(holds > 0, "the screen does not say what goes into the folder");
+        Assert.True(readable > holds, "the screen does not say who can read it");
+        Assert.True(readable < picker, "it is said after the folder is chosen");
+        Assert.Contains("faces", section[holds..readable], StringComparison.Ordinal);
+        Assert.Contains("where and when", section[holds..readable], StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Leaving a folder, by stopping or by choosing another, offers to take this
+    /// computer's files out of it - in the app's own dialog.
+    /// </summary>
+    /// <remarks>
+    /// Nothing else ever removed them, so a folder left behind went on holding
+    /// everything this computer had put there.
+    /// </remarks>
+    [Fact]
+    public void LeavingAFolderOffersToTakeThisComputersFilesOutOfIt()
+    {
+        string codeBehind = File.ReadAllText(AppMarkup.PathTo("Shell", "MainWindow.xaml.cs"));
+
+        Assert.Contains("Click=\"OnStopSyncingClicked\"", Section(), StringComparison.Ordinal);
+
+        foreach (string handler in new[]
+            { "private async void OnChooseSharedFolderClicked", "private async void OnStopSyncingClicked" })
+        {
+            int start = codeBehind.IndexOf(handler, StringComparison.Ordinal);
+            int end = codeBehind.IndexOf("\r\n    }\r\n", start, StringComparison.Ordinal);
+            Assert.True(start > 0 && end > start, $"{handler} cannot be found");
+
+            Assert.Contains(
+                "await OfferToRemoveOwnSyncFilesAsync(before)",
+                codeBehind[start..end],
+                StringComparison.Ordinal);
+        }
+
+        int offer = codeBehind.IndexOf(
+            "private async Task OfferToRemoveOwnSyncFilesAsync", StringComparison.Ordinal);
+        int closes = codeBehind.IndexOf("\r\n    }\r\n", offer, StringComparison.Ordinal);
+        string asking = codeBehind[offer..closes];
+
+        Assert.Contains("AppDialog.Confirm(", asking, StringComparison.Ordinal);
+        Assert.Contains("Sharing.HasLeft(before)", asking, StringComparison.Ordinal);
+        Assert.Contains("Sharing.RemoveOwnFilesAsync(before)", asking, StringComparison.Ordinal);
+        Assert.DoesNotContain("MessageBox", asking, StringComparison.Ordinal);
+
+        foreach (string banned in Banned)
+        {
+            Assert.DoesNotContain(banned, asking, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
     [Fact]
     public void ThereIsOneButtonToShareAndNotTwo()
     {

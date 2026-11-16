@@ -60,6 +60,10 @@ public sealed class Person
     /// that somebody was deleted rather than never known, so an expiry lets a
     /// deleted person walk back in from the next machine that still has them.
     /// Fifteen people is not a table that needs tidying.</para>
+    ///
+    /// <para>Only the row is kept, not the person. Their name and birth year are
+    /// blanked when this is set, because the tombstone travels to every computer
+    /// in the house and needs nothing but its identity and this date.</para>
     /// </remarks>
     public DateTime? DeletedUtc { get; set; }
 

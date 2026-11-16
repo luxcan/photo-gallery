@@ -310,7 +310,10 @@ public sealed class SqlitePeopleRepository : IPeopleRepository
         // particular - but the row stays as a tombstone. It is the only record
         // that this person was deleted rather than never known, and without it
         // the next merge from any machine that still holds them puts them back,
-        // and then propagates. It is never expired for the same reason.
+        // and then propagates. It is never expired for the same reason. Who they
+        // were goes in the same write: the tombstone needs only its identity and
+        // its date, and a name and birth year kept on it would be copied into the
+        // sync folder on every sync after the person was meant to be gone.
         await _db.FaceAssignments
             .Where(assignment => assignment.PersonId == personId)
             .ExecuteDeleteAsync(cancellationToken)
@@ -326,7 +329,10 @@ public sealed class SqlitePeopleRepository : IPeopleRepository
         await _db.Set<Person>()
             .Where(person => person.Id == personId)
             .ExecuteUpdateAsync(
-                setters => setters.SetProperty(p => p.DeletedUtc, now),
+                setters => setters
+                    .SetProperty(p => p.DeletedUtc, now)
+                    .SetProperty(p => p.DisplayName, string.Empty)
+                    .SetProperty(p => p.BirthYear, (int?)null),
                 cancellationToken)
             .ConfigureAwait(false);
 

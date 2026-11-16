@@ -444,11 +444,24 @@ public sealed class SqliteDecisionRepository : IDecisionRepository
                 continue;
             }
 
-            if (settled.DeletedUtc is not null && person.DeletedUtc is null)
+            if (settled.DeletedUtc is not null)
             {
-                await ForgetAsync(person.Id, cancellationToken).ConfigureAwait(false);
-                person.DeletedUtc = settled.DeletedUtc;
-                deleted++;
+                if (person.DeletedUtc is null)
+                {
+                    await ForgetAsync(person.Id, cancellationToken).ConfigureAwait(false);
+                    person.DeletedUtc = settled.DeletedUtc;
+                    deleted++;
+                }
+
+                // Who they were goes with them, as it does when they are deleted
+                // here - and it is not a rename, so it is not counted as one. The
+                // birth year in particular cannot fall back to the one held here,
+                // as a living person's does below: that would keep exactly what
+                // the deletion was meant to take.
+                person.DisplayName = string.Empty;
+                person.BirthYear = null;
+                person.UpdatedUtc = settled.UpdatedUtc;
+                continue;
             }
 
             if (!string.Equals(person.DisplayName, settled.DisplayName, StringComparison.Ordinal))

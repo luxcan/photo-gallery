@@ -118,7 +118,7 @@ public sealed class SharedFolderPool : IRenditionPool
 
         Directory.CreateDirectory(facts);
 
-        string final = Path.Combine(facts, $"{mine.Machine.Id:D}{Extension}");
+        string final = Path.Combine(facts, FactsNameOf(mine.Machine.Id));
         string temporary = final + TempExtension;
 
         await using (var file = new FileStream(
@@ -147,7 +147,7 @@ public sealed class SharedFolderPool : IRenditionPool
         LibrarySettings settings =
             await _index.GetSettingsAsync(cancellationToken).ConfigureAwait(false);
 
-        string ours = $"{settings.MachineId:D}{Extension}";
+        string ours = FactsNameOf(settings.MachineId);
         List<PreparedSet> sets = [];
 
         foreach (string path in Directory.EnumerateFiles(facts, "*" + Extension))
@@ -201,7 +201,7 @@ public sealed class SharedFolderPool : IRenditionPool
         string vectors = Path.Combine(
             await RootAsync(cancellationToken).ConfigureAwait(false), VectorsFolder);
 
-        string final = Path.Combine(vectors, $"{mine.Machine.Id:D}{VectorsExtension}");
+        string final = Path.Combine(vectors, VectorsNameOf(mine.Machine.Id));
         string digest = await DigestAsync(mine, cancellationToken).ConfigureAwait(false);
 
         if (Remembered() is { } last
@@ -306,7 +306,7 @@ public sealed class SharedFolderPool : IRenditionPool
         LibrarySettings settings =
             await _index.GetSettingsAsync(cancellationToken).ConfigureAwait(false);
 
-        string ours = $"{settings.MachineId:D}{VectorsExtension}";
+        string ours = VectorsNameOf(settings.MachineId);
         List<FaceSet> sets = [];
 
         foreach (string path in Directory.EnumerateFiles(vectors, "*" + VectorsExtension))
@@ -529,6 +529,12 @@ public sealed class SharedFolderPool : IRenditionPool
             return false;
         }
     }
+
+    /// <summary>What a machine's manifest is called, in <see cref="FactsFolder"/>.</summary>
+    internal static string FactsNameOf(Guid machine) => $"{machine:D}{Extension}";
+
+    /// <summary>What a machine's faces are called, in <see cref="VectorsFolder"/>.</summary>
+    internal static string VectorsNameOf(Guid machine) => $"{machine:D}{VectorsExtension}";
 
     private static string PreviewBeside(string tilePath) =>
         Path.Combine(

@@ -1,3 +1,4 @@
+using System.IO.Compression;
 using Microsoft.EntityFrameworkCore;
 using PhotoGallery.Application.Ports;
 using PhotoGallery.Application.UseCases.Sharing;
@@ -5,6 +6,7 @@ using PhotoGallery.Domain.Assets;
 using PhotoGallery.Domain.Faces;
 using PhotoGallery.Domain.People;
 using PhotoGallery.Domain.Sharing;
+using PhotoGallery.Infrastructure.Persistence;
 using PhotoGallery.Infrastructure.Sharing;
 
 namespace PhotoGallery.Tests.Sharing;
@@ -232,6 +234,108 @@ public sealed class ExchangeTests : IDisposable
         Assert.Empty(Mum.Db.People);
         Assert.Empty(Mum.Db.FaceAssignments);
         Assert.NotNull(Mum.Db.People.IgnoreQueryFilters().Single().DeletedUtc);
+    }
+
+    /// <summary>
+    /// Deleting somebody takes their name and birth year off every computer and
+    /// out of the sync folder, and the deletion still travels.
+    /// </summary>
+    /// <remarks>
+    /// The tombstone used to keep both, so every sync after the deletion wrote
+    /// the name of a person somebody had asked to forget into the sync folder
+    /// again, and every other computer kept it too.
+    /// </remarks>
+    [Fact]
+    public async Task ADeletedPersonsNameAndBirthYearDoNotOutliveThem()
+    {
+        const string Name = "Zelda Quint";
+
+        Both(@"2019\a.jpg");
+        Person zelda = Mum.Person(Name);
+        zelda.BirthYear = 2015;
+        Mum.Db.SaveChanges();
+        Mum.Answer(Mum.Db.Faces.Single(), zelda, AssignmentSource.Confirmed, Monday);
+
+        await Mum.Publishing.HandleAsync();
+        await Dad.Merging.HandleAsync();
+
+        // Dad deletes her the way the People screen does, and syncs.
+        await new SqlitePeopleRepository(Dad.Db).RemovePersonAsync(Dad.Db.People.Single().Id);
+
+        Person tombstone = Dad.Db.People.IgnoreQueryFilters().AsNoTracking().Single();
+        Assert.NotNull(tombstone.DeletedUtc);
+        Assert.Equal(string.Empty, tombstone.DisplayName);
+        Assert.Null(tombstone.BirthYear);
+
+        await Dad.Publishing.HandleAsync();
+
+        // Nothing of her in what Dad left in the folder, read as the file it is.
+        string published = Directory
+            .EnumerateFiles(Path.Combine(_house.SharedFolder, SharedFolderExchange.AnswersFolder))
+            .Single(path => Path.GetFileName(path).StartsWith(
+                Dad.MachineId.ToString("D"), StringComparison.OrdinalIgnoreCase));
+        await using (var file = File.OpenRead(published))
+        await using (var gzip = new GZipStream(file, CompressionMode.Decompress))
+        using (var reader = new StreamReader(gzip))
+        {
+            Assert.DoesNotContain(Name, await reader.ReadToEndAsync(), StringComparison.Ordinal);
+        }
+
+        SharedPerson sent = Assert.Single(
+            Assert.Single((await Mum.Exchange.FetchAsync()).Sets).People);
+        Assert.NotNull(sent.DeletedUtc);
+        Assert.Equal(string.Empty, sent.DisplayName);
+        Assert.Null(sent.BirthYear);
+
+        // And Mum still takes the deletion from it, losing the name as well -
+        // without counting the blanking as a rename.
+        MergeResult merged = await Mum.Merging.HandleAsync();
+
+        Assert.Equal(1, merged.Outcome.PeopleDeleted);
+        Assert.Equal(0, merged.Outcome.PeopleRenamed);
+        Assert.Empty(Mum.Db.People);
+        Assert.Empty(Mum.Db.FaceAssignments);
+
+        Person hers = Mum.Db.People.IgnoreQueryFilters().AsNoTracking().Single();
+        Assert.NotNull(hers.DeletedUtc);
+        Assert.Equal(string.Empty, hers.DisplayName);
+        Assert.Null(hers.BirthYear);
+    }
+
+    /// <summary>
+    /// A machine that deleted somebody before this release still sends their
+    /// name, and it is not written back here.
+    /// </summary>
+    [Fact]
+    public async Task ANamedTombstoneFromAnOlderMachineLeavesNoNameHere()
+    {
+        Both(@"2019\a.jpg");
+        Person ana = Mum.Person("Ana");
+        Mum.Answer(Mum.Db.Faces.Single(), ana, AssignmentSource.Confirmed, Monday);
+
+        await Mum.Publishing.HandleAsync();
+        await Dad.Merging.HandleAsync();
+
+        Mum.Db.FaceAssignments.ExecuteDelete();
+        Mum.Db.People.IgnoreQueryFilters()
+            .ExecuteUpdate(s => s.SetProperty(p => p.DeletedUtc, Monday.AddDays(1)));
+        Mum.Db.ChangeTracker.Clear();
+
+        await Mum.Publishing.HandleAsync();
+
+        // What an older build wrote in its place: the tombstone still named.
+        DecisionSet hers = Assert.Single((await Dad.Exchange.FetchAsync()).Sets);
+        await Mum.Exchange.PublishAsync(hers with
+        {
+            People = [.. hers.People.Select(p => p with { DisplayName = "Ana", BirthYear = 2015 })],
+        });
+
+        await Dad.Merging.HandleAsync();
+
+        Person tombstone = Dad.Db.People.IgnoreQueryFilters().AsNoTracking().Single();
+        Assert.NotNull(tombstone.DeletedUtc);
+        Assert.Equal(string.Empty, tombstone.DisplayName);
+        Assert.Null(tombstone.BirthYear);
     }
 
     /// <summary>

@@ -546,15 +546,23 @@ public static class DecisionMerge
     private static List<SharedPerson> SettlePeople(
         DecisionSet mine, List<DecisionSet> accepted)
     {
-        Dictionary<Guid, SharedPerson> here = mine.People.ToDictionary(p => p.PublicId);
+        // This library's own tombstones are forgotten too before anything is
+        // compared, so that one still named here is not a change in itself -
+        // the reader leaves none, and a plan that blanked one would be a write
+        // nobody asked for.
+        Dictionary<Guid, SharedPerson> here = mine.People
+            .Select(person => person.ForgetIfDeleted())
+            .ToDictionary(p => p.PublicId);
         Dictionary<Guid, SharedPerson> winners = new(here);
 
         foreach (SharedPerson person in accepted.SelectMany(them => them.People))
         {
-            winners[person.PublicId] =
+            SharedPerson winner =
                 winners.TryGetValue(person.PublicId, out SharedPerson? standing)
                     ? Settle(standing, person)
                     : person;
+
+            winners[person.PublicId] = winner.ForgetIfDeleted();
         }
 
         return

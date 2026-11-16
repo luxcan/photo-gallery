@@ -281,6 +281,72 @@ public sealed class DecisionMergeTests
     }
 
     /// <summary>
+    /// A deletion arriving from another machine takes the name and birth year
+    /// with it.
+    /// </summary>
+    /// <remarks>
+    /// A machine still on an older build sends its tombstones with the name on.
+    /// Taken as they came, the name was written onto the tombstone here and then
+    /// published from here too, so a person somebody deleted went on being named
+    /// in every library and in the sync folder.
+    /// </remarks>
+    [Fact]
+    public void ADeletionArrivesWithoutTheirNameOrBirthYear()
+    {
+        MergePlan plan = Merge(
+            mine: new Machine("Dad").Knows(Person(Ana, "Ana") with { BirthYear = 2015 }),
+            theirs: new Machine("Mum").Knows(
+                Person(Ana, "Ana") with { BirthYear = 2015, DeletedUtc = Monday }),
+            here: Pictures.Indexed());
+
+        SharedPerson settled = Assert.Single(plan.People);
+        Assert.Equal(Monday, settled.DeletedUtc);
+        Assert.Equal(string.Empty, settled.DisplayName);
+        Assert.Null(settled.BirthYear);
+    }
+
+    [Fact]
+    public void ANamedTombstoneDoesNotWriteTheNameBackOntoOneAlreadyBlank()
+    {
+        // The name used to win this on the tie-break, since any name sorts after
+        // an empty one, and Settle would have handed it back to be stored.
+        MergePlan plan = Merge(
+            mine: new Machine("Dad").Knows(Person(Ana, string.Empty) with { DeletedUtc = Monday }),
+            theirs: new Machine("Mum").Knows(
+                Person(Ana, "Ana") with { BirthYear = 2015, DeletedUtc = Monday }),
+            here: Pictures.Indexed());
+
+        Assert.True(plan.ChangesNothing);
+    }
+
+    [Fact]
+    public void ATombstoneForSomebodyNeverKnownHereArrivesNameless()
+    {
+        MergePlan plan = Merge(
+            mine: new Machine("Dad"),
+            theirs: new Machine("Mum").Knows(
+                Person(Ana, "Ana") with { BirthYear = 2015, DeletedUtc = Monday }),
+            here: Pictures.Indexed());
+
+        SharedPerson settled = Assert.Single(plan.People);
+        Assert.Equal(string.Empty, settled.DisplayName);
+        Assert.Null(settled.BirthYear);
+    }
+
+    [Fact]
+    public void SomebodyStillHereKeepsTheirNameAndBirthYear()
+    {
+        MergePlan plan = Merge(
+            mine: new Machine("Dad"),
+            theirs: new Machine("Mum").Knows(Person(Ana, "Ana") with { BirthYear = 2015 }),
+            here: Pictures.Indexed());
+
+        SharedPerson settled = Assert.Single(plan.People);
+        Assert.Equal("Ana", settled.DisplayName);
+        Assert.Equal(2015, settled.BirthYear);
+    }
+
+    /// <summary>
     /// A name for somebody deleted here is not taken, and does not unseat the
     /// name this library already has on that face.
     /// </summary>

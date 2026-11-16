@@ -305,8 +305,15 @@ public sealed class SqliteDecisionReader : IDecisionReader
     }
 
     /// <summary>Everybody, tombstones included - a deletion is a decision.</summary>
-    private async Task<IReadOnlyList<SharedPerson>> PeopleAsync(CancellationToken cancellationToken) =>
-        await _db.People
+    /// <remarks>
+    /// A tombstone goes out as who and when and nothing more. The row is blanked
+    /// when the person is deleted, so this only matters for a row something else
+    /// left named - and then it is the difference between a name staying on this
+    /// computer and a name copied into the sync folder on every sync.
+    /// </remarks>
+    private async Task<IReadOnlyList<SharedPerson>> PeopleAsync(CancellationToken cancellationToken)
+    {
+        List<SharedPerson> people = await _db.People
             .IgnoreQueryFilters()
             .Select(person => new SharedPerson(
                 person.PublicId,
@@ -316,6 +323,9 @@ public sealed class SqliteDecisionReader : IDecisionReader
                 person.DeletedUtc))
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
+
+        return [.. people.Select(person => person.ForgetIfDeleted())];
+    }
 
     private async Task<IReadOnlyList<FaceAnswer>> AnswersAsync(
         MachineIdentity machine,

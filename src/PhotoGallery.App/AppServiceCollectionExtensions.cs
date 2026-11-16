@@ -66,6 +66,7 @@ public static class AppServiceCollectionExtensions
             .AddScoped<PublishDecisionsHandler>()
             .AddScoped<MergeDecisionsHandler>()
             .AddScoped<SetSharedFolderHandler>()
+            .AddScoped<RemoveOwnSyncFilesHandler>()
             .AddScoped<SyncFolderProbe>()
             .AddScoped<GetSharingHandler>()
             .AddScoped<CheckForSharedUpdatesHandler>()

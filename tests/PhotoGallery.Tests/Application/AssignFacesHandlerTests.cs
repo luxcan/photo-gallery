@@ -372,6 +372,31 @@ public sealed class AssignFacesHandlerTests : IDisposable
     }
 
     [Fact]
+    public async Task Remove_LeavesNeitherTheirNameNorTheirBirthYearOnWhatIsLeft()
+    {
+        // The row stays so the deletion can travel, and the row is all that
+        // stays: a name kept on it went into the sync folder on every sync.
+        // Two of them, because every tombstone now has the same empty name.
+        AssignmentResult ana = await Name([AddFace(0, 0)], "Ana Lim");
+        AssignmentResult ben = await Name([AddFace(1, 2)], "Ben Lim");
+        await _db.Set<Person>()
+            .ExecuteUpdateAsync(setters => setters.SetProperty(p => p.BirthYear, 2015));
+
+        await _repository.RemovePersonAsync(ana.PersonId);
+        await _repository.RemovePersonAsync(ben.PersonId);
+
+        List<Person> left = await _db.Set<Person>().IgnoreQueryFilters().AsNoTracking().ToListAsync();
+
+        Assert.Equal(2, left.Count);
+        Assert.All(left, person =>
+        {
+            Assert.NotNull(person.DeletedUtc);
+            Assert.Equal(string.Empty, person.DisplayName);
+            Assert.Null(person.BirthYear);
+        });
+    }
+
+    [Fact]
     public async Task Name_DoesNotOfferFacesTheDetectorWasBarelySureOf()
     {
         // The bottom of the detector's range is where it puts boxes on things

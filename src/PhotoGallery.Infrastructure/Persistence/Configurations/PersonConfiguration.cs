@@ -13,10 +13,10 @@ public sealed class PersonConfiguration : IEntityTypeConfiguration<Person>
 
         builder.Property(p => p.DisplayName).IsRequired().HasMaxLength(128);
 
-        // Unique among people who are still here. A tombstone keeps its name -
-        // it is what the screen has to show to say who was deleted - and an
-        // unfiltered index would let that name block somebody being added back
-        // under it, which is an ordinary thing to want and would look like a bug.
+        // Unique among people who are still here. A tombstone's name is blanked
+        // when it is made, so every tombstone shares the one empty name, and an
+        // unfiltered index would refuse the second deletion - as it once refused
+        // somebody being added back under a name a tombstone still held.
         builder.HasIndex(p => p.DisplayName).IsUnique().HasFilter("\"DeletedUtc\" IS NULL");
 
         // Unique so that a merge cannot make two rows for one person, and indexed

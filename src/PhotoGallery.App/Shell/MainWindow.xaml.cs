@@ -1000,9 +1000,73 @@ public partial class MainWindow : Window
             InitialDirectory = start,
         };
 
+        string before = _viewModel.Sharing.Folder;
+
         if (dialog.ShowDialog(this) == true)
         {
             await _viewModel.Sharing.ChooseFolderAsync(dialog.FolderName);
+            await OfferToRemoveOwnSyncFilesAsync(before);
+        }
+    }
+
+    /// <summary>
+    /// Stops syncing, then offers to take this computer's files out of the
+    /// folder it was syncing through.
+    /// </summary>
+    /// <remarks>
+    /// Not asked first: stopping takes nothing away and choosing the folder
+    /// again undoes it. The question worth asking is the one after, about the
+    /// files that would otherwise sit in that folder for good.
+    /// </remarks>
+    private async void OnStopSyncingClicked(object sender, RoutedEventArgs e)
+    {
+        string before = _viewModel.Sharing.Folder;
+
+        await _viewModel.Sharing.StopSyncingAsync();
+        await OfferToRemoveOwnSyncFilesAsync(before);
+    }
+
+    /// <summary>
+    /// Asks whether this computer's files should leave a folder it no longer
+    /// syncs through, and removes them on a yes.
+    /// </summary>
+    /// <remarks>
+    /// Asked rather than done. The other computers have already brought in what
+    /// those files carried, so removing them loses nothing anybody has - but
+    /// somebody moving folders for a day may want the old one left as it was.
+    /// Only asked when the folder really changed: a refused choice, or the same
+    /// folder chosen again, leaves nothing behind.
+    /// </remarks>
+    private async Task OfferToRemoveOwnSyncFilesAsync(string before)
+    {
+        if (_confirming || !_viewModel.Sharing.HasLeft(before))
+        {
+            return;
+        }
+
+        _confirming = true;
+        try
+        {
+            bool remove = AppDialog.Confirm(
+                this,
+                "Remove this computer's files?",
+                $"This computer no longer syncs through {before}, but its files are still there: "
+              + "the names and birth years of your people, what their faces look like to the app, "
+              + "and where and when your photos were taken. Anyone who can open that folder can "
+              + "read them.\n\nRemove them? The other computers keep everything they have already "
+              + "brought in. Small copies of photos stay, because other computers may have left "
+              + "the same ones.",
+                confirm: "Remove",
+                tone: DialogTone.Caution);
+
+            if (remove)
+            {
+                await _viewModel.Sharing.RemoveOwnFilesAsync(before);
+            }
+        }
+        finally
+        {
+            _confirming = false;
         }
     }
 
