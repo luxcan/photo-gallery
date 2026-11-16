@@ -85,11 +85,6 @@ public static class DecisionSetFile
     ///
     /// <para>Checked whole before that, because putting them back is the first
     /// thing to touch a list the file may not have had.</para>
-    ///
-    /// <para>The name a computer gives itself is made one this library can
-    /// keep and show here, the one door it comes in by: a file that names
-    /// itself nothing, or nothing but spaces, must still be a computer
-    /// somebody can say "not this one" to.</para>
     /// </remarks>
     public static async Task<DecisionSet> ReadAsync(
         Stream source, CancellationToken cancellationToken = default)
@@ -98,11 +93,6 @@ public static class DecisionSetFile
             .ReadAsync<DecisionSet>(source, SharedFolderFile.AnswersLimit, cancellationToken)
             .ConfigureAwait(false);
 
-        DecisionSet whole = SharedSetCheck.Whole(read).WithDeletedSuggestionsPutBack();
-
-        return whole with
-        {
-            Machine = whole.Machine with { Name = KnownMachine.NameFrom(whole.Machine.Name) },
-        };
+        return SharedSetCheck.Whole(read).WithDeletedSuggestionsPutBack();
     }
 }

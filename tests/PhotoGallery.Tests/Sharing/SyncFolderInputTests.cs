@@ -1,4 +1,4 @@
-using System.IO.Compression;
+﻿using System.IO.Compression;
 using System.Text;
 using System.Text.Json.Nodes;
 using Microsoft.EntityFrameworkCore;
@@ -59,7 +59,6 @@ public sealed class SyncFolderInputTests : IDisposable
     [InlineData("""{"Eras":[{"Person":"a0000000-0000-4000-8000-000000000001","SampleCount":3}]}""")]
     [InlineData("""{"Collections":null}""")]
     [InlineData("""{"DeletedSuggestions":null}""")]
-    [InlineData("""{"Machine":{"Id":"e0000000-0000-4000-8000-000000000001","Name":"@long","AppVersion":"1","SchemaVersion":1}}""")]
     [InlineData("""{"People":[{"PublicId":"a0000000-0000-4000-8000-000000000001","DisplayName":"@long"}]}""")]
     public async Task AnswersWithAHoleInThemAreRefusedAsUnreadable(string hole)
     {
@@ -86,6 +85,36 @@ public sealed class SyncFolderInputTests : IDisposable
             $$"""{"People":[{"PublicId":"a0000000-0000-4000-8000-000000000001","DisplayName":"{{name}}"}]}""")));
 
         Assert.Equal(name, Assert.Single(read.People).DisplayName);
+    }
+
+    /// <summary>
+    /// The one name repaired rather than refused: a computer must stay one
+    /// somebody can turn down on the Sync screen, whatever it calls itself.
+    /// </summary>
+    [Theory]
+    [InlineData("\"@long\"")]
+    [InlineData("null")]
+    [InlineData("\"   \"")]
+    public async Task AComputerNameTooLongOrMissingIsRepairedNotRefused(string name)
+    {
+        string said = name.Replace(TooLong, new string('x', 400), StringComparison.Ordinal);
+        string machine = $$$"""{"Machine":{"Id":"e0000000-0000-4000-8000-000000000001","Name":{{{said}}},"AppVersion":"1","SchemaVersion":1}}""";
+
+        DecisionSet read = await DecisionSetFile.ReadAsync(Gzipped(Whole(machine)));
+
+        Assert.InRange(read.Machine.Name.Length, 1, KnownMachine.NameLength);
+        Assert.False(string.IsNullOrWhiteSpace(read.Machine.Name));
+    }
+
+    [Fact]
+    public async Task AFacesFileFromAComputerWithAnOverlongNameIsReadWithTheNameCut()
+    {
+        await Mum.Pool.PublishFacesAsync(
+            FaceSet.Empty(Elsewhere with { Name = new string('x', 400) }, DateTime.UtcNow));
+
+        FaceSet read = Assert.Single(await Dad.Pool.FetchFacesAsync());
+
+        Assert.Equal(KnownMachine.NameLength, read.Machine.Name.Length);
     }
 
     [Fact]

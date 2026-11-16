@@ -1,4 +1,4 @@
-using PhotoGallery.Domain.Sharing;
+﻿using PhotoGallery.Domain.Sharing;
 
 namespace PhotoGallery.Infrastructure.Sharing;
 
@@ -27,7 +27,7 @@ namespace PhotoGallery.Infrastructure.Sharing;
 /// </remarks>
 internal static class SharedSetCheck
 {
-    /// <summary>The longest name the library keeps: a person, an album, a shelf, a computer.</summary>
+    /// <summary>The longest name the library keeps: a person, an album, a shelf. A computer's is cut to its own, by <see cref="KnownMachine.NameFrom"/>.</summary>
     private const int NameLength = 128;
 
     /// <summary>
@@ -42,7 +42,7 @@ internal static class SharedSetCheck
     /// <exception cref="InvalidDataException">Something this build relies on is missing.</exception>
     public static DecisionSet Whole(DecisionSet set)
     {
-        Machine(set.Machine);
+        set = set with { Machine = Machine(set.Machine) };
 
         Each(set.Sources, "the folders", source => Fits(source.Root, PathLength));
         Each(set.People, "the people", person => Fits(person.DisplayName, NameLength));
@@ -67,7 +67,7 @@ internal static class SharedSetCheck
     /// <exception cref="InvalidDataException">Something this build relies on is missing.</exception>
     public static PreparedSet Whole(PreparedSet set)
     {
-        Machine(set.Machine);
+        set = set with { Machine = Machine(set.Machine) };
         Models(set.Models);
 
         Each(
@@ -83,7 +83,7 @@ internal static class SharedSetCheck
     /// <exception cref="InvalidDataException">Something this build relies on is missing.</exception>
     public static FaceSet Whole(FaceSet set)
     {
-        Machine(set.Machine);
+        set = set with { Machine = Machine(set.Machine) };
         Models(set.Models);
 
         // An empty vector is the only wrong length that can arrive: one that is
@@ -94,17 +94,26 @@ internal static class SharedSetCheck
         return set;
     }
 
-    private static void Machine(MachineIdentity machine)
+    /// <summary>The computer that wrote the set, with the name it gives itself made one this library can keep.</summary>
+    /// <remarks>
+    /// The name is the one field repaired rather than refused. A computer that
+    /// calls itself nothing, or a name too long to keep, is still one somebody
+    /// has to be able to say "not this one" to on the Sync screen - and a file
+    /// refused as unreadable would never get that far. Every kind of set comes
+    /// through here, so every screen that shows the name shows the repaired one.
+    /// </remarks>
+    private static MachineIdentity Machine(MachineIdentity machine)
     {
         // An empty id is not a machine: every file is named after the machine
         // that wrote it, and every answer forwarded is kept against it.
         if (machine is null
             || machine.Id == Guid.Empty
-            || !Fits(machine.Name, NameLength)
             || !Fits(machine.AppVersion, TagLength))
         {
             throw Missing("which computer wrote it");
         }
+
+        return machine with { Name = KnownMachine.NameFrom(machine.Name) };
     }
 
     private static void Models(IReadOnlyDictionary<string, string> models)
