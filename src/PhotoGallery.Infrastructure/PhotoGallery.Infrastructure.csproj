@@ -31,12 +31,12 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="9.*">
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.*">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="9.*" />
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="9.*" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.*" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.*" />
     <!-- Runs the face models and CLIP. A native library with a thin managed
          wrapper, so nothing is installed on the target machine and no
          interpreter is involved; the single-file publish already carries native
@@ -55,7 +55,7 @@
          and every one is a chance to be subtly wrong - which does not throw, it
          returns a confident vector for the wrong words. Checked against the
          documented output of CLIP's own tokenizer in ClipTokenizerTests. -->
-    <PackageReference Include="Microsoft.ML.Tokenizers" Version="1.*" />
+    <PackageReference Include="Microsoft.ML.Tokenizers" Version="3.*" />
   </ItemGroup>
 
   <PropertyGroup>
@@ -64,7 +64,7 @@
          has the codec, with DecodePixelWidth doing the downscale during decode
          rather than after. That avoids taking a large native imaging dependency
          just to build thumbnails. -->
-    <TargetFramework>net9.0-windows</TargetFramework>
+    <TargetFramework>net10.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>

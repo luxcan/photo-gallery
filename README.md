@@ -57,7 +57,7 @@ Places need no download.
 
 ## Building from source
 
-Requirements: Windows, the .NET 9 SDK.
+Requirements: Windows, the .NET 10 SDK.
 
 ```powershell
 dotnet build
