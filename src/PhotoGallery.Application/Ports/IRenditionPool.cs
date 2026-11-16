@@ -98,6 +98,12 @@ public interface IRenditionPool
     /// itself complete with no preview - which is the file the viewer opens and
     /// the face detector reads. The same "poster last" discipline the video pass
     /// already keeps, for the same reason.
+    ///
+    /// <para><strong>A name proves nothing about the file under it.</strong>
+    /// Anybody who can write to the pool can put any file there, so a pair that
+    /// is not plausibly one of this app's renditions - not a picture, far too
+    /// heavy, or bigger than <see cref="ThumbnailSizes"/> - answers false and
+    /// copies nothing, and the photograph is prepared here instead.</para>
     /// </remarks>
     Task<bool> PullAsync(
         string thumbnailName,

@@ -5,6 +5,7 @@ using PhotoGallery.Application.Ports;
 using PhotoGallery.Domain.Assets;
 using PhotoGallery.Domain.Library;
 using PhotoGallery.Domain.Sharing;
+using PhotoGallery.Infrastructure.Imaging;
 using PhotoGallery.Infrastructure.Storage;
 
 namespace PhotoGallery.Infrastructure.Sharing;
@@ -53,6 +54,20 @@ public sealed class SharedFolderPool : IRenditionPool
     private const string TempExtension = ".tmp";
     private const string PreviewSuffix = "-p";
     private const int ShardLength = 2;
+
+    /// <summary>The most a pooled tile may weigh before it is refused unread.</summary>
+    /// <remarks>
+    /// Measured here: 21 KB on average. A megabyte is fifty times that, and
+    /// more than 400 by 400 pixels at this quality ever comes to.
+    /// </remarks>
+    private const long MaxTileBytes = 1024 * 1024;
+
+    /// <summary>The most a pooled preview may weigh before it is refused unread.</summary>
+    /// <remarks>
+    /// Measured here: 127 KB on average. Four megabytes is thirty times that,
+    /// and more than 1024 by 1024 pixels at this quality ever comes to.
+    /// </remarks>
+    private const long MaxPreviewBytes = 4 * 1024 * 1024;
 
     private static readonly JsonSerializerOptions s_json = DecisionSetFile.Shape;
 
@@ -151,14 +166,10 @@ public sealed class SharedFolderPool : IRenditionPool
             {
                 await using var file = new FileStream(
                     path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-                await using var gzip = new GZipStream(file, CompressionMode.Decompress);
 
-                if (await JsonSerializer
-                        .DeserializeAsync<PreparedSet>(gzip, s_json, cancellationToken)
-                        .ConfigureAwait(false) is PreparedSet set)
-                {
-                    sets.Add(set);
-                }
+                sets.Add(SharedSetCheck.Whole(await SharedFolderFile
+                    .ReadAsync<PreparedSet>(file, SharedFolderFile.FactsLimit, cancellationToken)
+                    .ConfigureAwait(false)));
             }
             catch (Exception ex) when (ex is IOException
                                           or UnauthorizedAccessException
@@ -312,14 +323,10 @@ public sealed class SharedFolderPool : IRenditionPool
             {
                 await using var file = new FileStream(
                     path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-                await using var gzip = new GZipStream(file, CompressionMode.Decompress);
 
-                if (await JsonSerializer
-                        .DeserializeAsync<FaceSet>(gzip, s_json, cancellationToken)
-                        .ConfigureAwait(false) is FaceSet set)
-                {
-                    sets.Add(set);
-                }
+                sets.Add(SharedSetCheck.Whole(await SharedFolderFile
+                    .ReadAsync<FaceSet>(file, SharedFolderFile.FacesLimit, cancellationToken)
+                    .ConfigureAwait(false)));
             }
             catch (Exception ex) when (ex is IOException
                                           or UnauthorizedAccessException
@@ -436,14 +443,39 @@ public sealed class SharedFolderPool : IRenditionPool
             return false;
         }
 
-        Directory.CreateDirectory(Path.GetDirectoryName(tilePath)!);
+        try
+        {
+            // Open to readers only while they are judged and copied, so what is
+            // copied is what was judged. Nothing honest writes a pooled picture
+            // in place - every write is a temporary renamed over it - so this
+            // turns away only a file somebody is growing as it is read.
+            await using var pooledPreview = new FileStream(
+                preview, FileMode.Open, FileAccess.Read, FileShare.Read);
+            await using var pooledTile = new FileStream(
+                tile, FileMode.Open, FileAccess.Read, FileShare.Read);
 
-        // The preview before the tile. IThumbnailStore.Exists asks only about the
-        // tile, so a copy interrupted between the two would leave a photograph
-        // reporting itself complete with no preview - which is the file the
-        // viewer opens and the face detector reads.
-        return await CopyAsync(preview, previewPath, cancellationToken).ConfigureAwait(false)
-            && await CopyAsync(tile, tilePath, cancellationToken).ConfigureAwait(false);
+            // Both judged before either is copied, so a pair with one bad half
+            // replaces nothing here. Refused, the photograph is simply prepared
+            // on this computer, as it would be had the folder not had it.
+            if (!RenditionCheck.Fits(pooledPreview, MaxPreviewBytes, ThumbnailSizes.PreviewEdge)
+                || !RenditionCheck.Fits(pooledTile, MaxTileBytes, ThumbnailSizes.TileEdge))
+            {
+                return false;
+            }
+
+            Directory.CreateDirectory(Path.GetDirectoryName(tilePath)!);
+
+            // The preview before the tile. IThumbnailStore.Exists asks only about
+            // the tile, so a copy interrupted between the two would leave a
+            // photograph reporting itself complete with no preview - which is
+            // the file the viewer opens and the face detector reads.
+            return await CopyAsync(pooledPreview, previewPath, cancellationToken).ConfigureAwait(false)
+                && await CopyAsync(pooledTile, tilePath, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
     }
 
     /// <summary>
@@ -468,6 +500,20 @@ public sealed class SharedFolderPool : IRenditionPool
             await using var source = new FileStream(
                 from, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
 
+            return await CopyAsync(source, to, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>Copies a file already open, the same way.</summary>
+    private static async Task<bool> CopyAsync(
+        Stream source, string to, CancellationToken cancellationToken)
+    {
+        try
+        {
             await WholeFile
                 .WriteAsync(
                     to,

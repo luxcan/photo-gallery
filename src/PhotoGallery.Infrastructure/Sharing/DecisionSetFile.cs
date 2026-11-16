@@ -82,19 +82,17 @@ public static class DecisionSetFile
     /// The deleted suggestions set aside on the way out are put back among the
     /// albums on the way in, so nothing past this point can tell they were
     /// ever apart - nor forget to look for them.
+    ///
+    /// <para>Checked whole before that, because putting them back is the first
+    /// thing to touch a list the file may not have had.</para>
     /// </remarks>
     public static async Task<DecisionSet> ReadAsync(
         Stream source, CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(source);
+        DecisionSet read = await SharedFolderFile
+            .ReadAsync<DecisionSet>(source, SharedFolderFile.AnswersLimit, cancellationToken)
+            .ConfigureAwait(false);
 
-        await using var gzip = new GZipStream(source, CompressionMode.Decompress, leaveOpen: true);
-
-        DecisionSet read = await JsonSerializer
-            .DeserializeAsync<DecisionSet>(gzip, Shape, cancellationToken)
-            .ConfigureAwait(false)
-            ?? throw new JsonException("The file held no changes.");
-
-        return read.WithDeletedSuggestionsPutBack();
+        return SharedSetCheck.Whole(read).WithDeletedSuggestionsPutBack();
     }
 }

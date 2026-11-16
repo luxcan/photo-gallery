@@ -403,21 +403,21 @@ public sealed class RenditionPoolTests : IDisposable
         Assert.All(given, result => Assert.True(result.Ran, result.Summary));
 
         string shard = Path.Combine(_house.SharedFolder, SharedFolderPool.ThumbsFolder, "aa");
-        AssertWholeIfThere(Path.Combine(shard, "aa11.jpg"), "tile of aa11.jpg");
-        AssertWholeIfThere(Path.Combine(shard, "aa11-p.jpg"), "preview of aa11.jpg");
+        AssertWholeIfThere(Path.Combine(shard, "aa11.jpg"), Library.TileBytes);
+        AssertWholeIfThere(Path.Combine(shard, "aa11-p.jpg"), Library.PreviewBytes);
 
         await Mum.Pooling.GiveAsync();
 
         Assert.Contains("aa11.jpg", await Mum.Pool.NamesAsync());
-        Assert.Equal("tile of aa11.jpg", await File.ReadAllTextAsync(Path.Combine(shard, "aa11.jpg")));
+        Assert.Equal(Library.TileBytes, await File.ReadAllBytesAsync(Path.Combine(shard, "aa11.jpg")));
         Assert.Equal(
-            "preview of aa11.jpg", await File.ReadAllTextAsync(Path.Combine(shard, "aa11-p.jpg")));
+            Library.PreviewBytes, await File.ReadAllBytesAsync(Path.Combine(shard, "aa11-p.jpg")));
 
-        static void AssertWholeIfThere(string path, string whole)
+        static void AssertWholeIfThere(string path, byte[] whole)
         {
             if (File.Exists(path))
             {
-                Assert.Equal(whole, File.ReadAllText(path));
+                Assert.Equal(whole, File.ReadAllBytes(path));
             }
         }
     }

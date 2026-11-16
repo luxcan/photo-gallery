@@ -249,16 +249,29 @@ internal sealed class Library : IDisposable
         return asset;
     }
 
-    /// <summary>The two files a rendition is, with bytes that say which is which.</summary>
+    /// <summary>
+    /// The two files a rendition is: real JPEGs, of sizes that say which is
+    /// which.
+    /// </summary>
+    /// <remarks>
+    /// Real pictures because the pool refuses anything else it is offered - a
+    /// name in the sync folder proves nothing about the file under it.
+    /// </remarks>
     public void WritePicture(string thumbnailName)
     {
         string tile = Thumbnails.ResolveTilePath(thumbnailName);
         string preview = Thumbnails.ResolvePreviewPath(thumbnailName);
 
         Directory.CreateDirectory(Path.GetDirectoryName(tile)!);
-        File.WriteAllText(tile, $"tile of {thumbnailName}");
-        File.WriteAllText(preview, $"preview of {thumbnailName}");
+        File.WriteAllBytes(tile, TileBytes);
+        File.WriteAllBytes(preview, PreviewBytes);
     }
+
+    /// <summary>What every tile <see cref="WritePicture"/> writes holds.</summary>
+    public static byte[] TileBytes { get; } = TestJpeg.Bytes(40, 30);
+
+    /// <summary>What every preview <see cref="WritePicture"/> writes holds.</summary>
+    public static byte[] PreviewBytes { get; } = TestJpeg.Bytes(100, 75);
 
     /// <summary>Whether this library holds both files of a rendition.</summary>
     public bool Holds(string thumbnailName) =>
