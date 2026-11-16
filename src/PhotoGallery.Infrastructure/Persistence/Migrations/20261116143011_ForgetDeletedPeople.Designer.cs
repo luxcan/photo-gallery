@@ -12,14 +12,14 @@ using PhotoGallery.Infrastructure.Persistence;
 namespace PhotoGallery.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(GalleryDbContext))]
-    [Migration("20261116134211_AddMachineTrust")]
-    partial class AddMachineTrust
+    [Migration("20261116143011_ForgetDeletedPeople")]
+    partial class ForgetDeletedPeople
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
-            modelBuilder.HasAnnotation("ProductVersion", "9.0.23");
+            modelBuilder.HasAnnotation("ProductVersion", "10.0.15");
 
             modelBuilder.Entity("PhotoGallery.Domain.Albums.Album", b =>
                 {
@@ -529,8 +529,10 @@ namespace PhotoGallery.Infrastructure.Persistence.Migrations
                     b.Property<DateTime?>("IgnoredUtc")
                         .HasColumnType("TEXT");
 
-                    b.ComplexProperty<Dictionary<string, object>>("Bounds", "PhotoGallery.Domain.Faces.Face.Bounds#FaceBounds", b1 =>
+                    b.ComplexProperty(typeof(Dictionary<string, object>), "Bounds", "PhotoGallery.Domain.Faces.Face.Bounds#FaceBounds", b1 =>
                         {
+                            b1.IsRequired();
+
                             b1.Property<int>("Height")
                                 .HasColumnType("INTEGER")
                                 .HasColumnName("BoundsHeight");
