@@ -35,8 +35,8 @@ public static class FolderTree
     ///
     /// <para>Appending the separator to the lower bound is what excludes a
     /// sibling that merely starts with the same characters. This library has
-    /// eight such pairs, including <c>20220201</c> beside
-    /// <c>20220201 - CNY</c>, so a prefix match would silently merge them.</para>
+    /// eight such pairs, including <c>20180601</c> beside
+    /// <c>20180601 - Picnic</c>, so a prefix match would silently merge them.</para>
     /// </remarks>
     public static (string From, string Before) SubtreeBounds(string folder)
     {

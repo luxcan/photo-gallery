@@ -10,7 +10,7 @@ public enum PairingLikeness
     /// The roots end in the same folder name, reached by different routes.
     /// </summary>
     /// <remarks>
-    /// <c>\\192.168.50.103\PhotoGallery</c> and <c>Z:\PhotoGallery</c>. The
+    /// <c>\\nas\Photos</c> and <c>Z:\Photos</c>. The
     /// ordinary case, and the one worth proposing.
     /// </remarks>
     SameName = 1,
@@ -21,7 +21,7 @@ public enum PairingLikeness
     /// </summary>
     /// <remarks>
     /// <strong>Not a pair, and the reason this is reported rather than hidden.
-    /// </strong> <c>\\...\PhotoGallery</c> against <c>\\...\PhotoGallery\Photos</c>
+    /// </strong> <c>\\...\Photos</c> against <c>\\...\Photos\Family</c>
     /// is two machines filing the same pictures at different depths: every key
     /// misses, every merge matches nothing, and the exchange looks merely empty.
     /// Pairing them would not help - the paths below would still differ - so the

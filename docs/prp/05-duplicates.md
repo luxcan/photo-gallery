@@ -63,8 +63,8 @@ Four parts, and the feature is all four — not just the first.
 The first attempt got this backwards, which is why it is spelled out.
 
 This library stores many photos twice: once in a catch-all month folder
-(`20230201`), and again in the folder that names the event
-(`20230203 - Chingay`). A naive "shortest path wins" keeps the meaningless one.
+(`20190301`), and again in the folder that names the event
+(`20190302 - Park Day`). A naive "shortest path wins" keeps the meaningless one.
 
 **The rule: prefer a descriptively named folder over a bare-date one, then the
 shallower path, then ordinal order** so the result is stable between runs.

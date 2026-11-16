@@ -15,7 +15,7 @@ public sealed class Asset
     /// <summary>Which photo source this file was found in.</summary>
     public int PhotoSourceId { get; set; }
 
-    /// <summary>Path below its source's root, e.g. <c>20230203 - Chingay\IMG_6769.MOV</c>.</summary>
+    /// <summary>Path below its source's root, e.g. <c>20190302 - Park Day\IMG_6769.MOV</c>.</summary>
     public required string RelativePath { get; set; }
 
     public long Length { get; set; }
@@ -232,7 +232,7 @@ public sealed class Asset
 
     /// <summary>
     /// The top-level folder, which in this library names the event
-    /// ("20230203 - Chingay") or just the month ("20230201").
+    /// ("20190302 - Park Day") or just the month ("20190301").
     /// </summary>
     public string TopFolder
     {

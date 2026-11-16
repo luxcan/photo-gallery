@@ -119,7 +119,7 @@ is in it and everything beneath it.
 
 The tree is per source and mirrors the real structure, with a count on each
 folder. Measured: **210 nodes** — 209 top-level folders that hold photos, plus
-one nested folder (`20250419 - Kidzania\signs`). 16,188 files sit one level
+one nested folder (`20210710 - Zoo Visit\signs`). 16,188 files sit one level
 deep, 37 sit two deep, and none sit at a source root.
 
 > This tree belongs to this one view. It is not the global side bar that was
@@ -140,7 +140,7 @@ Clicking any tile opens the picture large, over the content area.
   `>` is disabled rather than wrapping.
 - **Left and Right arrow keys** do the same. **Escape** closes.
 - Shows the file name and the folder it came from. The folder name is where the
-  meaning lives in this library (`20200214_Ana Lim Born`), and unlike the date it
+  meaning lives in this library (`20160805_Ana Lim Born`), and unlike the date it
   is always true. A date is shown **only** when `TakenUtc` is populated.
 - Closing returns to the grid with the photo still in view.
 
@@ -323,8 +323,8 @@ RelativePath >= folder + "\"   and   RelativePath < folder + "]"
 
 `]` is 0x5D, the immediate successor of `\` 0x5C, so the half-open range is
 exactly the subtree. Both traps are real in this library, not hypothetical:
-**8 pairs of top-level folders collide by prefix** (`20220201` and
-`20220201 - CNY`), which appending the separator excludes; and **46 of 219
+**8 pairs of top-level folders collide by prefix** (`20180601` and
+`20180601 - Picnic`), which appending the separator excludes; and **46 of 219
 folders contain `_`**, a single-character `LIKE` wildcard — unescaped,
 `LIKE '%_%'` matches all 16,225 rows. The range predicate sidesteps the question
 and seeks `IX_Assets_PhotoSourceId_RelativePath` instead of scanning.
@@ -341,7 +341,7 @@ end to end including the roll-up.
 Ordinal ordering guarantees every ancestor precedes its descendants, so one
 forward pass with a stack builds the tree. It does **not** guarantee a parent is
 immediately followed by its children — a sibling can sort between them
-(`20220201`, `20220201 - CNY`, `20220201\…`), which is true of 7 folder pairs
+(`20180601`, `20180601 - Picnic`, `20180601\…`), which is true of 7 folder pairs
 here.
 
 ### Concurrency
@@ -467,7 +467,7 @@ SQLite in a temp folder — the pattern of `ScanPhotoSourceHandlerTests`.
 | `Query_BreaksTiesByIdSoOrderIsStable` | two photos sharing an exact `ModifiedUtc` → higher `Id` first, and two runs agree |
 | `Query_IncludesVideosByDefault` | one photo, one video → both returned, video's `Kind` preserved |
 | `Query_ExcludesVideosWhenAsked` | `IncludeVideos = false` → photo only |
-| `Query_FolderFilterExcludesPrefixSibling` | `20220201` and `20220201 - CNY` both hold photos; filter on `20220201` → only its own |
+| `Query_FolderFilterExcludesPrefixSibling` | `20180601` and `20180601 - Picnic` both hold photos; filter on `20180601` → only its own |
 | `Query_FolderFilterIncludesNestedFolders` | `A\b.jpg` and `A\sub\c.jpg`; filter on `A` → both |
 | `Query_FolderFilterTreatsUnderscoreLiterally` | `2015_Ana` and `2015XAna`; filter on `2015_Ana` → only the first |
 | `Query_FolderFilterIsScopedToItsSource` | same folder name in two sources → only the requested source's |
@@ -480,7 +480,7 @@ SQLite in a temp folder — the pattern of `ScanPhotoSourceHandlerTests`.
 |---|---|
 | `Folders_MirrorTheRealStructure` | `A\x.jpg`, `A\sub\y.jpg`, `B\z.jpg` → `A` (with child `sub`) and `B` |
 | `Folders_CountIncludesDescendants` | `A\x.jpg` and `A\sub\y.jpg` → `A` counts 2, `sub` counts 1 |
-| `Folders_BuildCorrectlyWhenASiblingSortsBetweenParentAndChild` | `20220201`, `20220201 - CNY`, `20220201\sub` → `sub` is a child of `20220201`, not of the sibling |
+| `Folders_BuildCorrectlyWhenASiblingSortsBetweenParentAndChild` | `20180601`, `20180601 - Picnic`, `20180601\sub` → `sub` is a child of `20180601`, not of the sibling |
 | `Folders_AreScopedPerSource` | same folder name in two sources → two nodes, each with its own `PhotoSourceId` |
 | `Folders_ExcludeFoldersHoldingOnlyVideos` | a folder of videos only → absent when photos-only is asked |
 
@@ -510,8 +510,8 @@ Verified by running it, not by assertion:
 
 - [x] Library opens on the photos grid, with 20 cells realised out of 16,225.
 - [x] Memory stays bounded — 190 MB with the grid open, against 2,133 MB unbounded.
-- [x] The folder tree shows real names with counts, and selecting `20200214_Ana Lim Born` filtered the grid to exactly its 139 items.
-- [x] Clicking a photo opens it large; `>` and `<` moved from `20221002 - New Water` to `20250419 - Kidzania` without returning to the grid; Escape closed it.
+- [x] The folder tree shows real names with counts, and selecting `20160805_Ana Lim Born` filtered the grid to exactly its 139 items.
+- [x] Clicking a photo opens it large; `>` and `<` moved from `20200905 - Museum` to `20210710 - Zoo Visit` without returning to the grid; Escape closed it.
 - [x] `<` is disabled on the first photo rather than wrapping.
 - [x] Videos appear in date order with a film badge; the count line says how many are not prepared.
 - [x] A photo with no rendition shows a placeholder of the same size, not a gap.

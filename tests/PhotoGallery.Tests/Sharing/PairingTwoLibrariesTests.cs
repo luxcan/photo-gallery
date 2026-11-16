@@ -195,8 +195,8 @@ public sealed class PairingTwoLibrariesTests : IDisposable
         // Pairing would not help: every path below the two roots still differs
         // by a prefix. So the exchange says what is wrong instead of reporting
         // that it matched nothing and succeeded.
-        Mum.Reaches(@"\\192.168.50.103\PhotoGallery");
-        Dad.Reaches(@"\\192.168.50.103\PhotoGallery\Photos");
+        Mum.Reaches(@"\\nas\Photos");
+        Dad.Reaches(@"\\nas\Photos\Family");
 
         NameAFaceOnMum();
         await Mum.Publishing.HandleAsync();
@@ -251,8 +251,8 @@ public sealed class PairingTwoLibrariesTests : IDisposable
     /// </summary>
     private void Apart()
     {
-        Mum.Reaches(@"\\192.168.50.103\PhotoGallery");
-        Dad.Reaches(@"Z:\PhotoGallery");
+        Mum.Reaches(@"\\nas\Photos");
+        Dad.Reaches(@"Z:\Photos");
     }
 
     private void NameAFaceOnMum()

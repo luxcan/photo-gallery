@@ -18,7 +18,7 @@ namespace PhotoGallery.Domain.Sharing;
 /// own job: it is what a rendition file is named after. <strong>The path says
 /// which photograph, the hash says which picture.</strong></para>
 ///
-/// <para>Never the root itself. <c>\\192.168.50.103\PhotoGallery</c> on one
+/// <para>Never the root itself. <c>\\nas\Photos</c> on one
 /// laptop and <c>Z:\</c> on another are the same folder reached two ways, so a
 /// key holding machine-local text would lock out a family member for doing the
 /// normal thing Windows offers to do for them. The two sources are paired once
@@ -40,7 +40,7 @@ public readonly struct AssetKey : IEquatable<AssetKey>
     public Guid SharedSourceId { get; }
 
     /// <summary>
-    /// Path below the source's root, e.g. <c>20230203 - Chingay\IMG_6769.MOV</c>,
+    /// Path below the source's root, e.g. <c>20190302 - Park Day\IMG_6769.MOV</c>,
     /// with separators unified to backslashes.
     /// </summary>
     public string RelativePath { get; }

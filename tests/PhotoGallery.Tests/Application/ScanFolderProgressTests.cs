@@ -43,8 +43,8 @@ public sealed class ScanFolderProgressTests : IDisposable
     {
         // Deliberately small folders. Reporting only on the clock would never
         // name any of these, and a real library is mostly folders this size.
-        WritePhoto(@"20230201\a.jpg");
-        WritePhoto(@"20230203 - Chingay\b.jpg");
+        WritePhoto(@"20190301\a.jpg");
+        WritePhoto(@"20190302 - Park Day\b.jpg");
         WritePhoto(@"20230405 - Beach\c.jpg");
 
         var seen = new List<string>();
@@ -56,8 +56,8 @@ public sealed class ScanFolderProgressTests : IDisposable
         // Progress<T> posts, so give the callbacks a moment to arrive.
         await Task.Delay(150);
 
-        Assert.Contains(@"20230201", seen);
-        Assert.Contains(@"20230203 - Chingay", seen);
+        Assert.Contains(@"20190301", seen);
+        Assert.Contains(@"20190302 - Park Day", seen);
         Assert.Contains(@"20230405 - Beach", seen);
     }
 

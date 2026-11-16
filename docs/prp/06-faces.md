@@ -29,16 +29,16 @@ person.**
 Embeddings encode adult bone structure. Across childhood a face changes more
 than most adults differ from each other, so one stored vector per child fails
 badly at the edges, and blind clustering over twelve years produces a scatter of
-small unrelated piles rather than two children.
+small unrelated piles rather than one per child.
 
 ### Why this library can solve it
 
 The folder names are dated *and* named:
 
 ```
-20200214_Ana Lim Born
-20201014_Ana Lim 8th Month
-20250214 - Ana Lim 5th Birthday
+20160805_Ana Lim Born
+20170405_Ana Lim 8th Month
+20210805 - Ana Lim 5th Birthday
 ```
 
 So the app never has to guess. It takes faces from folders that already name a
@@ -54,24 +54,19 @@ friends. So the app *proposes* — it shows the recurring face it believes is th
 child at each era, and the user confirms or rejects. Roughly ten minutes, once.
 Everything after that is automatic, including photos added next year.
 
-There are two children in this library, which is what makes the sibling case
+A family library usually holds siblings, which is what makes the sibling case
 further down the hard one.
 
 ### Where that plan broke, measured
 
 Folder names carry the children for two years and then stop. Counted in years of
 life rather than calendar years, because what matters is how long the naming
-habit lasts after a child arrives, not when they arrived:
+habit lasts after a child arrives, not when they arrived.
 
-| Child | Photos in folders naming them, by year of life |
-|---|---|
-| Ana Lim | 0: 847 · 1: 726 · 2: 228 · 3: 19 · 4: 8 · 5: 3 · 6: 24 · 8: 5 |
-| Ana Reyes | 0: 271 · 2: 22 · 3: 10 · 4: 11 · 5: 5 |
-
-97% of Ana Lim's named-folder photos fall in her first three years, while the
-eight years after them hold **6,598 photos with no naming help at all**. Seeding
-an era per child from the folder names bootstraps the earliest one and then runs
-dry exactly where the library is thickest — each step of a walk forward needs
+Nearly all of a child's named-folder photos fall in their first three years,
+while the years after them hold **thousands of photos with no naming help at
+all**. Seeding an era per child from the folder names bootstraps the earliest
+one and then runs dry exactly where the library is thickest — each step of a walk forward needs
 something to confirm *against*, and past the third year there is nothing.
 
 **So the app groups instead.** Faces are gathered by resemblance in capture-date
@@ -82,7 +77,7 @@ but only to show which occasions a group came from, which is how a baby is
 recognised, and never to guess a name.
 
 That covers every year, and it registers grandparents and friends too, not only
-the two children.
+the children.
 
 ## Nothing here assumes a filing convention
 

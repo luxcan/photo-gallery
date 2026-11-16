@@ -131,8 +131,8 @@ public sealed class DuplicateSelectionTests
                 .. Enumerable.Range(0, copies).Select(i => new DuplicateCopy(
                     AssetId: i + 1,
                     PhotoSourceId: 1,
-                    RelativePath: $@"20230201\photo-{i}.jpg",
-                    FullPath: $@"C:\pictures\20230201\photo-{i}.jpg",
+                    RelativePath: $@"20190301\photo-{i}.jpg",
+                    FullPath: $@"C:\pictures\20190301\photo-{i}.jpg",
                     ThumbnailName: "thumb.jpg",
                     Length: 1000,
                     Width: 100,

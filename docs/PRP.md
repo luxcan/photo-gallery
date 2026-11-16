@@ -34,7 +34,7 @@ what another single-user library concluded.
 | Photos with EXIF date | 89% |
 | Photos with GPS | **17%** (planned around 39%; see [10](prp/10-location.md)) |
 
-Folder names carry real meaning: `20200214_Ana Lim Born`, `20230203 - Chingay`.
+Folder names carry real meaning: `20160805_Ana Lim Born`, `20190302 - Park Day`.
 Dates *and* subjects. This is unusual, and the app should exploit it rather than
 ignore it.
 

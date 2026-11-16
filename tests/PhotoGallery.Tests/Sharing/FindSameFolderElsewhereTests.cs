@@ -27,7 +27,7 @@ public sealed class FindSameFolderElsewhereTests : IDisposable
     [Fact]
     public async Task WithNoSyncFolder_ItSaysSoAndAsksNothing()
     {
-        Dad.Reaches(@"\\192.168.50.103\PhotoGallery");
+        Dad.Reaches(@"\\nas\Photos");
 
         SameFolderElsewhere found = await OnDad.HandleAsync(Dad.SharedSourceId);
 
@@ -39,8 +39,8 @@ public sealed class FindSameFolderElsewhereTests : IDisposable
     public async Task AFolderAnotherComputerKeepsUnderTheSamePath_IsPutToTheUser()
     {
         _house.Sharing();
-        Mum.Reaches(@"\\192.168.50.103\PhotoGallery");
-        Dad.Reaches(@"\\192.168.50.103\PhotoGallery");
+        Mum.Reaches(@"\\nas\Photos");
+        Dad.Reaches(@"\\nas\Photos");
         await Mum.Publishing.HandleAsync();
 
         SameFolderElsewhere found = await OnDad.HandleAsync(Dad.SharedSourceId);
@@ -56,8 +56,8 @@ public sealed class FindSameFolderElsewhereTests : IDisposable
     public async Task OnceConfirmed_TheFolderIsNotAskedAboutAgain()
     {
         _house.Sharing();
-        Mum.Reaches(@"\\192.168.50.103\PhotoGallery");
-        Dad.Reaches(@"Z:\PhotoGallery");
+        Mum.Reaches(@"\\nas\Photos");
+        Dad.Reaches(@"Z:\Photos");
         await Mum.Publishing.HandleAsync();
 
         PairingProposal proposal =
@@ -77,8 +77,8 @@ public sealed class FindSameFolderElsewhereTests : IDisposable
         // prefix, so the Sync screen reports it rather than offering it - and so
         // must this.
         _house.Sharing();
-        Mum.Reaches(@"\\192.168.50.103\PhotoGallery");
-        Dad.Reaches(@"\\192.168.50.103\PhotoGallery\Photos");
+        Mum.Reaches(@"\\nas\Photos");
+        Dad.Reaches(@"\\nas\Photos\Family");
         await Mum.Publishing.HandleAsync();
 
         SameFolderElsewhere found = await OnDad.HandleAsync(Dad.SharedSourceId);
@@ -94,10 +94,10 @@ public sealed class FindSameFolderElsewhereTests : IDisposable
         // time by a mapped drive. Taking Mum's identity again would make his two
         // folders one.
         _house.Sharing();
-        Mum.Reaches(@"\\192.168.50.103\PhotoGallery");
+        Mum.Reaches(@"\\nas\Photos");
         await Mum.Publishing.HandleAsync();
-        Dad.Folder(@"\\192.168.50.103\PhotoGallery", Mum.SharedSourceId);
-        PhotoGallery.Domain.Library.PhotoSource mapped = Dad.Folder(@"Z:\PhotoGallery");
+        Dad.Folder(@"\\nas\Photos", Mum.SharedSourceId);
+        PhotoGallery.Domain.Library.PhotoSource mapped = Dad.Folder(@"Z:\Photos");
 
         SameFolderElsewhere found = await OnDad.HandleAsync(mapped.SharedId);
 

@@ -42,8 +42,8 @@ public sealed class PlaceQueriesTests : IDisposable
         });
         _db.Places.Add(new Place
         {
-            Id = 2, GeoNameId = 1735161, Name = "Tampines Estate", CountryCode = "SG",
-            Latitude = 1.35, Longitude = 103.94,
+            Id = 2, GeoNameId = 9000002, Name = "Riverton Estate", CountryCode = "SG",
+            Latitude = 1.32, Longitude = 103.80,
         });
 
         // Hong Kong, whose districts are the whole reason a country scope exists.
@@ -129,7 +129,7 @@ public sealed class PlaceQueriesTests : IDisposable
             [.. (await _places.GetDirectoryAsync()).Where(entry => !entry.IsCountry)];
 
         Assert.Equal(2, places.Length);
-        Assert.Equal("Tampines Estate", places[0].Name);
+        Assert.Equal("Riverton Estate", places[0].Name);
         Assert.Equal(2, places[0].Photos);
         Assert.Equal("Sentosa", places[1].Name);
         Assert.Equal(PlaceScope.Place, places[1].Filter.Scope);
@@ -151,7 +151,7 @@ public sealed class PlaceQueriesTests : IDisposable
 
         IReadOnlyList<PlaceDirectoryEntry> directory = await _places.GetDirectoryAsync();
 
-        Assert.Equal("Tampines Estate", Assert.Single(directory).Name);
+        Assert.Equal("Riverton Estate", Assert.Single(directory).Name);
     }
 
     [Fact]

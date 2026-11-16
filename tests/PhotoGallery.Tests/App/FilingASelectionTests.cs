@@ -145,7 +145,7 @@ public sealed class FilingASelectionTests : IDisposable
     /// <para>They are also nearly all of them, and they are named after the
     /// places and dates they were grouped from: typing "tam" into a picker that
     /// offered them found forty-three albums, four of which were called
-    /// "Tampines Estate" - which is how this came back as the picker having gone
+    /// "Riverton Estate" - which is how this came back as the picker having gone
     /// off and found locations.</para>
     /// </remarks>
     [Fact]
@@ -155,8 +155,8 @@ public sealed class FilingASelectionTests : IDisposable
 
         picker.Open(
             [
-                Proposed("Tampines Estate", Day),
-                Proposed("Tampines New Town", Day),
+                Proposed("Riverton Estate", Day),
+                Proposed("Riverton New Town", Day),
                 Made("Zoo 2026", Day),
             ],
             0,
@@ -188,7 +188,7 @@ public sealed class FilingASelectionTests : IDisposable
     {
         var picker = new AlbumPicker(_ => Task.CompletedTask, () => Task.CompletedTask);
 
-        AlbumSummary inIt = Proposed("Tampines Estate", Day);
+        AlbumSummary inIt = Proposed("Riverton Estate", Day);
 
         picker.Open(
             [inIt, Proposed("Elsewhere", Day), Made("Zoo 2026", Day)],
@@ -197,14 +197,14 @@ public sealed class FilingASelectionTests : IDisposable
             "hint");
 
         Assert.Equal(
-            ["Tampines Estate", "Zoo 2026"],
+            ["Riverton Estate", "Zoo 2026"],
             picker.Choices.Select(choice => choice.Name).Order());
 
-        Assert.True(picker.Choices.Single(choice => choice.Name == "Tampines Estate").IsCurrent);
+        Assert.True(picker.Choices.Single(choice => choice.Name == "Riverton Estate").IsCurrent);
 
         // And the way out of it is offered, and named.
         Assert.True(picker.IsInOne);
-        Assert.Equal("Take it out of Tampines Estate", picker.TakeOutLabel);
+        Assert.Equal("Take it out of Riverton Estate", picker.TakeOutLabel);
     }
 
     /// <summary>

@@ -24,7 +24,7 @@ namespace PhotoGallery.Tests.Application;
 /// </remarks>
 public sealed class DuplicatesTests : IDisposable
 {
-    private static readonly DateTime s_when = new(2023, 2, 1, 0, 0, 0, DateTimeKind.Utc);
+    private static readonly DateTime s_when = new(2019, 3, 1, 0, 0, 0, DateTimeKind.Utc);
 
     private readonly string _root;
     private readonly string _library;
@@ -59,9 +59,9 @@ public sealed class DuplicatesTests : IDisposable
     [Fact]
     public async Task Find_GroupsFilesWithIdenticalBytesAndOpensNothing()
     {
-        AddPhoto(@"20230201\a.jpg", hash: "aaaa");
-        AddPhoto(@"20230203 - Chingay\a.jpg", hash: "aaaa");
-        AddPhoto(@"20230201\b.jpg", hash: "bbbb");
+        AddPhoto(@"20190301\a.jpg", hash: "aaaa");
+        AddPhoto(@"20190302 - Park Day\a.jpg", hash: "aaaa");
+        AddPhoto(@"20190301\b.jpg", hash: "bbbb");
 
         DuplicateScan scan = await Find();
 
@@ -75,9 +75,9 @@ public sealed class DuplicatesTests : IDisposable
         // PRP 14: the folder rule is gone. The same bytes are the same
         // photograph, and either copy is the one to keep - so neither is marked,
         // and the set is still offered with nothing suggested.
-        AddPhoto(@"20230201\a.jpg", hash: "aaaa");
-        AddPhoto(@"20230203 - Chingay\a.jpg", hash: "aaaa");
-        AddPhoto(@"20230203 - Chingay\deeper\a.jpg", hash: "aaaa");
+        AddPhoto(@"20190301\a.jpg", hash: "aaaa");
+        AddPhoto(@"20190302 - Park Day\a.jpg", hash: "aaaa");
+        AddPhoto(@"20190302 - Park Day\deeper\a.jpg", hash: "aaaa");
 
         DuplicateScan scan = await Find();
         DuplicateSetView set = Assert.Single(await _repository.GetAsync(DuplicateKind.Exact));
@@ -93,8 +93,8 @@ public sealed class DuplicatesTests : IDisposable
     {
         // Same size, same length, no capture details, never measured: nothing
         // separates them, and no folder or path order is asked to.
-        AddPhoto(@"20230203 - Chingay\a.jpg", hash: "aaaa", phash: 0b1111);
-        AddPhoto(@"20230201\a.jpg", hash: "bbbb", phash: 0b1111);
+        AddPhoto(@"20190302 - Park Day\a.jpg", hash: "aaaa", phash: 0b1111);
+        AddPhoto(@"20190301\a.jpg", hash: "bbbb", phash: 0b1111);
 
         await Find();
         DuplicateSetView set = Assert.Single(await _repository.GetAsync(DuplicateKind.Near));
@@ -109,13 +109,13 @@ public sealed class DuplicatesTests : IDisposable
         // A watermarked or re-saved copy is the one to lose. Both sit in the same
         // folder on the real library, so path order alone would have kept
         // whichever name happened to sort first.
-        AddPhoto(@"20230201\original.jpg", hash: "aaaa", phash: 0b1111, width: 4000, height: 3000);
-        AddPhoto(@"20230201\watermarked.jpg", hash: "bbbb", phash: 0b1111, width: 1600, height: 1200);
+        AddPhoto(@"20190301\original.jpg", hash: "aaaa", phash: 0b1111, width: 4000, height: 3000);
+        AddPhoto(@"20190301\watermarked.jpg", hash: "bbbb", phash: 0b1111, width: 1600, height: 1200);
 
         await Find();
         DuplicateSetView set = Assert.Single(await _repository.GetAsync(DuplicateKind.Near));
 
-        Assert.Equal(@"20230201\original.jpg", set.Keeper!.RelativePath);
+        Assert.Equal(@"20190301\original.jpg", set.Keeper!.RelativePath);
     }
 
     [Fact]
@@ -123,8 +123,8 @@ public sealed class DuplicatesTests : IDisposable
     {
         // Byte-identical is already proved. Asking a second time in a weaker form
         // would double every set on the screen.
-        AddPhoto(@"20230201\a.jpg", hash: "aaaa", phash: 0b1111);
-        AddPhoto(@"20230201\b.jpg", hash: "aaaa", phash: 0b1111);
+        AddPhoto(@"20190301\a.jpg", hash: "aaaa", phash: 0b1111);
+        AddPhoto(@"20190301\b.jpg", hash: "aaaa", phash: 0b1111);
 
         DuplicateScan scan = await Find();
 
@@ -135,8 +135,8 @@ public sealed class DuplicatesTests : IDisposable
     [Fact]
     public async Task Find_LeavesCopiesAlreadySetAsideOutOfIt()
     {
-        int kept = AddPhoto(@"20230203 - Chingay\a.jpg", hash: "aaaa");
-        int gone = AddPhoto(@"20230201\a.jpg", hash: "aaaa");
+        int kept = AddPhoto(@"20190302 - Park Day\a.jpg", hash: "aaaa");
+        int gone = AddPhoto(@"20190301\a.jpg", hash: "aaaa");
         await _repository.SetQuarantinedAsync([gone], s_when);
 
         DuplicateScan scan = await Find();
@@ -150,20 +150,20 @@ public sealed class DuplicatesTests : IDisposable
     [Fact]
     public async Task SetAside_MovesTheRedundantCopyAndLeavesTheKeeperAlone()
     {
-        string keeper = WriteFile(@"20230203 - Chingay\a.jpg", "same");
-        string redundant = WriteFile(@"20230201\a.jpg", "same");
-        AddPhoto(@"20230203 - Chingay\a.jpg", hash: Digest("same"));
-        AddPhoto(@"20230201\a.jpg", hash: Digest("same"));
+        string keeper = WriteFile(@"20190302 - Park Day\a.jpg", "same");
+        string redundant = WriteFile(@"20190301\a.jpg", "same");
+        AddPhoto(@"20190302 - Park Day\a.jpg", hash: Digest("same"));
+        AddPhoto(@"20190301\a.jpg", hash: Digest("same"));
         await Find();
 
-        int setId = await ChooseKeeperAsync(@"20230203 - Chingay\a.jpg");
+        int setId = await ChooseKeeperAsync(@"20190302 - Park Day\a.jpg");
         QuarantineResult result = await Quarantine().HandleAsync([setId]);
 
         Assert.Equal(1, result.Moved);
         Assert.Equal(0, result.Refused);
         Assert.True(File.Exists(keeper), "the keeper was moved");
         Assert.False(File.Exists(redundant), "the redundant copy is still in the library");
-        Assert.True(File.Exists(_quarantine.PathFor(1, @"20230201\a.jpg")));
+        Assert.True(File.Exists(_quarantine.PathFor(1, @"20190301\a.jpg")));
     }
 
     [Fact]
@@ -172,13 +172,13 @@ public sealed class DuplicatesTests : IDisposable
         // The row is what knows how to put the file back. Removing it - which is
         // what a scan does to a file that has gone - would make the quarantine a
         // one-way door.
-        WriteFile(@"20230203 - Chingay\a.jpg", "same");
-        WriteFile(@"20230201\a.jpg", "same");
-        AddPhoto(@"20230203 - Chingay\a.jpg", hash: Digest("same"));
-        int redundant = AddPhoto(@"20230201\a.jpg", hash: Digest("same"));
+        WriteFile(@"20190302 - Park Day\a.jpg", "same");
+        WriteFile(@"20190301\a.jpg", "same");
+        AddPhoto(@"20190302 - Park Day\a.jpg", hash: Digest("same"));
+        int redundant = AddPhoto(@"20190301\a.jpg", hash: Digest("same"));
         await Find();
 
-        await Quarantine().HandleAsync([await ChooseKeeperAsync(@"20230203 - Chingay\a.jpg")]);
+        await Quarantine().HandleAsync([await ChooseKeeperAsync(@"20190302 - Park Day\a.jpg")]);
 
         Asset row = await _db.Assets.AsNoTracking().SingleAsync(a => a.Id == redundant);
         Assert.NotNull(row.QuarantinedUtc);
@@ -190,12 +190,12 @@ public sealed class DuplicatesTests : IDisposable
     {
         // A set that looks dealt with while a copy nobody can find is still on
         // the share is the worst outcome available here.
-        WriteFile(@"20230203 - Chingay\a.jpg", "same");
-        AddPhoto(@"20230203 - Chingay\a.jpg", hash: Digest("same"));
-        AddPhoto(@"20230201\a.jpg", hash: Digest("same"));
+        WriteFile(@"20190302 - Park Day\a.jpg", "same");
+        AddPhoto(@"20190302 - Park Day\a.jpg", hash: Digest("same"));
+        AddPhoto(@"20190301\a.jpg", hash: Digest("same"));
         await Find();
 
-        int setId = await ChooseKeeperAsync(@"20230203 - Chingay\a.jpg");
+        int setId = await ChooseKeeperAsync(@"20190302 - Park Day\a.jpg");
 
         // The redundant copy's file was never written, so it cannot be moved.
         QuarantineResult result = await Quarantine().HandleAsync([setId]);
@@ -213,33 +213,33 @@ public sealed class DuplicatesTests : IDisposable
         // without changing how many there are would pass a length check, and the
         // original is deleted on the strength of that answer - so the digest the
         // row already carries is what makes the delete safe.
-        WriteFile(@"20230203 - Chingay\a.jpg", "same");
+        WriteFile(@"20190302 - Park Day\a.jpg", "same");
 
         // Four bytes either way, so only the digest can tell them apart.
-        string redundant = WriteFile(@"20230201\a.jpg", "sane");
-        AddPhoto(@"20230203 - Chingay\a.jpg", hash: Digest("same"));
-        AddPhoto(@"20230201\a.jpg", hash: Digest("same"));
+        string redundant = WriteFile(@"20190301\a.jpg", "sane");
+        AddPhoto(@"20190302 - Park Day\a.jpg", hash: Digest("same"));
+        AddPhoto(@"20190301\a.jpg", hash: Digest("same"));
         await Find();
 
-        int setId = await ChooseKeeperAsync(@"20230203 - Chingay\a.jpg");
+        int setId = await ChooseKeeperAsync(@"20190302 - Park Day\a.jpg");
         QuarantineResult result = await Quarantine().HandleAsync([setId]);
 
         Assert.Equal(0, result.Moved);
         Assert.Equal(1, result.Refused);
         Assert.True(File.Exists(redundant), "the original was deleted for a copy that is wrong");
-        Assert.False(File.Exists(_quarantine.PathFor(1, @"20230201\a.jpg")));
-        Assert.False(File.Exists(_quarantine.PathFor(1, @"20230201\a.jpg") + ".partial"));
+        Assert.False(File.Exists(_quarantine.PathFor(1, @"20190301\a.jpg")));
+        Assert.False(File.Exists(_quarantine.PathFor(1, @"20190301\a.jpg") + ".partial"));
     }
 
     [Fact]
     public async Task PutBack_ReturnsEveryCopyToWhereItCameFrom()
     {
-        WriteFile(@"20230203 - Chingay\a.jpg", "same");
-        string redundant = WriteFile(@"20230201\a.jpg", "same");
-        AddPhoto(@"20230203 - Chingay\a.jpg", hash: Digest("same"));
-        AddPhoto(@"20230201\a.jpg", hash: Digest("same"));
+        WriteFile(@"20190302 - Park Day\a.jpg", "same");
+        string redundant = WriteFile(@"20190301\a.jpg", "same");
+        AddPhoto(@"20190302 - Park Day\a.jpg", hash: Digest("same"));
+        AddPhoto(@"20190301\a.jpg", hash: Digest("same"));
         await Find();
-        await Quarantine().HandleAsync([await ChooseKeeperAsync(@"20230203 - Chingay\a.jpg")]);
+        await Quarantine().HandleAsync([await ChooseKeeperAsync(@"20190302 - Park Day\a.jpg")]);
         Assert.False(File.Exists(redundant));
 
         RestoreResult result =
@@ -249,7 +249,7 @@ public sealed class DuplicatesTests : IDisposable
         Assert.Equal(0, result.Refused);
         Assert.True(File.Exists(redundant));
         Assert.Equal("same", await File.ReadAllTextAsync(redundant));
-        Assert.False(File.Exists(_quarantine.PathFor(1, @"20230201\a.jpg")));
+        Assert.False(File.Exists(_quarantine.PathFor(1, @"20190301\a.jpg")));
         Assert.All(
             await _db.Assets.AsNoTracking().ToListAsync(),
             asset => Assert.Null(asset.QuarantinedUtc));
@@ -258,12 +258,12 @@ public sealed class DuplicatesTests : IDisposable
     [Fact]
     public async Task Find_DoesNotRevisitASetTheUserHasAlreadyDealtWith()
     {
-        WriteFile(@"20230203 - Chingay\a.jpg", "same");
-        WriteFile(@"20230201\a.jpg", "same");
-        AddPhoto(@"20230203 - Chingay\a.jpg", hash: Digest("same"));
-        AddPhoto(@"20230201\a.jpg", hash: Digest("same"));
+        WriteFile(@"20190302 - Park Day\a.jpg", "same");
+        WriteFile(@"20190301\a.jpg", "same");
+        AddPhoto(@"20190302 - Park Day\a.jpg", hash: Digest("same"));
+        AddPhoto(@"20190301\a.jpg", hash: Digest("same"));
         await Find();
-        await Quarantine().HandleAsync([await ChooseKeeperAsync(@"20230203 - Chingay\a.jpg")]);
+        await Quarantine().HandleAsync([await ChooseKeeperAsync(@"20190302 - Park Day\a.jpg")]);
 
         DuplicateScan again = await Find();
 
@@ -276,8 +276,8 @@ public sealed class DuplicatesTests : IDisposable
     {
         // The app's choice is a rule about folder names and file sizes; the
         // user's is a decision about a photograph, made while looking at it.
-        AddPhoto(@"20230203 - Chingay\a.jpg", hash: "aaaa");
-        int preferred = AddPhoto(@"20230201\a.jpg", hash: "aaaa");
+        AddPhoto(@"20190302 - Park Day\a.jpg", hash: "aaaa");
+        int preferred = AddPhoto(@"20190301\a.jpg", hash: "aaaa");
         await Find();
 
         DuplicateSetView before = (await _repository.GetAsync(DuplicateKind.Exact)).Single();
@@ -295,10 +295,10 @@ public sealed class DuplicatesTests : IDisposable
     {
         // The point of overriding: whichever copy is kept must be the one still
         // in the library afterwards.
-        string chosen = WriteFile(@"20230201\a.jpg", "same");
-        string other = WriteFile(@"20230203 - Chingay\a.jpg", "same");
-        int preferred = AddPhoto(@"20230201\a.jpg", hash: Digest("same"));
-        AddPhoto(@"20230203 - Chingay\a.jpg", hash: Digest("same"));
+        string chosen = WriteFile(@"20190301\a.jpg", "same");
+        string other = WriteFile(@"20190302 - Park Day\a.jpg", "same");
+        int preferred = AddPhoto(@"20190301\a.jpg", hash: Digest("same"));
+        AddPhoto(@"20190302 - Park Day\a.jpg", hash: Digest("same"));
         await Find();
 
         int setId = (await _repository.GetAsync(DuplicateKind.Exact)).Single().Id;
@@ -314,9 +314,9 @@ public sealed class DuplicatesTests : IDisposable
     {
         // Silently rewriting every role to Redundant would leave a set with no
         // keeper, which the screen would then refuse to show at all.
-        AddPhoto(@"20230203 - Chingay\a.jpg", hash: "aaaa");
-        AddPhoto(@"20230201\a.jpg", hash: "aaaa");
-        int stranger = AddPhoto(@"20230201\b.jpg", hash: "bbbb");
+        AddPhoto(@"20190302 - Park Day\a.jpg", hash: "aaaa");
+        AddPhoto(@"20190301\a.jpg", hash: "aaaa");
+        int stranger = AddPhoto(@"20190301\b.jpg", hash: "bbbb");
         await Find();
 
         DuplicateSetView set = (await _repository.GetAsync(DuplicateKind.Exact)).Single();
@@ -333,8 +333,8 @@ public sealed class DuplicatesTests : IDisposable
         // The answer for a burst of shots the app thought were duplicates.
         // Nothing is deleted, and being asked again on the next pass would be
         // the app failing to listen.
-        AddPhoto(@"20230201\a.jpg", hash: "aaaa", phash: 0b1111);
-        AddPhoto(@"20230201\b.jpg", hash: "bbbb", phash: 0b1111);
+        AddPhoto(@"20190301\a.jpg", hash: "aaaa", phash: 0b1111);
+        AddPhoto(@"20190301\b.jpg", hash: "bbbb", phash: 0b1111);
         await Find();
 
         int setId = (await _repository.GetAsync(DuplicateKind.Near)).Single().Id;
@@ -357,10 +357,10 @@ public sealed class DuplicatesTests : IDisposable
         // The second pair sits 36 bits away from the first, so they are two
         // groups rather than one - four bits apart and leader clustering would
         // rightly have swallowed all four into one.
-        AddPhoto(@"20230201\a.jpg", hash: "aaaa", phash: 0b1111);
-        AddPhoto(@"20230201\b.jpg", hash: "bbbb", phash: 0b1111);
-        AddPhoto(@"20230201\c.jpg", hash: "cccc", phash: 0xFFFF_FFFF_0000_0000);
-        AddPhoto(@"20230201\d.jpg", hash: "dddd", phash: 0xFFFF_FFFF_0000_0000);
+        AddPhoto(@"20190301\a.jpg", hash: "aaaa", phash: 0b1111);
+        AddPhoto(@"20190301\b.jpg", hash: "bbbb", phash: 0b1111);
+        AddPhoto(@"20190301\c.jpg", hash: "cccc", phash: 0xFFFF_FFFF_0000_0000);
+        AddPhoto(@"20190301\d.jpg", hash: "dddd", phash: 0xFFFF_FFFF_0000_0000);
         await Find();
 
         Assert.Equal(2, (await _repository.GetAsync(DuplicateKind.Near)).Count);
@@ -378,10 +378,10 @@ public sealed class DuplicatesTests : IDisposable
     {
         // A set with no suggestion holds no redundant copy, so setting it aside
         // without a choice cannot take every copy out of the library.
-        string first = WriteFile(@"20230203 - Chingay\a.jpg", "same");
-        string second = WriteFile(@"20230201\a.jpg", "same");
-        AddPhoto(@"20230203 - Chingay\a.jpg", hash: Digest("same"));
-        AddPhoto(@"20230201\a.jpg", hash: Digest("same"));
+        string first = WriteFile(@"20190302 - Park Day\a.jpg", "same");
+        string second = WriteFile(@"20190301\a.jpg", "same");
+        AddPhoto(@"20190302 - Park Day\a.jpg", hash: Digest("same"));
+        AddPhoto(@"20190301\a.jpg", hash: Digest("same"));
         await Find();
 
         QuarantineResult result = await Quarantine()

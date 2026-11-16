@@ -5,7 +5,7 @@ namespace PhotoGallery.Domain.Sharing;
 /// </summary>
 /// <remarks>
 /// <strong>Matching roots is not string equality, and must not be built as
-/// though it were.</strong> <c>\\192.168.50.103\PhotoGallery</c> on one laptop
+/// though it were.</strong> <c>\\nas\Photos</c> on one laptop
 /// and <c>Z:\</c> on another are the same folder reached two ways, and Windows
 /// offers to map that drive letter for you - so comparing the text would lock
 /// out a family member for doing an entirely normal thing, with nothing in the

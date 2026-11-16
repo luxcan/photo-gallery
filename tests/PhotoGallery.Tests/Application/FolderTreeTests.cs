@@ -37,16 +37,16 @@ public sealed class FolderTreeTests
     [Fact]
     public void Build_KeepsAPrefixSiblingOutOfItsNeighboursCount()
     {
-        // Eight pairs of real folders collide this way. "20220201 - CNY" starts
-        // with "20220201" but is not inside it.
+        // Eight pairs of real folders collide this way. "20180601 - Picnic" starts
+        // with "20180601" but is not inside it.
         IReadOnlyList<FolderNode> tree = FolderTree.Build([
-            (1, @"20220201\a.jpg"),
-            (1, @"20220201 - CNY\b.jpg"),
-            (1, @"20220201 - CNY\c.jpg"),
+            (1, @"20180601\a.jpg"),
+            (1, @"20180601 - Picnic\b.jpg"),
+            (1, @"20180601 - Picnic\c.jpg"),
         ]);
 
-        FolderNode bare = tree.Single(n => n.Name == "20220201");
-        FolderNode named = tree.Single(n => n.Name == "20220201 - CNY");
+        FolderNode bare = tree.Single(n => n.Name == "20180601");
+        FolderNode named = tree.Single(n => n.Name == "20180601 - Picnic");
 
         Assert.Equal(1, bare.ItemCount);
         Assert.Equal(2, named.ItemCount);
@@ -56,21 +56,21 @@ public sealed class FolderTreeTests
     [Fact]
     public void Build_AttachesAChildToItsParentEvenWhenASiblingSortsBetweenThem()
     {
-        // Ordinal order puts "20220201 - CNY" between "20220201" and
-        // "20220201\sub", because a space is below a backslash. An approach that
+        // Ordinal order puts "20180601 - Picnic" between "20180601" and
+        // "20180601\sub", because a space is below a backslash. An approach that
         // assumed a parent is immediately followed by its children would hang
         // the child off the wrong folder.
         IReadOnlyList<FolderNode> tree = FolderTree.Build([
-            (1, @"20220201\a.jpg"),
-            (1, @"20220201 - CNY\b.jpg"),
-            (1, @"20220201\sub\c.jpg"),
+            (1, @"20180601\a.jpg"),
+            (1, @"20180601 - Picnic\b.jpg"),
+            (1, @"20180601\sub\c.jpg"),
         ]);
 
-        FolderNode bare = tree.Single(n => n.Name == "20220201");
+        FolderNode bare = tree.Single(n => n.Name == "20180601");
 
         Assert.Equal(["sub"], bare.Children.Select(n => n.Name));
         Assert.Equal(2, bare.ItemCount);
-        Assert.Empty(tree.Single(n => n.Name == "20220201 - CNY").Children);
+        Assert.Empty(tree.Single(n => n.Name == "20180601 - Picnic").Children);
     }
 
     [Fact]
@@ -170,15 +170,15 @@ public sealed class FolderTreeTests
     [Fact]
     public void SubtreeBounds_SpanExactlyTheFolderAndItsDescendants()
     {
-        (string from, string before) = FolderTree.SubtreeBounds("20220201");
+        (string from, string before) = FolderTree.SubtreeBounds("20180601");
 
         // The separator's immediate successor closes the range, so nothing sorts
         // between the two bounds that is not inside the folder.
-        Assert.Equal(@"20220201\", from);
-        Assert.Equal("20220201]", before);
-        Assert.True(string.CompareOrdinal(@"20220201\a.jpg", from) >= 0);
-        Assert.True(string.CompareOrdinal(@"20220201\a.jpg", before) < 0);
-        Assert.False(string.CompareOrdinal("20220201 - CNY\\b.jpg", from) >= 0);
+        Assert.Equal(@"20180601\", from);
+        Assert.Equal("20180601]", before);
+        Assert.True(string.CompareOrdinal(@"20180601\a.jpg", from) >= 0);
+        Assert.True(string.CompareOrdinal(@"20180601\a.jpg", before) < 0);
+        Assert.False(string.CompareOrdinal("20180601 - Picnic\\b.jpg", from) >= 0);
     }
 
     [Fact]

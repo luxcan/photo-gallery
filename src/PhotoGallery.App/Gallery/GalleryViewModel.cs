@@ -732,8 +732,8 @@ public sealed partial class GalleryViewModel : ObservableObject
     /// </summary>
     /// <remarks>
     /// Built here rather than left to XAML's string-to-Uri conversion, because
-    /// these paths are UNC and hold spaces - <c>\\nas\PhotoGallery\
-    /// 20250419 - Kidzania\...</c> - and a conversion that guessed wrong would
+    /// these paths are UNC and hold spaces - <c>\\nas\Photos\
+    /// 20210710 - Zoo Visit\...</c> - and a conversion that guessed wrong would
     /// fail as a codec problem rather than as the path problem it is.
     /// </remarks>
     public Uri? PlayingSource =>

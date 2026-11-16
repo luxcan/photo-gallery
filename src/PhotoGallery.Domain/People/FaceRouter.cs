@@ -10,9 +10,9 @@ namespace PhotoGallery.Domain.People;
 /// first. That distinction is the whole point of this type, and it was learned
 /// the hard way: asking each person separately "does this clear my threshold?"
 /// lets a weaker match claim a face while a far better one is standing right
-/// there. Measured on a library of two siblings, 20.4% of confirmed faces could
-/// be offered to the wrong person under the per-person rule and 0.3% under this
-/// one - and the per-person rule's answer depended on the order the people
+/// there. Measured on a real family library with siblings in it, 20.4% of
+/// confirmed faces could be offered to the wrong person under the per-person
+/// rule and 0.3% under this one - and the per-person rule's answer depended on the order the people
 /// happened to be read in, which is not a fact about anybody's face.
 ///
 /// <para>Siblings are what makes this necessary. Two unrelated people score

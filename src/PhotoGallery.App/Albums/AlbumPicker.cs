@@ -355,7 +355,7 @@ public sealed partial class AlbumPicker : ObservableObject
     /// <para>They are also nearly all of them - 284 of 291 on the first real
     /// library - and they are named after the places and dates they were grouped
     /// from, so searching for an album turned up a list of locations. Typing
-    /// "tam" found forty-three, of which four were called "Tampines Estate".</para>
+    /// "riv" found forty-three, of which four were called "Riverton Estate".</para>
     ///
     /// <para>The one kept whatever it is, is the album this photograph is in
     /// already: it carries the tick saying where the picture is now, and the way

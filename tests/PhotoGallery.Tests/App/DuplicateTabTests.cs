@@ -95,8 +95,8 @@ public sealed class DuplicateTabTests : IDisposable
                 .. Enumerable.Range(0, 2).Select(i => new DuplicateCopy(
                     AssetId: (id * 10) + i,
                     PhotoSourceId: 1,
-                    RelativePath: $@"20230201\photo-{id}-{i}.jpg",
-                    FullPath: $@"C:\pictures\20230201\photo-{id}-{i}.jpg",
+                    RelativePath: $@"20190301\photo-{id}-{i}.jpg",
+                    FullPath: $@"C:\pictures\20190301\photo-{id}-{i}.jpg",
                     ThumbnailName: null,
                     Length: 1000,
                     Width: 100,

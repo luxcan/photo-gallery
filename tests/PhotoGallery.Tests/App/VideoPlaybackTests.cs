@@ -88,7 +88,7 @@ public sealed class VideoPlaybackTests
     public void ThePathBecomesAUriThePlayerCanTake()
     {
         // The folder has a space in its name, as every folder in this library
-        // does - "20250419 - Kidzania" - and a path that converted wrongly would
+        // does - "20210710 - Zoo Visit" - and a path that converted wrongly would
         // fail as a codec problem rather than as the path problem it is.
         GalleryViewModel gallery = Showing(AssetKind.Video);
         gallery.PlayVideoCommand.Execute(null);
@@ -343,7 +343,7 @@ public sealed class VideoPlaybackTests
     private static string CreateClip()
     {
         string folder = Path.Combine(
-            Path.GetTempPath(), $"pg-play-{Guid.NewGuid():N}", "20250419 - Kidzania");
+            Path.GetTempPath(), $"pg-play-{Guid.NewGuid():N}", "20210710 - Zoo Visit");
         Directory.CreateDirectory(folder);
 
         string clip = Path.Combine(folder, "clip.MOV");
@@ -395,13 +395,13 @@ public sealed class VideoPlaybackTests
     private static GalleryTile Tile(AssetKind kind, string fullPath, int rotation = 0) =>
         new(new GalleryItem(
             1,
-            @"20250419 - Kidzania\clip.MOV",
+            @"20210710 - Zoo Visit\clip.MOV",
             "clip.MOV",
-            "20250419 - Kidzania",
+            "20210710 - Zoo Visit",
             fullPath,
             "ab/abcdef.jpg",
             null,
-            new DateTime(2025, 4, 19, 0, 0, 0, DateTimeKind.Utc),
+            new DateTime(2021, 7, 10, 0, 0, 0, DateTimeKind.Utc),
             rotation,
             kind));
 

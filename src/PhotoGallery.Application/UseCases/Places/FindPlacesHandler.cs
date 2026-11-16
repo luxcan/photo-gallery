@@ -10,8 +10,8 @@ namespace PhotoGallery.Application.UseCases.Places;
 /// The same rules as <see cref="People.FindPeopleHandler"/>, deliberately, so
 /// the one box behaves one way. Matching on <em>contains</em> rather than the
 /// start of the name matters more here than it does for people: the gazetteer
-/// names neighbourhoods, so this library's Tampines photographs are filed under
-/// "Tampines Estate" and "Tampines New Town", and somebody typing "tampines"
+/// names neighbourhoods, so this library's Riverton photographs are filed under
+/// "Riverton Estate" and "Riverton New Town", and somebody typing "riverton"
 /// would otherwise be told there is no such place.
 /// </remarks>
 public sealed class FindPlacesHandler

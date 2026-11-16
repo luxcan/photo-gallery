@@ -23,7 +23,7 @@ public sealed class SearchTermsTests
     private static readonly PlaceDirectoryEntry[] s_places =
     [
         new(PlaceFilter.Exactly(10), "Sentosa", 40),
-        new(PlaceFilter.Exactly(11), "Tampines Estate", 13),
+        new(PlaceFilter.Exactly(11), "Riverton Estate", 13),
         new(PlaceFilter.Exactly(12), "Singapore", 4),
 
         // A real place whose name is also an ordinary word. It is here to hold
@@ -168,12 +168,12 @@ public sealed class SearchTermsTests
     [Fact]
     public void Split_AnswersAPlaceOnItsOwnWithNothingToRankBy()
     {
-        SearchTerms terms = SearchTerms.Split("Tampines Estate", s_people, s_places);
+        SearchTerms terms = SearchTerms.Split("Riverton Estate", s_people, s_places);
 
         Assert.Equal(PlaceFilter.Exactly(11), terms.Place);
         Assert.False(terms.HasContent);
         Assert.False(terms.IsEmpty);
-        Assert.Equal("Tampines Estate", terms.Describe());
+        Assert.Equal("Riverton Estate", terms.Describe());
     }
 
     /// <summary>
@@ -187,7 +187,7 @@ public sealed class SearchTermsTests
     [Fact]
     public void Split_PrefersTheLongerPlaceName()
     {
-        SearchTerms terms = SearchTerms.Split("tampines estate", s_people, s_places);
+        SearchTerms terms = SearchTerms.Split("riverton estate", s_people, s_places);
 
         Assert.Equal(PlaceFilter.Exactly(11), terms.Place);
         Assert.False(terms.HasContent);
@@ -198,8 +198,8 @@ public sealed class SearchTermsTests
     /// </summary>
     /// <remarks>
     /// Deliberate, and the limit worth knowing about: the gazetteer files this
-    /// library's Tampines photographs under "Tampines Estate", so typing
-    /// "tampines" alone is a description, not a filter. The dropdown is what
+    /// library's Riverton photographs under "Riverton Estate", so typing
+    /// "riverton" alone is a description, not a filter. The dropdown is what
     /// bridges that - it matches on any part of the name - and this holds the
     /// typed line to whole names so a partial word cannot silently narrow the
     /// grid to one of several places that share it.
@@ -207,10 +207,10 @@ public sealed class SearchTermsTests
     [Fact]
     public void Split_DoesNotTakeHalfAPlaceName()
     {
-        SearchTerms terms = SearchTerms.Split("tampines", s_people, s_places);
+        SearchTerms terms = SearchTerms.Split("riverton", s_people, s_places);
 
         Assert.Null(terms.Place);
-        Assert.Equal("tampines", terms.Content);
+        Assert.Equal("riverton", terms.Content);
     }
 
     [Fact]

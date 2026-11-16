@@ -364,7 +364,7 @@ public sealed class RemovePhotoHandlerTests : IDisposable
     public async Task Handle_TakesTheFacesAndTheDescriptionWithThePhotograph()
     {
         string rendition = await SaveRenditionAsync("gone");
-        int assetId = AddPhoto(@"20230201\a.jpg", rendition);
+        int assetId = AddPhoto(@"20190301\a.jpg", rendition);
         int faceId = AddFace(assetId);
         NameSomebodyOn(faceId);
         DescribeIt(assetId, rendition);

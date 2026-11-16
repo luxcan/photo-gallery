@@ -24,8 +24,8 @@ public sealed class SourcePairingTests
         // Windows offers to map that drive letter for you, so comparing the text
         // would lock a family member out for doing an entirely normal thing.
         IReadOnlyList<PairingProposal> proposals = SourcePairing.Propose(
-            [new SharedSource(Hers, @"\\192.168.50.103\PhotoGallery", 15823)],
-            [new SharedSource(His, @"Z:\PhotoGallery", 15823)],
+            [new SharedSource(Hers, @"\\nas\Photos", 15823)],
+            [new SharedSource(His, @"Z:\Photos", 15823)],
             "Dad's laptop",
             []);
 
@@ -39,10 +39,10 @@ public sealed class SourcePairingTests
     public void TheSameTextIsTheSurestPairAndIsOfferedFirst()
     {
         IReadOnlyList<PairingProposal> proposals = SourcePairing.Propose(
-            [new SharedSource(Hers, @"\\192.168.50.103\PhotoGallery", 15823)],
+            [new SharedSource(Hers, @"\\nas\Photos", 15823)],
             [
-                new SharedSource(Theirs, @"D:\PhotoGallery", 12),
-                new SharedSource(His, @"\\192.168.50.103\PhotoGallery", 15823),
+                new SharedSource(Theirs, @"D:\Photos", 12),
+                new SharedSource(His, @"\\nas\Photos", 15823),
             ],
             "Dad's laptop",
             []);
@@ -59,8 +59,8 @@ public sealed class SourcePairingTests
         // differs by a prefix, every match misses, and the exchange looks merely
         // empty.
         IReadOnlyList<PairingProposal> proposals = SourcePairing.Propose(
-            [new SharedSource(Hers, @"\\192.168.50.103\PhotoGallery", 15823)],
-            [new SharedSource(His, @"\\192.168.50.103\PhotoGallery\Photos", 15823)],
+            [new SharedSource(Hers, @"\\nas\Photos", 15823)],
+            [new SharedSource(His, @"\\nas\Photos\Family", 15823)],
             "Dad's laptop",
             []);
 
@@ -75,7 +75,7 @@ public sealed class SourcePairingTests
     public void TwoUnrelatedFoldersAreNotProposedAtAll()
     {
         IReadOnlyList<PairingProposal> proposals = SourcePairing.Propose(
-            [new SharedSource(Hers, @"\\192.168.50.103\PhotoGallery", 15823)],
+            [new SharedSource(Hers, @"\\nas\Photos", 15823)],
             [new SharedSource(His, @"C:\Users\dad\Phone Dump", 402)],
             "Dad's laptop",
             []);
@@ -87,8 +87,8 @@ public sealed class SourcePairingTests
     public void AFolderAlreadyPairedIsNotProposedAgain()
     {
         IReadOnlyList<PairingProposal> proposals = SourcePairing.Propose(
-            [new SharedSource(Hers, @"\\192.168.50.103\PhotoGallery", 15823)],
-            [new SharedSource(His, @"Z:\PhotoGallery", 15823)],
+            [new SharedSource(Hers, @"\\nas\Photos", 15823)],
+            [new SharedSource(His, @"Z:\Photos", 15823)],
             "Dad's laptop",
             [new SourceLink(Hers, His, Monday, Guid.NewGuid())]);
 
@@ -99,8 +99,8 @@ public sealed class SourcePairingTests
     public void TwoSourcesThatAlreadyShareAnIdAreNotProposed()
     {
         IReadOnlyList<PairingProposal> proposals = SourcePairing.Propose(
-            [new SharedSource(Hers, @"\\192.168.50.103\PhotoGallery", 15823)],
-            [new SharedSource(Hers, @"Z:\PhotoGallery", 15823)],
+            [new SharedSource(Hers, @"\\nas\Photos", 15823)],
+            [new SharedSource(Hers, @"Z:\Photos", 15823)],
             "Dad's laptop",
             []);
 

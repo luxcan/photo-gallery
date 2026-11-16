@@ -75,8 +75,8 @@ public sealed class DecisionSetFileTests
     public async Task APathWithSpacesAndPunctuationSurvives()
     {
         // Folder names in this library carry real meaning and real punctuation:
-        // "20230203 - Chingay", "20200214_Ana Lim Born".
-        AssetKey awkward = Pictures.Photo(@"20230203 - Chingay\IMG_6769 (1).MOV");
+        // "20190302 - Park Day", "20160805_Ana Lim Born".
+        AssetKey awkward = Pictures.Photo(@"20190302 - Park Day\IMG_6769 (1).MOV");
 
         DecisionSet after = await RoundTripAsync(
             new Machine("Mum").Turns(awkward, 90, Monday).Set());

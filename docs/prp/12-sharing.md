@@ -100,7 +100,7 @@ gets built first.
 ### What this house actually has
 
 This library's photo sources list holds exactly one entry:
-`\\192.168.50.103\PhotoGallery`. The family already shares a network folder,
+`\\nas\Photos`. The family already shares a network folder,
 every machine already reaches it, and it is the reason they see the same
 photographs at all.
 
@@ -234,7 +234,7 @@ precondition rather than discovering as a failure.
 
 It is not a limitation invented to make the design easier — it is what this
 house already has. The library's source list holds one entry,
-`\\192.168.50.103\PhotoGallery`, and every laptop reads the same one. Where two
+`\\nas\Photos`, and every laptop reads the same one. Where two
 machines have nothing in common there is nothing to say, and the screen says
 that rather than reporting an empty exchange as a success.
 
@@ -245,7 +245,7 @@ including all the work on the shared drive. Scoping to what overlaps costs a
 join and keeps private folders private.
 
 > **Matching roots is not string equality, and must not be built as though it
-> were.** `\\192.168.50.103\PhotoGallery` on one laptop and `Z:\` on another are
+> were.** `\\nas\Photos` on one laptop and `Z:\` on another are
 > the same folder reached two ways, and Windows offers to map that drive letter
 > for you — so comparing the text would lock out a family member for doing a
 > normal thing, with nothing in the app to undo it. A manifest names its roots,
@@ -253,7 +253,7 @@ join and keeps private folders private.
 > remembered against the source.
 >
 > What must never be absorbed silently is the other shape:
-> `\\...\PhotoGallery` against `\\...\PhotoGallery\Photos`, where relative paths
+> `\\...\Photos` against `\\...\Photos\Family`, where relative paths
 > differ by a prefix, every match misses and the exchange looks merely empty.
 > `AddPhotoSourceHandler` catches that within one machine and cannot see across
 > two, so it is reported here instead.

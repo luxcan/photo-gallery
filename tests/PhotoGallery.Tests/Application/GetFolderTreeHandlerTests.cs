@@ -29,7 +29,7 @@ public sealed class GetFolderTreeHandlerTests : IDisposable
                 .Options;
         _db = new GalleryDbContext(options);
         _db.Database.Migrate();
-        _db.Set<PhotoSource>().Add(new PhotoSource { Id = 1, Path = @"\\nas\PhotoGallery" });
+        _db.Set<PhotoSource>().Add(new PhotoSource { Id = 1, Path = @"\\nas\Photos" });
         _db.SaveChanges();
 
         _reader = new SqliteGalleryReader(_db);
@@ -40,34 +40,34 @@ public sealed class GetFolderTreeHandlerTests : IDisposable
     [Fact]
     public async Task Folders_StartAtThePhotoSource()
     {
-        Add(@"20200214_Ana Lim Born\a.jpg");
-        Add(@"20230203 - Chingay\b.jpg");
+        Add(@"20160805_Ana Lim Born\a.jpg");
+        Add(@"20190302 - Park Day\b.jpg");
 
         IReadOnlyList<FolderNode> tree = await NewHandler().HandleAsync();
 
         FolderNode source = Assert.Single(tree);
-        Assert.Equal(@"\\nas\PhotoGallery", source.Name);
+        Assert.Equal(@"\\nas\Photos", source.Name);
         Assert.Equal(string.Empty, source.RelativeFolder);
         Assert.Equal(2, source.ItemCount);
         Assert.Equal(
-            ["20200214_Ana Lim Born", "20230203 - Chingay"],
+            ["20160805_Ana Lim Born", "20190302 - Park Day"],
             source.Children.Select(c => c.Name));
     }
 
     [Fact]
     public async Task Folders_NestOneInsideAnother()
     {
-        Add(@"20250419 - Kidzania\a.jpg");
-        Add(@"20250419 - Kidzania\signs\b.jpg");
+        Add(@"20210710 - Zoo Visit\a.jpg");
+        Add(@"20210710 - Zoo Visit\signs\b.jpg");
 
         IReadOnlyList<FolderNode> tree = await NewHandler().HandleAsync();
 
-        FolderNode kidzania = tree.Single().Children.Single();
-        Assert.Equal(2, kidzania.ItemCount);
-        FolderNode signs = Assert.Single(kidzania.Children);
+        FolderNode zooVisit = tree.Single().Children.Single();
+        Assert.Equal(2, zooVisit.ItemCount);
+        FolderNode signs = Assert.Single(zooVisit.Children);
         Assert.Equal("signs", signs.Name);
         Assert.Equal(1, signs.ItemCount);
-        Assert.Equal(@"20250419 - Kidzania\signs", signs.RelativeFolder);
+        Assert.Equal(@"20210710 - Zoo Visit\signs", signs.RelativeFolder);
     }
 
     [Fact]

@@ -776,7 +776,7 @@ public sealed class AssignFacesHandlerTests : IDisposable
         {
             Id = assetId,
             PhotoSourceId = 1,
-            RelativePath = $"20200214 - Event\\photo-{assetId}.jpg",
+            RelativePath = $"20160805 - Event\\photo-{assetId}.jpg",
             Length = 1,
             ModifiedUtc = s_start,
             CreatedUtc = s_start,

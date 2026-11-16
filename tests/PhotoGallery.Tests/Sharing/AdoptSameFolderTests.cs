@@ -46,8 +46,8 @@ public sealed class AdoptSameFolderTests : IDisposable
     {
         Dad.Unpair();
         Guid theirs = _house.Mum.SharedSourceId;
-        Dad.Folder(@"\\192.168.50.103\PhotoGallery", theirs);
-        PhotoGallery.Domain.Library.PhotoSource mapped = Dad.Folder(@"Z:\PhotoGallery");
+        Dad.Folder(@"\\nas\Photos", theirs);
+        PhotoGallery.Domain.Library.PhotoSource mapped = Dad.Folder(@"Z:\Photos");
 
         await Assert.ThrowsAsync<InvalidOperationException>(
             () => OnDad.HandleAsync(mapped.SharedId, theirs));

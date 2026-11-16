@@ -35,7 +35,7 @@ Accepts anything fully qualified: `D:\Photos`, `\\server\share`.
 
 | Folder | Files | Last scanned | |
 |---|---|---|---|
-| `\\nas\PhotoGallery` | 16,225 | 14 Aug 2026, 18:51 | Scan · Detach |
+| `\\nas\Photos` | 16,225 | 14 Aug 2026, 18:51 | Scan · Detach |
 
 - One real `ListView`/`GridView`, so header and rows share column definitions.
 - `Files` is `—` until scanned, never `0` — nothing counted is not the same as

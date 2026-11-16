@@ -250,13 +250,13 @@ public sealed class QueryGalleryHandlerTests : IDisposable
     [Fact]
     public async Task Query_FolderFilterExcludesAPrefixSibling()
     {
-        // Eight pairs of real folders collide this way, including 20220201
-        // beside "20220201 - CNY".
-        Add(@"20220201\in.jpg");
-        Add(@"20220201 - CNY\out.jpg");
+        // Eight pairs of real folders collide this way, including 20180601
+        // beside "20180601 - Picnic".
+        Add(@"20180601\in.jpg");
+        Add(@"20180601 - Picnic\out.jpg");
 
         GalleryPage page = await NewHandler().HandleAsync(
-            new GalleryQuery(PhotoSourceId: 1, FolderPath: "20220201"));
+            new GalleryQuery(PhotoSourceId: 1, FolderPath: "20180601"));
 
         Assert.Equal(1, page.TotalCount);
         Assert.Equal("in.jpg", page.Items[0].FileName);
@@ -335,11 +335,11 @@ public sealed class QueryGalleryHandlerTests : IDisposable
     [Fact]
     public async Task Query_CarriesTheFolderSoTheViewCanNameIt()
     {
-        Add(@"20200214_Ana Lim Born\one.jpg");
+        Add(@"20160805_Ana Lim Born\one.jpg");
 
         GalleryPage page = await NewHandler().HandleAsync(new GalleryQuery());
 
-        Assert.Equal("20200214_Ana Lim Born", page.Items[0].FolderPath);
+        Assert.Equal("20160805_Ana Lim Born", page.Items[0].FolderPath);
         Assert.Equal("one.jpg", page.Items[0].FileName);
     }
 
@@ -348,9 +348,9 @@ public sealed class QueryGalleryHandlerTests : IDisposable
     {
         // The acceptance the whole feature exists for: a name gives back photos
         // from folders whose names mention nobody.
-        Add(@"20200214_Ana Lim Born\one.jpg");
-        Add(@"20230211 - Chingay\two.jpg");
-        Add(@"20230211 - Chingay\someone-else.jpg");
+        Add(@"20160805_Ana Lim Born\one.jpg");
+        Add(@"20190309 - Park Day\two.jpg");
+        Add(@"20190309 - Park Day\someone-else.jpg");
 
         int person = AddPerson("Ana Lim");
         Claim(assetId: 1, person, AssignmentSource.Confirmed);

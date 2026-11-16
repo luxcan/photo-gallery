@@ -77,7 +77,7 @@ public sealed class NearDuplicatesTests
     private static Asset Photo(int id, ulong hash) => new()
     {
         Id = id,
-        RelativePath = $"20230201\\photo-{id}.jpg",
+        RelativePath = $"20190301\\photo-{id}.jpg",
         PerceptualHash = new PerceptualHash(hash),
     };
 }

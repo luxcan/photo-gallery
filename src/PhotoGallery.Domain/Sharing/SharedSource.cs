@@ -5,7 +5,7 @@ namespace PhotoGallery.Domain.Sharing;
 /// </summary>
 /// <remarks>
 /// The identity is a <see cref="Guid"/> and never the root, because a root is
-/// machine-local text: <c>\\192.168.50.103\PhotoGallery</c> on one laptop is
+/// machine-local text: <c>\\nas\Photos</c> on one laptop is
 /// <c>Z:\</c> on the next, and Windows offers to map that drive letter for you.
 /// Putting the root in a key would rebuild the drive-letter problem one layer
 /// down.
@@ -30,7 +30,7 @@ public sealed record SharedSource(Guid SharedId, string Root, int Photographs)
     /// The last part of the root, which is the part worth comparing.
     /// </summary>
     /// <remarks>
-    /// <c>\\192.168.50.103\PhotoGallery</c> and <c>Z:\PhotoGallery</c> agree
+    /// <c>\\nas\Photos</c> and <c>Z:\Photos</c> agree
     /// here and nowhere else. A drive mapped to the share itself - <c>Z:\</c> -
     /// agrees nowhere at all, which is why this proposes rather than decides.
     /// </remarks>
