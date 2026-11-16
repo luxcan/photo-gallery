@@ -1,3 +1,5 @@
+using PhotoGallery.Domain.Sharing;
+
 namespace PhotoGallery.Application.UseCases.Sharing;
 
 /// <summary>
@@ -19,6 +21,32 @@ namespace PhotoGallery.Application.UseCases.Sharing;
 /// </param>
 public sealed record MachineStanding(string Name, DateTime? SharedUtc, bool Merged)
 {
+    /// <summary>The computer, by the id it gives itself.</summary>
+    public Guid MachineId { get; init; }
+
+    /// <summary>
+    /// What somebody here said about taking its changes, or null for a
+    /// computer whose file this library has never read and so cannot name.
+    /// </summary>
+    public MachineTrust? Trust { get; init; }
+
+    /// <summary>
+    /// Whether the screen should ask about it: read, named, and not answered
+    /// for yet.
+    /// </summary>
+    public bool IsUnanswered => Trust == MachineTrust.Undecided;
+
+    /// <summary>
+    /// Whether another computer this library has heard of goes by the same
+    /// name, whatever was said about either.
+    /// </summary>
+    /// <remarks>
+    /// Told by the names the computers gave themselves, never by what the
+    /// screen calls one it has not taken changes from yet - a description no
+    /// file would ever claim.
+    /// </remarks>
+    public bool SharesItsName { get; init; }
+
     /// <summary>
     /// How recently, as the screen says it.
     /// </summary>

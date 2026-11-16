@@ -102,10 +102,10 @@ public sealed class GetSharingHandler
         IReadOnlyList<PublishedAnswers> published,
         LibrarySettings settings)
     {
-        Dictionary<Guid, string> names = [];
+        Dictionary<Guid, KnownMachine> names = [];
         foreach (KnownMachine machine in known)
         {
-            names[machine.MachineId] = machine.Name;
+            names[machine.MachineId] = machine;
         }
 
         Dictionary<Guid, DateTime> shared = [];
@@ -126,14 +126,44 @@ public sealed class GetSharingHandler
 
         foreach (Guid machine in names.Keys.Union(shared.Keys))
         {
+            KnownMachine? row = names.GetValueOrDefault(machine);
+            bool merged = row?.LastMergedUtc is not null;
+
+            // A computer written down is not necessarily one heard from: one
+            // somebody said to take changes from before its first file was read
+            // has nothing to show until it shares. One somebody said "not this
+            // one" to stays, so the answer can be taken back.
+            if (!merged && !shared.ContainsKey(machine) && row?.Trust != MachineTrust.Ignored)
+            {
+                continue;
+            }
+
             // Described where its name would go, at the start of its own row in
             // the list, so it begins as a name does: with a capital letter.
+            //
+            // Named once its changes were taken, or where somebody has to
+            // answer for it by name - and merged is whether its changes were
+            // ever taken, not whether it is written down.
+            string name = row is not null && (merged || row.Trust != MachineTrust.Trusted)
+                ? row.Name
+                : "A computer this library has not taken changes from yet";
+
+            // Against every computer written down, trusted, refused or not
+            // answered yet: on a new laptop the real one and a copy planted
+            // beside it are both unanswered, and two rows with one name are
+            // what somebody says yes to twice.
+            bool sharesItsName = row is not null && known.Any(other =>
+                other.MachineId != machine && KnownMachine.SameName(other.Name, row.Name));
+
             standing.Add(new MachineStanding(
-                names.TryGetValue(machine, out string? name)
-                    ? name
-                    : "A computer this library has not taken changes from yet",
+                name,
                 shared.TryGetValue(machine, out DateTime when) ? when : null,
-                names.ContainsKey(machine)));
+                merged)
+            {
+                MachineId = machine,
+                Trust = row?.Trust,
+                SharesItsName = sharesItsName,
+            });
         }
 
         // Most recently shared first, and the ones that never have at the bottom

@@ -392,16 +392,75 @@ public sealed class SqliteDecisionRepository : IDecisionRepository
             _db.KnownMachines.Add(new KnownMachine
             {
                 MachineId = machine.Id,
-                Name = machine.Name,
+                Name = KnownMachine.NameFrom(machine.Name),
                 LastMergedUtc = mergedUtc,
+                Trust = MachineTrust.Trusted,
             });
         }
         else
         {
             // The name is theirs to change, so it is taken every time rather
             // than only when the row is new.
-            known.Name = machine.Name;
+            known.Name = KnownMachine.NameFrom(machine.Name);
             known.LastMergedUtc = mergedUtc;
+        }
+
+        await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        _db.ChangeTracker.Clear();
+    }
+
+    public async Task MeetAsync(
+        MachineIdentity machine, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(machine);
+
+        KnownMachine? known = await _db.KnownMachines
+            .FirstOrDefaultAsync(row => row.MachineId == machine.Id, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (known is null)
+        {
+            _db.KnownMachines.Add(new KnownMachine
+            {
+                MachineId = machine.Id,
+                Name = KnownMachine.NameFrom(machine.Name),
+                Trust = MachineTrust.Undecided,
+            });
+        }
+        else if (known.Trust == MachineTrust.Undecided)
+        {
+            known.Name = KnownMachine.NameFrom(machine.Name);
+        }
+
+        await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        _db.ChangeTracker.Clear();
+    }
+
+    public async Task DecideAsync(
+        Guid machineId,
+        string? name,
+        MachineTrust trust,
+        CancellationToken cancellationToken = default)
+    {
+        KnownMachine? known = await _db.KnownMachines
+            .FirstOrDefaultAsync(row => row.MachineId == machineId, cancellationToken)
+            .ConfigureAwait(false);
+
+        // The name is only kept for a computer not written down yet: one that
+        // is keeps the name its own file gave it, and an answer about it is
+        // never refused for what that name happens to be.
+        if (known is null)
+        {
+            _db.KnownMachines.Add(new KnownMachine
+            {
+                MachineId = machineId,
+                Name = KnownMachine.NameFrom(name),
+                Trust = trust,
+            });
+        }
+        else
+        {
+            known.Trust = trust;
         }
 
         await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);

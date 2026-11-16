@@ -11,7 +11,7 @@ public sealed class KnownMachineConfiguration : IEntityTypeConfiguration<KnownMa
         builder.ToTable("KnownMachines");
         builder.HasKey(m => m.Id);
 
-        builder.Property(m => m.Name).IsRequired().HasMaxLength(128);
+        builder.Property(m => m.Name).IsRequired().HasMaxLength(KnownMachine.NameLength);
 
         // A machine is one row however many times it is heard from: the same
         // laptop merged from on Monday and again on Friday must not become two

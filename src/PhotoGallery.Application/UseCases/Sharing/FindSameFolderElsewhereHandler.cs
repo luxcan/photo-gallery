@@ -86,13 +86,43 @@ public sealed class FindSameFolderElsewhereHandler
             .. mine.Sources.Select(source => source.SharedId).Where(id => id != sharedSourceId),
         ];
 
+        // A computer somebody here said "not this one" to is not offered. One
+        // nobody has answered for yet is, because saying its folder is the
+        // same one is that answer: the question says this computer will take
+        // its pictures and faces, and a yes records it - unless another
+        // computer goes by its name, when the yes is about the folder alone.
+        TrustedMachines trust =
+            await TrustedMachines.ReadAsync(_decisions, cancellationToken).ConfigureAwait(false);
+
+        // Every other computer's name, written down or only read just now, so
+        // a question can say when another goes by the same one - which a copy
+        // of a family laptop's file planted under a fresh id always does.
+        IReadOnlyList<KnownMachine> known =
+            await _decisions.KnownMachinesAsync(cancellationToken).ConfigureAwait(false);
+
+        (Guid Id, string Name)[] names =
+        [
+            .. known.Select(other => (other.MachineId, other.Name)),
+            .. fetched.Sets
+                .Where(other => other.Machine.Id != machine.Id)
+                .Select(other => (other.Machine.Id, other.Machine.Name)),
+        ];
+
+        bool SharesItsName(MachineIdentity them) =>
+            names.Any(other => other.Id != them.Id && KnownMachine.SameName(other.Name, them.Name));
+
         return new SameFolderElsewhere(
             SyncFolderChosen: true,
             [
                 .. fetched.Sets
-                    .Where(them => them.Machine.Id != machine.Id)
-                    .SelectMany(them => SourcePairing.Propose(
-                        added, them.Sources, them.Machine.Name, links))
+                    .Where(them => them.Machine.Id != machine.Id && !trust.Ignores(them.Machine.Id))
+                    .SelectMany(them => SourcePairing
+                        .Propose(added, them.Sources, them.Machine.Name, links)
+                        .Select(proposal => proposal with
+                        {
+                            MachineId = them.Machine.Id,
+                            SharesItsName = SharesItsName(them.Machine),
+                        }))
                     .Where(proposal => proposal.CanPair && !taken.Contains(proposal.Theirs.SharedId))
                     .OrderBy(proposal => proposal.Likeness),
             ]);

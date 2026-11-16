@@ -94,11 +94,21 @@ public sealed class ShareRenditionsHandler
                 return PoolResult.CouldNot($"Skipped, because {problem}.");
             }
 
+            // Only the computers somebody here has said to take changes from:
+            // what their decode learned is written onto this library's rows,
+            // and the pictures and faces taken are the ones these name.
+            TrustedMachines trust = await TrustedMachines
+                .ReadAsync(_decisions, cancellationToken)
+                .ConfigureAwait(false);
+
             // Read once, for both halves: the pictures are taken from these, and
             // they are also what says which picture each machine's faces were
             // drawn on.
             IReadOnlyList<PreparedSet> theirs =
-                await _pool.FetchAsync(cancellationToken).ConfigureAwait(false);
+            [
+                .. (await _pool.FetchAsync(cancellationToken).ConfigureAwait(false))
+                    .Where(set => trust.Takes(set.Machine.Id)),
+            ];
 
             (int filled, int fetched, int mismatched, string? gone) =
                 await TakePicturesAsync(theirs, progress, cancellationToken).ConfigureAwait(false);
@@ -124,7 +134,8 @@ public sealed class ShareRenditionsHandler
             }
 
             (int faces, IReadOnlyList<ModelMismatch> refused) =
-                await TakeFacesAsync(theirs, progress, cancellationToken).ConfigureAwait(false);
+                await TakeFacesAsync(theirs, trust, progress, cancellationToken)
+                    .ConfigureAwait(false);
 
             // A turn merged before its picture arrived was held rather than
             // dropped, and this is the moment the picture arrives. The scan's own
@@ -462,13 +473,18 @@ public sealed class ShareRenditionsHandler
     /// The other machines' facts, which say which picture each of their faces
     /// was drawn on.
     /// </param>
+    /// <param name="trust">Who somebody here has said to take changes from.</param>
     private async Task<(int Faces, IReadOnlyList<ModelMismatch> Refused)> TakeFacesAsync(
         IReadOnlyList<PreparedSet> drawnOn,
+        TrustedMachines trust,
         IProgress<MergeProgress>? progress,
         CancellationToken cancellationToken)
     {
         IReadOnlyList<FaceSet> theirs =
-            await _pool.FetchFacesAsync(cancellationToken).ConfigureAwait(false);
+        [
+            .. (await _pool.FetchFacesAsync(cancellationToken).ConfigureAwait(false))
+                .Where(set => trust.Takes(set.Machine.Id)),
+        ];
 
         if (theirs.Count == 0)
         {
@@ -596,10 +612,16 @@ public sealed class ShareRenditionsHandler
         FetchedDecisions published =
             await _exchange.FetchAsync(cancellationToken).ConfigureAwait(false);
 
+        // A computer somebody here said "not this one" to has no say in what
+        // this one gives. Left in, a file planted to look like an old build
+        // would hold this library's faces back for good.
+        TrustedMachines trust =
+            await TrustedMachines.ReadAsync(_decisions, cancellationToken).ConfigureAwait(false);
+
         return (
             [
                 .. published.Sets
-                    .Where(set => !set.LandsFacesByOverlap)
+                    .Where(set => !set.LandsFacesByOverlap && !trust.Ignores(set.Machine.Id))
                     .Select(set => set.Machine.Name)
                     .Distinct(StringComparer.CurrentCultureIgnoreCase)
                     .Order(StringComparer.CurrentCultureIgnoreCase),

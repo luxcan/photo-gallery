@@ -60,13 +60,19 @@ public sealed class MergeDecisionsHandler
             .ThisMachineAsync(_index, cancellationToken)
             .ConfigureAwait(false);
 
-        FetchedDecisions fetched =
+        FetchedDecisions everything =
             await _exchange.FetchAsync(cancellationToken).ConfigureAwait(false);
+
+        (FetchedDecisions fetched, IReadOnlyList<string> unconfirmed) = await TrustedOnlyAsync(
+            machine, everything, cancellationToken).ConfigureAwait(false);
 
         if (fetched.Sets.Count == 0)
         {
             return new MergeResult(
-                true, string.Empty, MergeOutcome.Nothing, 0, fetched.Unreadable, []);
+                true, string.Empty, MergeOutcome.Nothing, unconfirmed.Count, fetched.Unreadable, [])
+            {
+                Unconfirmed = unconfirmed,
+            };
         }
 
         (MergeOutcome outcome, IReadOnlyList<PairingProposal> pairings) = await OnePassAsync(
@@ -100,7 +106,60 @@ public sealed class MergeDecisionsHandler
         }
 
         return new MergeResult(
-            true, string.Empty, outcome, fetched.Sets.Count, fetched.Unreadable, pairings);
+            true,
+            string.Empty,
+            outcome,
+            fetched.Sets.Count + unconfirmed.Count,
+            fetched.Unreadable,
+            pairings)
+        {
+            Unconfirmed = unconfirmed,
+        };
+    }
+
+    /// <summary>
+    /// The sets of the computers somebody here has said to take changes from,
+    /// and the names of the ones nobody has answered for yet.
+    /// </summary>
+    /// <remarks>
+    /// Held back before the merge sees anything, because every check the merge
+    /// makes is on what a file says about itself - and a file can say anything.
+    /// A computer met for the first time is written down, so the Sync screen
+    /// can ask about it by name; one somebody said "not this one" to is left
+    /// out without a word, as it was asked to be.
+    /// </remarks>
+    private async Task<(FetchedDecisions Trusted, IReadOnlyList<string> Unconfirmed)>
+        TrustedOnlyAsync(
+            MachineIdentity machine,
+            FetchedDecisions fetched,
+            CancellationToken cancellationToken)
+    {
+        TrustedMachines trust =
+            await TrustedMachines.ReadAsync(_decisions, cancellationToken).ConfigureAwait(false);
+
+        List<DecisionSet> trusted = [];
+        List<string> unconfirmed = [];
+
+        foreach (DecisionSet them in fetched.Sets)
+        {
+            if (trust.Takes(them.Machine.Id))
+            {
+                trusted.Add(them);
+                continue;
+            }
+
+            // Our own id, in a file that is not ours. The merge would skip it;
+            // asking about it would be asking whether to trust this computer.
+            if (them.Machine.Id == machine.Id || trust.Ignores(them.Machine.Id))
+            {
+                continue;
+            }
+
+            await _repository.MeetAsync(them.Machine, cancellationToken).ConfigureAwait(false);
+            unconfirmed.Add(them.Machine.Name);
+        }
+
+        return (fetched with { Sets = trusted }, unconfirmed);
     }
 
     private async Task<(MergeOutcome Outcome, IReadOnlyList<PairingProposal> Pairings)>

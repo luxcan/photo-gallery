@@ -1,9 +1,11 @@
+using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.DependencyInjection;
 using PhotoGallery.App.Shell;
 using PhotoGallery.Application.Ports;
 using PhotoGallery.Application.UseCases.Sharing;
+using PhotoGallery.Domain.Sharing;
 
 namespace PhotoGallery.App.Sharing;
 
@@ -90,6 +92,19 @@ public sealed partial class SharingViewModel : ObservableObject
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasOffers))]
     private IReadOnlyList<PairingOffer> _offers = [];
+
+    /// <summary>
+    /// Computers this one has not synced with before, waiting on somebody to
+    /// say whether to take their changes.
+    /// </summary>
+    /// <remarks>
+    /// Read with the rest of the screen rather than only after a share, unlike
+    /// the folder offers: the question is remembered until it is answered, and
+    /// nothing from those computers arrives until it is.
+    /// </remarks>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasNewcomers))]
+    private IReadOnlyList<MachineQuestion> _newcomers = [];
 
     /// <summary>What the last share did, or why it could not.</summary>
     [ObservableProperty]
@@ -184,6 +199,8 @@ public sealed partial class SharingViewModel : ObservableObject
     public bool HasMachines => Machines.Count > 0;
 
     public bool HasOffers => Offers.Count > 0;
+
+    public bool HasNewcomers => Newcomers.Count > 0;
 
     public bool HasStatus => Status.Length > 0;
 
@@ -813,6 +830,125 @@ public sealed partial class SharingViewModel : ObservableObject
         }
     }
 
+    /// <summary>Takes a computer's changes from now on, as somebody here said.</summary>
+    /// <remarks>
+    /// Asked once per computer, the way whether two folders are one is asked,
+    /// because every check a sync makes is on what a computer's own file says
+    /// about it - and a file in the sync folder can say anything.
+    /// </remarks>
+    [RelayCommand]
+    private Task TakeChangesAsync(MachineQuestion? question) =>
+        question is null
+            ? Task.CompletedTask
+            : DecideAsync(
+                question.MachineId,
+                question.Name,
+                take: true,
+                $"Changes from {question.Name} will be taken from now on. Sync again to "
+                + "bring them in.");
+
+    /// <summary>Leaves a computer's changes alone, and keeps leaving them.</summary>
+    [RelayCommand]
+    private Task NotThisOneAsync(MachineQuestion? question) =>
+        question is null
+            ? Task.CompletedTask
+            : DecideAsync(
+                question.MachineId,
+                question.Name,
+                take: false,
+                $"Nothing from {question.Name} will be taken. You can change your mind "
+                + "under The other computers.");
+
+    /// <summary>
+    /// Takes the changes of a computer somebody earlier said "not this one" to.
+    /// </summary>
+    /// <remarks>
+    /// So a "no" said in haste about the family's own laptop is not the end of
+    /// that laptop.
+    /// </remarks>
+    [RelayCommand]
+    private Task TakeChangesAfterAllAsync(MachineRow? row) =>
+        row is null
+            ? Task.CompletedTask
+            : DecideAsync(
+                row.MachineId,
+                row.Name,
+                take: true,
+                $"Changes from {row.Name} will be taken from now on. Sync again to bring "
+                + "them in.");
+
+    private async Task DecideAsync(Guid machineId, string name, bool take, string said)
+    {
+        await _gate.WaitAsync().ConfigureAwait(true);
+        IsBusy = true;
+
+        try
+        {
+            await Task.Run(async () =>
+            {
+                using IServiceScope scope = _scopeFactory.CreateScope();
+                await scope.ServiceProvider
+                    .GetRequiredService<DecideMachineHandler>()
+                    .HandleAsync(machineId, name, take)
+                    .ConfigureAwait(false);
+            }).ConfigureAwait(true);
+
+            Status = said;
+            _log.Append(take ? $"taking changes from {name}" : $"not taking changes from {name}");
+
+            await ReadAsync().ConfigureAwait(true);
+        }
+        catch (Exception ex) when (LibraryFailure.IsExpected(ex))
+        {
+            Status = $"That could not be saved: {ex.Message}";
+        }
+        catch (ArgumentException ex)
+        {
+            // A file in the sync folder claiming to be this computer, or to be
+            // nobody: said, not thrown past the button, where it would close
+            // the app.
+            Status = $"That could not be saved: {ex.Message}";
+        }
+        finally
+        {
+            IsBusy = false;
+            _gate.Release();
+        }
+    }
+
+    /// <summary>
+    /// What the screen asks about a computer nobody here has answered for.
+    /// </summary>
+    /// <remarks>
+    /// A name any other computer here goes by is said out loud, whatever was
+    /// answered about that one, because that is exactly what a planted file
+    /// would choose: the question then reads as the laptop on the kitchen
+    /// table, and a yes to it is a yes to whatever wrote the file. On a new or
+    /// reinstalled laptop the real one is unanswered too, so the two questions
+    /// would otherwise read the same - each says when that computer last
+    /// shared, which is what tells them apart.
+    /// </remarks>
+    internal static string AskingAbout(MachineStanding newcomer)
+    {
+        ArgumentNullException.ThrowIfNull(newcomer);
+
+        if (!newcomer.SharesItsName)
+        {
+            return $"Take changes from {newcomer.Name}?";
+        }
+
+        string when = newcomer.SharedUtc is DateTime shared
+            ? string.Format(
+                CultureInfo.CurrentCulture,
+                "last shared changes on {0:d MMM yyyy 'at' HH:mm}",
+                shared.ToLocalTime())
+            : "has not shared any changes yet";
+
+        return $"Another computer is also calling itself {newcomer.Name}. Take changes from this "
+               + $"one, which {when}? If you cannot tell which is the real {newcomer.Name}, "
+               + "choose Not this one. You can change your mind under The other computers.";
+    }
+
     /// <summary>The read itself, without the gate, so callers holding it can use it.</summary>
     /// <remarks>
     /// In two steps. The folder's name comes from this library and is there at
@@ -850,8 +986,26 @@ public sealed partial class SharingViewModel : ObservableObject
         ElsewhereFolder = status.Held.Folder;
         Machines =
         [
-            .. status.Machines.Select(machine => new MachineRow(
-                machine.Name, machine.Recency(now), !machine.Merged)),
+            .. status.Machines.Select(machine =>
+            {
+                bool ignored = machine.Trust == MachineTrust.Ignored;
+
+                return new MachineRow(
+                    machine.Name,
+                    ignored ? "not taking its changes" : machine.Recency(now),
+                    !machine.Merged && !ignored)
+                {
+                    MachineId = machine.MachineId,
+                    Ignored = ignored,
+                };
+            }),
+        ];
+        Newcomers =
+        [
+            .. status.Machines
+                .Where(machine => machine.IsUnanswered)
+                .Select(machine => new MachineQuestion(
+                    machine.MachineId, machine.Name, AskingAbout(machine))),
         ];
     }
 

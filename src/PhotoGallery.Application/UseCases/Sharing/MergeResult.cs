@@ -27,6 +27,16 @@ public sealed record MergeResult(
         new(false, problem, MergeOutcome.Nothing, 0, [], []);
 
     /// <summary>
+    /// Computers whose changes are waiting for somebody here to say whether to
+    /// take them, by the names they give themselves.
+    /// </summary>
+    /// <remarks>
+    /// Nothing from them was read into this library. The Sync screen asks
+    /// about each one; this only says why their changes did not arrive.
+    /// </remarks>
+    public IReadOnlyList<string> Unconfirmed { get; init; } = [];
+
+    /// <summary>
     /// What to put on screen: what changed, by kind, or plainly that nothing did.
     /// </summary>
     /// <remarks>
@@ -71,7 +81,15 @@ public sealed record MergeResult(
             // new" concluding the feature does not work.
             if (Outcome.Refused.Count > 0 && Outcome.ChangedNothing)
             {
-                return Refusals();
+                return Unconfirmed.Count == 0 ? Refusals() : $"{Refusals()} {Waiting()}";
+            }
+
+            // The same reasoning as the refusals: "Nothing new" beside changes
+            // that were deliberately not taken would read as a computer with
+            // nothing to say.
+            if (Unconfirmed.Count > 0 && Outcome.ChangedNothing)
+            {
+                return Waiting();
             }
 
             // "Up to date" stands in for "nothing new" rather than following it:
@@ -94,8 +112,28 @@ public sealed record MergeResult(
             // Part of the house heard from and part of it refused is the one
             // shape of this report that can mislead while every number in it is
             // right: the counts are true and incomplete at the same time.
-            return Outcome.Refused.Count == 0 ? said : $"{said} {Refusals()}";
+            if (Outcome.Refused.Count > 0)
+            {
+                said = $"{said} {Refusals()}";
+            }
+
+            return Unconfirmed.Count == 0 ? said : $"{said} {Waiting()}";
         }
+    }
+
+    /// <summary>
+    /// What is said of the computers nobody here has answered for yet.
+    /// </summary>
+    private string Waiting()
+    {
+        string[] names = [.. Unconfirmed.Distinct(StringComparer.CurrentCultureIgnoreCase)];
+
+        string who = names.Length == 1
+            ? names[0]
+            : $"{string.Join(", ", names[..^1])} and {names[^1]}";
+
+        return $"Nothing was taken from {who}. Say below whether to take changes from "
+             + (names.Length == 1 ? "it." : "them.");
     }
 
     /// <summary>
@@ -103,7 +141,8 @@ public sealed record MergeResult(
     /// that the screen may say it is up to date.
     /// </summary>
     /// <remarks>
-    /// Not after a computer was refused or could not be read, nor before any
+    /// Not after a computer was refused, is waiting to be answered for or could
+    /// not be read, nor before any
     /// other computer has synced: each of those leaves something unheard, and
     /// "up to date" beside it would be the reassurance the sentence before it
     /// takes back.
@@ -112,6 +151,7 @@ public sealed record MergeResult(
         Merged
         && Machines > 0
         && Outcome.Refused.Count == 0
+        && Unconfirmed.Count == 0
         && Unreadable.Count == 0
         && !Pairings.Any(pairing => pairing.Likeness == PairingLikeness.FiledDifferently);
 

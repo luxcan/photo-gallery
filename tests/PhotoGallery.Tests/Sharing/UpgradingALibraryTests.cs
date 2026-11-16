@@ -1,9 +1,11 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
+using PhotoGallery.Application.UseCases.Sharing;
 using PhotoGallery.Domain.Albums;
 using PhotoGallery.Domain.Library;
 using PhotoGallery.Domain.People;
+using PhotoGallery.Domain.Sharing;
 using PhotoGallery.Infrastructure.Persistence;
 
 namespace PhotoGallery.Tests.Sharing;
@@ -37,6 +39,9 @@ public sealed class UpgradingALibraryTests : IDisposable
 
     /// <summary>The last release before keeping a suggestion said when.</summary>
     private const string BeforeKeepsWereDated = "AddAlbumCoverChosenUtc";
+
+    /// <summary>The last release before another computer had to be confirmed.</summary>
+    private const string BeforeComputersWereConfirmed = "AddEyesAndPreviewQuality";
 
     private readonly string _root;
     private readonly GalleryDbContext _db;
@@ -226,6 +231,35 @@ public sealed class UpgradingALibraryTests : IDisposable
         Assert.Equal(AlbumOrigin.Accepted, kept.Origin);
         Assert.Null(kept.KeptUtc);
         Assert.Empty(_db.AlbumDismissals);
+    }
+
+    /// <summary>
+    /// Every computer a library already synced with goes on being taken from,
+    /// with nobody asked to confirm it.
+    /// </summary>
+    /// <remarks>
+    /// Asked of the reader the merge itself asks, and by a lookup on the id
+    /// rather than a read: the id goes in upper case, as the app writes it,
+    /// and a backfill that matched nothing would leave every laptop in the
+    /// house held back until somebody answered for each one.
+    /// </remarks>
+    [Fact]
+    public async Task EveryComputerAlreadyKnownIsStillTakenFrom()
+    {
+        _db.GetService<IMigrator>().Migrate(BeforeComputersWereConfirmed);
+
+        Guid dad = Guid.NewGuid();
+        Sql($"""
+             INSERT INTO KnownMachines (MachineId, Name, LastMergedUtc)
+             VALUES ('{dad.ToString().ToUpperInvariant()}', 'Dad''s laptop', '2026-10-01 00:00:00');
+             """);
+
+        Upgrade();
+
+        Assert.Equal(MachineTrust.Trusted, _db.KnownMachines.Single(m => m.MachineId == dad).Trust);
+
+        TrustedMachines trust = await TrustedMachines.ReadAsync(new SqliteDecisionReader(_db));
+        Assert.True(trust.Takes(dad));
     }
 
     [Fact]

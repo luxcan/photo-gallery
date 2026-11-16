@@ -1184,10 +1184,28 @@ public sealed partial class MainViewModel : ObservableObject
                 await Task.Run(() => adopting.HandleAsync(same.Mine.SharedId, same.Theirs.SharedId))
                     .ConfigureAwait(true);
 
+                // The question said this computer would take that one's
+                // pictures and faces, so the yes is also the answer the Sync
+                // screen would otherwise ask for - and without it the scan
+                // this question exists for would take nothing. Not where
+                // another computer goes by the same name: the question could
+                // not say which of them it meant, and the Sync screen can.
+                if (!same.SharesItsName)
+                {
+                    DecideMachineHandler deciding =
+                        scope.ServiceProvider.GetRequiredService<DecideMachineHandler>();
+
+                    await Task.Run(() => deciding.HandleAsync(same.MachineId, same.MachineName, take: true))
+                        .ConfigureAwait(true);
+                }
+
                 Append($"  same folder as {same.Theirs.Root} on {same.MachineName}");
             }
         }
-        catch (Exception ex) when (LibraryFailure.IsExpected(ex))
+        // An argument refused is a file in the sync folder with no identity
+        // to answer for: logged like any other failure here, since thrown past
+        // this it would close the app with the folder already added.
+        catch (Exception ex) when (LibraryFailure.IsExpected(ex) || ex is ArgumentException)
         {
             DiagnosticLog.Write("could not ask about the other computers", ex);
             Append($"  could not look for this folder on the other computers: {ex.Message}");

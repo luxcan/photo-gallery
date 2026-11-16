@@ -67,15 +67,32 @@ internal sealed class TwoLibraries : IDisposable
             Path.Combine(_root, name.Replace(' ', '-')), name, Mum.SharedSourceId);
 
         third.SharesThrough(SharedFolder);
+
+        foreach (Library known in new[] { Mum, Dad }.Concat(_others))
+        {
+            third.Trusts(known);
+            known.Trusts(third);
+        }
+
         _others.Add(third);
         return third;
     }
 
-    /// <summary>Points every machine at the folder between them.</summary>
+    /// <summary>
+    /// Points every machine at the folder between them, as a house whose
+    /// computers have already said to take each other's changes.
+    /// </summary>
+    /// <remarks>
+    /// Trusted here because nearly every rule under test is about what two
+    /// family laptops do with each other's answers. The tests about a computer
+    /// nobody has answered for build one of their own.
+    /// </remarks>
     public TwoLibraries Sharing()
     {
         Mum.SharesThrough(SharedFolder);
         Dad.SharesThrough(SharedFolder);
+        Mum.Trusts(Dad);
+        Dad.Trusts(Mum);
         return this;
     }
 
@@ -191,6 +208,9 @@ internal sealed class Library : IDisposable
     public ConfirmPairingHandler Pairing =>
         field ??= new ConfirmPairingHandler(Index, Decisions, Writing);
 
+    /// <summary>Saying whether to take another computer's changes, as the Sync screen does.</summary>
+    public DecideMachineHandler Deciding => field ??= new DecideMachineHandler(Index, Writing);
+
     /// <summary>This library's own working folder, on a real disk.</summary>
     public WorkingFolder Working => field ??= CreateWorking();
 
@@ -299,6 +319,29 @@ internal sealed class Library : IDisposable
 
     /// <summary>What this machine's source is called on both machines.</summary>
     public Guid SharedSourceId { get; private set; }
+
+    /// <summary>
+    /// Says, as somebody on this machine would, to take another machine's
+    /// changes.
+    /// </summary>
+    public void Trusts(Library other)
+    {
+        ArgumentNullException.ThrowIfNull(other);
+
+        if (!Db.KnownMachines.Any(row => row.MachineId == other.MachineId))
+        {
+            Db.KnownMachines.Add(new KnownMachine
+            {
+                MachineId = other.MachineId,
+                Name = other.Name,
+                Trust = MachineTrust.Trusted,
+            });
+
+            Db.SaveChanges();
+        }
+
+        Db.ChangeTracker.Clear();
+    }
 
     /// <summary>Nominates the folder this machine shares answers through.</summary>
     public void SharesThrough(string folder)

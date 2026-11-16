@@ -37,12 +37,21 @@ public sealed class AddFolderQuestions : IAddFolderQuestions
     {
         ArgumentNullException.ThrowIfNull(proposal);
 
+        // Where two computers go by one name the yes cannot say which of them
+        // it meant, so it is about the folder alone, and says so.
+        string then = proposal.SharesItsName
+            ? $"Another computer is also calling itself {proposal.MachineName}, so nothing "
+              + "is taken from either until you say which one to take changes from on the "
+              + "Sync screen."
+            : $"If it is, this computer takes the pictures, faces and changes from "
+              + $"{proposal.MachineName} from now on, instead of finding them again. Only say "
+              + "yes to a computer you recognise.";
+
         return AppDialog.Confirm(
             _owner,
             "Is this the same folder?",
             $"{proposal.MachineName} keeps photos in {proposal.Theirs.Root}. Is that the "
-            + $"same folder as {proposal.Mine.Root}?\n\nIf it is, this computer takes the "
-            + "pictures and faces it has already found instead of finding them again.",
+            + $"same folder as {proposal.Mine.Root}?\n\n{then}",
             confirm: "Same folder");
     }
 }

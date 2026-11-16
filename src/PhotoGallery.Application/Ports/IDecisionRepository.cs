@@ -97,9 +97,41 @@ public interface IDecisionRepository
     Task ReleaseAsync(
         HeldAnswers landed, CancellationToken cancellationToken = default);
 
-    /// <summary>Records that a machine was heard from, and when.</summary>
+    /// <summary>Records that a machine's changes were taken, and when.</summary>
+    /// <remarks>
+    /// A machine first remembered here is one whose changes were just taken,
+    /// so it is remembered as trusted; one already known keeps whatever
+    /// somebody said about it.
+    /// </remarks>
     Task RememberAsync(
         MachineIdentity machine,
         DateTime mergedUtc,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Records a computer whose file was read for the first time, so that the
+    /// Sync screen can ask about it by name.
+    /// </summary>
+    /// <remarks>
+    /// Recorded as undecided and nothing more: its changes are not taken until
+    /// somebody says so. A machine already known keeps whatever was said about
+    /// it, and only an undecided one takes a new name - a name is what the
+    /// question shows, and one already answered must not be renamed under the
+    /// answer.
+    /// </remarks>
+    Task MeetAsync(MachineIdentity machine, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Records what somebody here said about another computer: take its
+    /// changes, or not.
+    /// </summary>
+    /// <remarks>
+    /// The name is kept only for a computer not written down yet, and is never
+    /// a reason to refuse the answer: it came from that computer's own file.
+    /// </remarks>
+    Task DecideAsync(
+        Guid machineId,
+        string? name,
+        MachineTrust trust,
         CancellationToken cancellationToken = default);
 }

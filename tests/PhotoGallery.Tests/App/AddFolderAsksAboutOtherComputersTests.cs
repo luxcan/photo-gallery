@@ -101,6 +101,65 @@ public sealed class AddFolderAsksAboutOtherComputersTests : IDisposable
         Assert.NotNull(Source().LastScanUtc);
     }
 
+    /// <summary>
+    /// "Same folder" is also the answer to whether that computer's changes are
+    /// taken, because the question says its pictures and faces will be.
+    /// </summary>
+    /// <remarks>
+    /// Without it the first scan - the one this question is asked for - would
+    /// take nothing, since nothing is taken from a computer nobody has answered
+    /// for.
+    /// </remarks>
+    [Fact]
+    public async Task SayingSameFolder_TakesThatComputersChangesFromNowOn()
+    {
+        using Library mum = AnotherComputerKeeping(_photos);
+        _questions.SyncFolder = _shared;
+
+        await AddAsync(_photos);
+
+        KnownMachine known = Read(db => db.KnownMachines.AsNoTracking().Single());
+        Assert.Equal(mum.MachineId, known.MachineId);
+        Assert.Equal(MachineTrust.Trusted, known.Trust);
+    }
+
+    /// <summary>
+    /// Where two computers call themselves the same thing, "Same folder" is a
+    /// yes to the folder alone, and the question says so.
+    /// </summary>
+    /// <remarks>
+    /// A copy of a laptop's own file planted under a fresh id proposes the same
+    /// folder under the same name, and on a new laptop neither is answered for
+    /// yet - so the two questions read alike, and a yes to the planted one would
+    /// have taken its changes with no question on the Sync screen.
+    /// </remarks>
+    [Fact]
+    public async Task SayingSameFolder_WhenTwoComputersShareAName_TakesChangesFromNeither()
+    {
+        using Library mum = AnotherComputerKeeping(_photos);
+        using Library copy = AnotherComputerKeeping(_photos, "copy");
+        _questions.SyncFolder = _shared;
+
+        await AddAsync(_photos);
+
+        PairingProposal asked = Assert.Single(_questions.Proposals);
+        Assert.True(asked.SharesItsName);
+        Assert.Equal(0, Read(db => db.KnownMachines.Count()));
+        Assert.Contains(Source().SharedId, new[] { mum.SharedSourceId, copy.SharedSourceId });
+    }
+
+    [Fact]
+    public async Task SayingNo_TakesNothingFromThatComputer()
+    {
+        using Library mum = AnotherComputerKeeping(_photos);
+        _questions.SyncFolder = _shared;
+        _questions.Same = false;
+
+        await AddAsync(_photos);
+
+        Assert.Equal(0, Read(db => db.KnownMachines.Count()));
+    }
+
     [Fact]
     public async Task SayingNo_LeavesTheFoldersApart()
     {
@@ -154,10 +213,14 @@ public sealed class AddFolderAsksAboutOtherComputersTests : IDisposable
         Assert.Empty(_questions.Asked);
     }
 
-    /// <summary>Another laptop that keeps this folder and has published it.</summary>
-    private Library AnotherComputerKeeping(string folder)
+    /// <summary>
+    /// Another laptop calling itself Mum's that keeps this folder and has
+    /// published it.
+    /// </summary>
+    /// <param name="library">Where its own library lives, for a second one.</param>
+    private Library AnotherComputerKeeping(string folder, string library = "mum")
     {
-        var mum = new Library(Path.Combine(_root, "mum"), "Mum's laptop", Guid.NewGuid());
+        var mum = new Library(Path.Combine(_root, library), "Mum's laptop", Guid.NewGuid());
         mum.SharesThrough(_shared);
         mum.Reaches(folder);
         mum.Publishing.HandleAsync().GetAwaiter().GetResult();
@@ -200,6 +263,9 @@ public sealed class AddFolderAsksAboutOtherComputersTests : IDisposable
     {
         public List<string> Asked { get; } = [];
 
+        /// <summary>Every "is this the same folder?" put, as it was put.</summary>
+        public List<PairingProposal> Proposals { get; } = [];
+
         /// <summary>The folder chosen when offered one; null declines.</summary>
         public string? SyncFolder { get; set; }
 
@@ -215,6 +281,7 @@ public sealed class AddFolderAsksAboutOtherComputersTests : IDisposable
         public bool IsSameFolder(PairingProposal proposal)
         {
             Asked.Add($"same folder as {proposal.MachineName}");
+            Proposals.Add(proposal);
             return Same;
         }
     }

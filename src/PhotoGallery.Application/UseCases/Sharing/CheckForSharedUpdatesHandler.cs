@@ -96,7 +96,15 @@ public sealed class CheckForSharedUpdatesHandler
                 continue;
             }
 
-            if (taken.TryGetValue(answers.MachineId, out KnownMachine? machine))
+            // Somebody here said "not this one". Its files are not read, so
+            // they are not news either.
+            if (taken.TryGetValue(answers.MachineId, out KnownMachine? machine)
+                && machine.Trust == MachineTrust.Ignored)
+            {
+                continue;
+            }
+
+            if (machine?.LastMergedUtc is DateTime last)
             {
                 // Written before the moment this library last took from it is
                 // a file this library has already read. The same moment counts
@@ -104,7 +112,7 @@ public sealed class CheckForSharedUpdatesHandler
                 // that published in the same instant as the merge that read it
                 // costs one wasted press if it is offered again, and costs an
                 // answer that never arrives if it is not.
-                if (machine.LastMergedUtc is DateTime last && answers.WrittenUtc < last)
+                if (answers.WrittenUtc < last)
                 {
                     continue;
                 }
@@ -115,7 +123,11 @@ public sealed class CheckForSharedUpdatesHandler
             {
                 // A machine that has published and never been taken from. Its
                 // name lives inside its file, which this deliberately does not
-                // open, so it is counted rather than named. It used to be
+                // open, so it is counted rather than named - and even where an
+                // earlier Sync read that name, it is the name the file gives
+                // itself, which a file planted to look like the laptop on the
+                // kitchen table would choose. The Sync screen asks about it
+                // properly; the notice does not repeat it. It used to be
                 // described in a name's place, which began the notice with a
                 // lower-case "a computer this library has not taken answers from
                 // yet", and folded two such machines into one.

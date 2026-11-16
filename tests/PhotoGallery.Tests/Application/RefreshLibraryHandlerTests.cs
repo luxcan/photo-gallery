@@ -724,6 +724,7 @@ public sealed class RefreshLibraryHandlerTests : IDisposable
         using var mum = new Library(
             Path.Combine(_tempRoot, "mum"), "Mum's laptop", source.SharedId);
         mum.SharesThrough(shared);
+        await TakesChangesFromAsync(mum);
         await PreparedOnAsync(mum, "a.jpg", "aa11.jpg");
 
         RefreshResult result = await NewHandler().HandleAsync([source.Id]);
@@ -754,6 +755,7 @@ public sealed class RefreshLibraryHandlerTests : IDisposable
         using var mum = new Library(
             Path.Combine(_tempRoot, "mum"), "Mum's laptop", source.SharedId);
         mum.SharesThrough(shared);
+        await TakesChangesFromAsync(mum);
 
         var file = new FileInfo(Path.Combine(_photosRoot, "a.jpg"));
         Asset hers = mum.Photo("a.jpg");
@@ -800,12 +802,14 @@ public sealed class RefreshLibraryHandlerTests : IDisposable
         using var mum = new Library(
             Path.Combine(_tempRoot, "mum"), "Mum's laptop", source.SharedId);
         mum.SharesThrough(shared);
+        await TakesChangesFromAsync(mum);
         await PreparedOnAsync(mum, "a.jpg", "aa11.jpg");
         await PreparedOnAsync(mum, "b.jpg", "bb22.jpg");
 
         using var dad = new Library(
             Path.Combine(_tempRoot, "dad"), "Dad's laptop", source.SharedId);
         dad.SharesThrough(shared);
+        await TakesChangesFromAsync(dad);
         await PreparedOnAsync(dad, "a.jpg", "aa11.jpg");
         await PreparedOnAsync(dad, "b.jpg", "bb22.jpg");
 
@@ -1278,6 +1282,13 @@ public sealed class RefreshLibraryHandlerTests : IDisposable
 
     private Task<PhotoSource> AddSourceAsync() =>
         new AddPhotoSourceHandler(_index, _workingFolder).HandleAsync(_photosRoot);
+
+    /// <summary>
+    /// Says, as somebody here would on the Sync screen, to take another
+    /// computer's changes - without which a scan takes nothing from it.
+    /// </summary>
+    private Task TakesChangesFromAsync(Library other) =>
+        new SqliteDecisionRepository(_db).DecideAsync(other.MachineId, other.Name, MachineTrust.Trusted);
 
     /// <summary>Nominates a sync folder for this library, as the Sync screen does.</summary>
     private async Task<string> SyncThroughAsync()

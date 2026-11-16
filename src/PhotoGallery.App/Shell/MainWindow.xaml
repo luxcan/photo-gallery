@@ -2688,6 +2688,51 @@
                            Visibility="{Binding Sharing.HasStatus,
                                         Converter={StaticResource BoolToVisibility}}" />
 
+                <!-- Asked once per computer, like the folder question below.
+                     Every check a sync makes is on what a computer's own file
+                     says about itself, and anybody who can write to the sync
+                     folder can copy those from an honest one - so nothing from
+                     a computer is used until somebody here says to. -->
+                <StackPanel Margin="0,18,0,0"
+                            Visibility="{Binding Sharing.HasNewcomers,
+                                         Converter={StaticResource BoolToVisibility}}">
+                  <TextBlock Style="{DynamicResource FieldLabel}"
+                             Text="Take changes from a new computer?" />
+                  <TextBlock Style="{DynamicResource HintText}" Margin="0,0,0,8"
+                             TextWrapping="Wrap"
+                             Text="A computer this one has not synced with before has left changes in the sync folder. Nothing from it is used until you say so. If you do not recognise it, choose Not this one." />
+
+                  <ItemsControl ItemsSource="{Binding Sharing.Newcomers}">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate>
+                        <Border Background="{DynamicResource Panel.Background}"
+                                BorderBrush="{DynamicResource Panel.Border}" BorderThickness="1"
+                                CornerRadius="4" Padding="12,9" Margin="0,0,0,8">
+                          <DockPanel>
+                            <Button DockPanel.Dock="Right" MinWidth="110" Margin="8,0,0,0"
+                                    VerticalAlignment="Center"
+                                    Content="Not this one"
+                                    ToolTip="Leave this computer's changes alone"
+                                    Command="{Binding DataContext.Sharing.NotThisOneCommand,
+                                              RelativeSource={RelativeSource AncestorType=Window}}"
+                                    CommandParameter="{Binding}" />
+                            <Button DockPanel.Dock="Right" Style="{DynamicResource PrimaryButton}"
+                                    MinWidth="120" Margin="12,0,0,0" VerticalAlignment="Center"
+                                    Content="Take changes"
+                                    ToolTip="Take this computer's changes from now on"
+                                    Command="{Binding DataContext.Sharing.TakeChangesCommand,
+                                              RelativeSource={RelativeSource AncestorType=Window}}"
+                                    CommandParameter="{Binding}" />
+                            <TextBlock VerticalAlignment="Center" TextWrapping="Wrap"
+                                       Style="{DynamicResource BodyText}"
+                                       Text="{Binding Question}" />
+                          </DockPanel>
+                        </Border>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </StackPanel>
+
                 <!-- Asked, never assumed. A UNC path and a mapped drive letter
                      are the same place and nothing in the text says so; and
                      absorbing two unrelated folders into one identity would file
@@ -2813,6 +2858,17 @@
                       <Border BorderBrush="{DynamicResource Panel.Border}"
                               BorderThickness="0,0,0,1" Padding="0,8">
                         <DockPanel>
+                          <!-- Only on a computer somebody said "not this one"
+                               to, so that answer is never the last word. -->
+                          <Button DockPanel.Dock="Right" Margin="12,0,0,0"
+                                  VerticalAlignment="Center"
+                                  Content="Take its changes"
+                                  ToolTip="Take this computer's changes from now on"
+                                  Command="{Binding DataContext.Sharing.TakeChangesAfterAllCommand,
+                                            RelativeSource={RelativeSource AncestorType=Window}}"
+                                  CommandParameter="{Binding}"
+                                  Visibility="{Binding Ignored,
+                                               Converter={StaticResource BoolToVisibility}}" />
                           <TextBlock DockPanel.Dock="Right" Margin="12,0,0,0"
                                      VerticalAlignment="Center"
                                      Style="{DynamicResource HintText}"

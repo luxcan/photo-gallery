@@ -53,4 +53,28 @@ public sealed record PairingProposal(
     /// path below them still differing by a prefix.
     /// </remarks>
     public bool CanPair => Likeness != PairingLikeness.FiledDifferently;
+
+    /// <summary>
+    /// The computer that keeps <see cref="Theirs"/>, where the asker needs to
+    /// know which one; empty otherwise.
+    /// </summary>
+    /// <remarks>
+    /// Carried for the question adding a folder asks, whose yes also means
+    /// "take this computer's pictures and faces" - and that has to be recorded
+    /// against the computer, not its name, which any file can claim.
+    /// </remarks>
+    public Guid MachineId { get; init; }
+
+    /// <summary>
+    /// Whether another computer goes by <see cref="MachineName"/> too, where
+    /// the asker needs to know; false otherwise.
+    /// </summary>
+    /// <remarks>
+    /// A copy of a laptop's own file, planted under a fresh id, proposes the
+    /// same folder under the same name, and the two questions read alike. A yes
+    /// to one of those is then a yes to a folder and never to a computer: which
+    /// computer to take changes from is left to the Sync screen, which says
+    /// that two are calling themselves the same thing.
+    /// </remarks>
+    public bool SharesItsName { get; init; }
 }

@@ -97,7 +97,9 @@ public sealed class PairingTwoLibrariesTests : IDisposable
         await Mum.Publishing.HandleAsync();
         await Dad.Merging.HandleAsync();
 
-        Assert.Empty(Dad.Db.KnownMachines);
+        // Written down, because somebody on Dad's laptop said to take Mum's
+        // changes - but not as a computer they were ever taken from.
+        Assert.Null(Assert.Single(Dad.Db.KnownMachines).LastMergedUtc);
 
         // And it is remembered the moment there is genuinely something in
         // common, so this refuses the refused rather than refusing everybody.
@@ -105,7 +107,7 @@ public sealed class PairingTwoLibrariesTests : IDisposable
         await Dad.Pairing.HandleAsync(offer.Mine.SharedId, offer.Theirs.SharedId);
         await Dad.Merging.HandleAsync();
 
-        Assert.Single(Dad.Db.KnownMachines);
+        Assert.NotNull(Assert.Single(Dad.Db.KnownMachines).LastMergedUtc);
     }
 
     [Fact]

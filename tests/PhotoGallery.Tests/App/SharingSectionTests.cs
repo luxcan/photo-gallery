@@ -52,6 +52,11 @@ public sealed class SharingSectionTests
     [InlineData("Sharing.ShareCommand")]
     [InlineData("Sharing.Offers")]
     [InlineData("Sharing.HasOffers")]
+    [InlineData("Sharing.Newcomers")]
+    [InlineData("Sharing.HasNewcomers")]
+    [InlineData("Sharing.TakeChangesCommand")]
+    [InlineData("Sharing.NotThisOneCommand")]
+    [InlineData("Sharing.TakeChangesAfterAllCommand")]
     public void EverythingBoundOnTheScreenExists(string path)
     {
         // Bound in the window, and a member of the view model behind it. The
@@ -66,6 +71,9 @@ public sealed class SharingSectionTests
         string expected = member switch
         {
             "ShareCommand" => "ShareAsync",
+            "TakeChangesCommand" => "TakeChangesAsync",
+            "NotThisOneCommand" => "NotThisOneAsync",
+            "TakeChangesAfterAllCommand" => "TakeChangesAfterAllAsync",
             _ => member,
         };
         Assert.Contains(expected, s_viewModel);
@@ -328,6 +336,31 @@ public sealed class SharingSectionTests
         // template whose own DataContext is the offer.
         Assert.Contains("RelativeSource={RelativeSource AncestorType=Window}", section);
         Assert.Contains("PairAsync", s_viewModel);
+    }
+
+    /// <summary>
+    /// A computer this one has not synced with before is asked about, with an
+    /// answer either way, and a "no" can be taken back.
+    /// </summary>
+    /// <remarks>
+    /// Every check a sync makes is on what a computer's own file says about
+    /// itself, so a person saying "yes, that one is ours" is the only thing a
+    /// planted file cannot supply - and it has to be asked on screen.
+    /// </remarks>
+    [Fact]
+    public void ANewComputerIsAskedAboutWithAButtonForEachAnswer()
+    {
+        string section = Section();
+
+        int asked = section.IndexOf("Take changes from a new computer?", StringComparison.Ordinal);
+        Assert.True(asked > 0, "the screen does not ask about a new computer");
+
+        int take = section.IndexOf("Content=\"Take changes\"", asked, StringComparison.Ordinal);
+        int refuse = section.IndexOf("Content=\"Not this one\"", asked, StringComparison.Ordinal);
+        Assert.True(take > asked && refuse > asked, "the question has no answer to give");
+
+        Assert.Contains("TakeChangesAfterAllCommand", section);
+        Assert.Contains("Content=\"Take its changes\"", section);
     }
 
     /// <summary>

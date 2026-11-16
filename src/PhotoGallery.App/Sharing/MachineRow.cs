@@ -14,4 +14,14 @@ namespace PhotoGallery.App.Sharing;
 /// the button is for, and worth marking rather than leaving the user to compare
 /// dates.
 /// </param>
-public sealed record MachineRow(string Name, string Recency, bool Waiting);
+public sealed record MachineRow(string Name, string Recency, bool Waiting)
+{
+    /// <summary>The computer, so that an answer about it can be recorded.</summary>
+    public Guid MachineId { get; init; }
+
+    /// <summary>
+    /// True for a computer somebody here said "not this one" to, which the row
+    /// says and offers to undo.
+    /// </summary>
+    public bool Ignored { get; init; }
+}
