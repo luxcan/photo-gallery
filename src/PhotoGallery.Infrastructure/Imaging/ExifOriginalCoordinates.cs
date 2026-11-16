@@ -42,10 +42,7 @@ public sealed class ExifOriginalCoordinates : IOriginalCoordinates
                 ? CoordinateReading.At(latitude, longitude)
                 : CoordinateReading.None;
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
-                                       or NotSupportedException or ArgumentException
-                                       or OverflowException or InvalidOperationException
-                                       or FileFormatException or OutOfMemoryException)
+        catch (Exception ex) when (DecodeFailure.IsUnreadable(ex))
         {
             // The same list the preparing pass catches, and for the same reasons:
             // corrupt, truncated, a codec that is not installed, a share that

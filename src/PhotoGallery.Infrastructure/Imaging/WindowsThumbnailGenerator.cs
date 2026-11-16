@@ -107,13 +107,11 @@ public sealed class WindowsThumbnailGenerator : IThumbnailGenerator
         {
             throw;
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
-                                       or NotSupportedException or ArgumentException
-                                       or OverflowException or InvalidOperationException
-                                       or FileFormatException or OutOfMemoryException)
+        catch (Exception ex) when (DecodeFailure.IsUnreadable(ex))
         {
             // Corrupt, truncated, or a format with no codec installed - HEIC on
-            // a machine without the HEIF extension lands here.
+            // a machine without the HEIF extension lands here. Null is what
+            // writes the file off, so it is not opened again on every scan.
             return null;
         }
     }

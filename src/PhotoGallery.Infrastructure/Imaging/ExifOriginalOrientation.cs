@@ -1,5 +1,4 @@
 using System.IO;
-using System.Runtime.InteropServices;
 using System.Windows.Media.Imaging;
 using PhotoGallery.Application.Ports;
 
@@ -94,13 +93,7 @@ public sealed class ExifOriginalOrientation : IOriginalOrientation
             // alone rather than grown, which is what keeps this lossless.
             return writer.TrySave();
         }
-        catch (Exception ex) when (ex is IOException
-                                      or UnauthorizedAccessException
-                                      or NotSupportedException
-                                      or ArgumentException
-                                      or InvalidOperationException
-                                      or FormatException
-                                      or COMException)
+        catch (Exception ex) when (DecodeFailure.IsUnreadable(ex))
         {
             return false;
         }

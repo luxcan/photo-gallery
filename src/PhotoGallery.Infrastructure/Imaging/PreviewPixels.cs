@@ -1,5 +1,6 @@
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using PhotoGallery.Application.Ports;
 using PhotoGallery.Infrastructure.Faces;
 
 namespace PhotoGallery.Infrastructure.Imaging;
@@ -21,7 +22,8 @@ public static class PreviewPixels
     /// No orientation or metadata handling: a preview was written by this app
     /// from an already-rotated bitmap, so what is on disk is what should be
     /// looked at. A preview that will not decode is reported as unread rather
-    /// than as a picture of nothing, so the caller can tell the two apart.
+    /// than as a picture of nothing, so the caller can tell the two apart -
+    /// and so is one whose header claims a size no preview has.
     /// </remarks>
     public static BgrImage? Read(string path)
     {
@@ -31,6 +33,13 @@ public static class PreviewPixels
         {
             using FileStream stream =
                 new(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+
+            if (!IsPreviewSized(stream))
+            {
+                return null;
+            }
+
+            stream.Position = 0;
 
             var decoded = new BitmapImage();
             decoded.BeginInit();
@@ -53,12 +62,36 @@ public static class PreviewPixels
 
             return new BgrImage(pixels, converted.PixelWidth, converted.PixelHeight);
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
-                                       or NotSupportedException or ArgumentException
-                                       or OverflowException or InvalidOperationException
-                                       or FileFormatException or OutOfMemoryException)
+        catch (Exception ex) when (DecodeFailure.IsUnreadable(ex))
         {
             return null;
         }
+    }
+
+    /// <summary>
+    /// The longest edge a preview is believed to have before it is decoded.
+    /// </summary>
+    /// <remarks>
+    /// Every preview this app writes is at most <see cref="ThumbnailSizes.PreviewEdge"/>
+    /// on its longer side, but a preview can also arrive from the Sync folder,
+    /// copied byte for byte from another device. A small file there can claim
+    /// tens of thousands of pixels a side, and decoding it whole costs gigabytes
+    /// - on every faces and content pass, several at once. Four times the edge
+    /// leaves room for any preview an earlier build might have written while
+    /// refusing anything no build ever has.
+    /// </remarks>
+    internal const int LargestEdge = ThumbnailSizes.PreviewEdge * 4;
+
+    /// <summary>
+    /// Whether the picture's header gives a size a preview could have, read
+    /// without decoding a single pixel.
+    /// </summary>
+    private static bool IsPreviewSized(Stream stream)
+    {
+        BitmapFrame header = BitmapFrame.Create(
+            stream, BitmapCreateOptions.DelayCreation, BitmapCacheOption.None);
+
+        return header.PixelWidth is > 0 and <= LargestEdge
+               && header.PixelHeight is > 0 and <= LargestEdge;
     }
 }

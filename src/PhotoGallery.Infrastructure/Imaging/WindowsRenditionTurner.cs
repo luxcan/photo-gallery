@@ -1,5 +1,4 @@
 using System.IO;
-using System.Runtime.InteropServices;
 using System.Windows.Media.Imaging;
 using PhotoGallery.Application.Ports;
 using PhotoGallery.Domain.Assets;
@@ -97,7 +96,7 @@ public sealed class WindowsRenditionTurner : IRenditionTurner
 
             original = WindowsThumbnailGenerator.ComputeHash(upright);
         }
-        catch (Exception ex) when (IsUnreadable(ex))
+        catch (Exception ex) when (DecodeFailure.IsUnreadable(ex))
         {
             return 0;
         }
@@ -107,7 +106,7 @@ public sealed class WindowsRenditionTurner : IRenditionTurner
         {
             cached = Load(File.ReadAllBytes(_store.ResolveTilePath(thumbnailName)));
         }
-        catch (Exception ex) when (IsUnreadable(ex))
+        catch (Exception ex) when (DecodeFailure.IsUnreadable(ex))
         {
             // Nothing here to be behind. Turning it is then refused as well, and
             // that is what holds the answer until a picture exists.
@@ -128,17 +127,6 @@ public sealed class WindowsRenditionTurner : IRenditionTurner
             ? ranked[0].Degrees
             : 0;
     }
-
-    private static bool IsUnreadable(Exception ex) =>
-        ex is IOException
-            or UnauthorizedAccessException
-            or NotSupportedException
-            or ArgumentException
-            or InvalidOperationException
-            or FormatException
-            or FileFormatException
-            or OutOfMemoryException
-            or COMException;
 
     private static BitmapImage Load(byte[] bytes)
     {
@@ -178,12 +166,7 @@ public sealed class WindowsRenditionTurner : IRenditionTurner
 
             return before;
         }
-        catch (Exception ex) when (ex is IOException
-                                      or UnauthorizedAccessException
-                                      or NotSupportedException
-                                      or ArgumentException
-                                      or FormatException
-                                      or COMException)
+        catch (Exception ex) when (DecodeFailure.IsUnreadable(ex))
         {
             // A missing, locked or corrupt rendition. The row is left alone, so
             // the next preparation pass rebuilds it from the original.

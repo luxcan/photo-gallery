@@ -62,6 +62,29 @@ public sealed class ShellThumbnailKeyframeExtractor : IKeyframeExtractor
     /// <summary>How long to leave the share alone before asking again.</summary>
     private static readonly TimeSpan RetryDelay = TimeSpan.FromMilliseconds(250);
 
+    /// <summary>
+    /// How long one clip's thumbnail handler is given before it is given up
+    /// on.
+    /// </summary>
+    /// <remarks>
+    /// The handler is someone else's code, and a clip that makes it hang would
+    /// otherwise hold the pass - and every phase after it, Sync included - for
+    /// as long as the app stays open, on every scan. A minute is generous on
+    /// purpose, but it is not proof of a hung handler: a share that stalls - the
+    /// Wi-Fi dropping, the disks spinning up - is just as slow, which is why a
+    /// timeout is only believed once the file has been seen again quickly.
+    /// </remarks>
+    private static readonly TimeSpan HandlerTimeout = TimeSpan.FromSeconds(60);
+
+    /// <summary>
+    /// How long the share is given to say whether the file is still there.
+    /// </summary>
+    /// <remarks>
+    /// Asking that of a healthy share takes milliseconds. One that cannot answer
+    /// in a few seconds is the share in trouble, not the clip.
+    /// </remarks>
+    private static readonly TimeSpan ReachableTimeout = TimeSpan.FromSeconds(5);
+
     public async Task<KeyframeReading> ExtractAsync(
         string originalPath, CancellationToken cancellationToken = default)
     {
@@ -70,25 +93,69 @@ public sealed class ShellThumbnailKeyframeExtractor : IKeyframeExtractor
 
         for (int attempt = 1; ; attempt++)
         {
-            KeyframeReading reading = OnStaThread(() => Extract(originalPath));
+            KeyframeReading reading;
+            try
+            {
+                reading = await OnStaThreadAsync(
+                    () => Extract(originalPath), HandlerTimeout, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (TimeoutException)
+            {
+                // Not asked again either way. A hung handler would hang again,
+                // and a stalled share would cost another minute per worker.
+                return await WriteOffIfReachableAsync(
+                    () => Reachable(originalPath), ReachableTimeout, cancellationToken)
+                    .ConfigureAwait(false);
+            }
 
             // Extracted is done, and Undecodable here means something that
             // cannot come right by asking again - an empty file, or one that is
             // no longer there at all.
-            if (reading.IsSettled || attempt >= Attempts)
+            if (reading.IsSettled)
+            {
+                return reading;
+            }
+
+            if (attempt >= Attempts)
             {
                 // The last attempt's doubt has to be resolved one way or the
                 // other. Undecodable is the answer that stops the file being
                 // opened on every future run, and after three tries against a
                 // reachable file it is the honest one.
-                return reading.Outcome == KeyframeOutcome.Unavailable && attempt >= Attempts
-                    ? Reachable(originalPath)
-                        ? KeyframeReading.Undecodable
-                        : KeyframeReading.Unavailable
-                    : reading;
+                return await WriteOffIfReachableAsync(
+                    () => Reachable(originalPath), ReachableTimeout, cancellationToken)
+                    .ConfigureAwait(false);
             }
 
             await Task.Delay(RetryDelay, cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// Undecodable when the file answers quickly that it is there; otherwise
+    /// Unavailable, so the clip is offered again once the share is back.
+    /// </summary>
+    /// <remarks>
+    /// The check is bounded like the handler, because asking a stalled share
+    /// whether a file exists can hang just as long. Writing a clip off is
+    /// permanent - it is never offered again - so only a share that is plainly
+    /// healthy may do it. A share that is slow to answer, or says the file has
+    /// gone, leaves the clip unsettled, and the pass then asks whether the
+    /// whole source has gone.
+    /// </remarks>
+    internal static async Task<KeyframeReading> WriteOffIfReachableAsync(
+        Func<bool> reachable, TimeSpan timeout, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await OnStaThreadAsync(reachable, timeout, cancellationToken).ConfigureAwait(false)
+                ? KeyframeReading.Undecodable
+                : KeyframeReading.Unavailable;
+        }
+        catch (TimeoutException)
+        {
+            return KeyframeReading.Unavailable;
         }
     }
 
@@ -213,21 +280,41 @@ public sealed class ShellThumbnailKeyframeExtractor : IKeyframeExtractor
     /// <para>A thread per video sounds extravagant and is not: this pass opens a
     /// few thousand files over the course of an hour, and each of them already
     /// costs a seek across the network.</para>
+    ///
+    /// <para>The wait is bounded, and Stop ends it. A handler that never
+    /// returns cannot be made to, so its thread is left behind - a background
+    /// thread, so it does not keep the app open - and the caller is told with a
+    /// <see cref="TimeoutException"/>, because what a timeout means depends on
+    /// whether the share is still answering.</para>
     /// </remarks>
-    private static KeyframeReading OnStaThread(Func<KeyframeReading> work)
+    internal static Task<T> OnStaThreadAsync<T>(
+        Func<T> work, TimeSpan timeout, CancellationToken cancellationToken)
     {
-        KeyframeReading result = KeyframeReading.Unavailable;
+        var result = new TaskCompletionSource<T>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
 
-        var thread = new Thread(() => result = work())
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                result.TrySetResult(work());
+            }
+            catch (Exception ex)
+            {
+                // Handed to the waiting caller exactly as a plain call would
+                // have thrown it, rather than ending the process from a thread
+                // nobody is watching.
+                result.TrySetException(ex);
+            }
+        })
         {
             IsBackground = true,
         };
 
         thread.SetApartmentState(ApartmentState.STA);
         thread.Start();
-        thread.Join();
 
-        return result;
+        return result.Task.WaitAsync(timeout, cancellationToken);
     }
 
     [DllImport("shell32.dll", CharSet = CharSet.Unicode, PreserveSig = true)]
