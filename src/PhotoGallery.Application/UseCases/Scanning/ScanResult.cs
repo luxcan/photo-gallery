@@ -20,6 +20,11 @@ namespace PhotoGallery.Application.UseCases.Scanning;
 /// and deciding about each file, batched writes included - as opposed to reading
 /// the index first and settling what had gone afterwards.
 /// </param>
+/// <param name="SameNameSkipped">
+/// Files left out because another file in the same folder has the same name
+/// apart from capital letters - possible on a share, never on this machine.
+/// Only the first of them is indexed.
+/// </param>
 public sealed record ScanResult(
     int PhotoSourceId,
     string SourcePath,
@@ -32,7 +37,8 @@ public sealed record ScanResult(
     bool WasUnavailable = false,
     int FoldersNotRead = 0,
     int Kept = 0,
-    TimeSpan WalkElapsed = default)
+    TimeSpan WalkElapsed = default,
+    int SameNameSkipped = 0)
 {
     public int Seen => Added + Updated + Unchanged;
 
@@ -58,5 +64,9 @@ public sealed record ScanResult(
             + (FoldersNotRead > 0
                 ? $" - could not read {FoldersNotRead:N0} of its folders, so "
                 + $"{Kept:N0} indexed files under them were kept"
+                : string.Empty)
+            + (SameNameSkipped > 0
+                ? $" - left out {SameNameSkipped:N0} files named the same as another "
+                + "in their folder apart from capital letters"
                 : string.Empty);
 }

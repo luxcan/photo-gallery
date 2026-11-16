@@ -190,6 +190,50 @@ public sealed class MediaFileWalkerTests : IDisposable
         Assert.Empty(walk.UnreadableFolders);
     }
 
+    [Theory]
+    [InlineData("2016.")]
+    [InlineData("2016 ")]
+    public void Walk_NeverListsAFolderTwiceThroughALookAlikeName(string lookAlike)
+    {
+        // Windows opens "2016." and "2016 " as "2016". Made through the long
+        // path form, the way a share or another system can make them, such a
+        // folder once listed its neighbour again under the same names and the
+        // scan then failed on every refresh.
+        WritePhotoAt(Path.Combine(_photos, "2016"), "real.jpg");
+        string alias = Path.Combine(_photos, lookAlike);
+        Directory.CreateDirectory(@"\\?\" + alias);
+        File.WriteAllText(@"\\?\" + Path.Combine(alias, "inside.jpg"), "x");
+
+        try
+        {
+            MediaWalk walk = _walker.Walk(_photos);
+            List<ScannedFile> files = [.. walk.Files];
+
+            Assert.Equal(Path.Combine("2016", "real.jpg"), Assert.Single(files).RelativePath);
+            Assert.Equal(alias, Assert.Single(walk.UnreadableFolders));
+        }
+        finally
+        {
+            // Only removable through the same long path form it was made by.
+            Directory.Delete(@"\\?\" + alias, recursive: true);
+        }
+    }
+
+    [Theory]
+    [InlineData("2016.", true)]
+    [InlineData("2016 ", true)]
+    [InlineData("2016", false)]
+    [InlineData("2016.12", false)]
+    [InlineData(".hidden", false)]
+    public void HasNameWindowsRewrites_IsTrueOnlyForATrailingDotOrSpace(string name, bool rewritten) =>
+        Assert.Equal(rewritten, MediaFileWalker.HasNameWindowsRewrites(Path.Combine(_photos, name)));
+
+    private static void WritePhotoAt(string folder, string name)
+    {
+        Directory.CreateDirectory(folder);
+        File.WriteAllText(Path.Combine(folder, name), "x");
+    }
+
     [Fact]
     public void IsLink_WalksAReparsePointThatPointsNowhere()
     {

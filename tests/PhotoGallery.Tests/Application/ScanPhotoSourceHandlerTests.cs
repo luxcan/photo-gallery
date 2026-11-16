@@ -245,6 +245,97 @@ public sealed class ScanPhotoSourceHandlerTests : IDisposable
     }
 
     [Fact]
+    public async Task Scan_SurvivesALookAlikeFolderAndStillFindsItsNeighboursFilesGone()
+    {
+        // "2016." beside "2016" once listed 2016 twice, so a new photo in it was
+        // inserted twice and every refresh failed at the scan from then on.
+        string old = WritePhoto(@"2016\old.jpg");
+        PhotoSource source = await AddSourceAsync(_photosRoot);
+        await NewHandler().HandleAsync(source.Id);
+
+        string alias = Path.Combine(_photosRoot, "2016.");
+        Directory.CreateDirectory(@"\\?\" + alias);
+        WritePhoto(@"2016\new.jpg");
+        File.Delete(old);
+
+        try
+        {
+            ScanResult second = await NewHandler().HandleAsync(source.Id);
+
+            Assert.Equal(1, second.Added);
+            Assert.Equal(1, second.FoldersNotRead);
+
+            // The unread look-alike must not shield the real folder's rows.
+            Assert.Equal(1, second.Removed);
+            Assert.Equal(0, second.Kept);
+            Assert.Equal(1, await _assets.CountAsync(source.Id));
+        }
+        finally
+        {
+            Directory.Delete(@"\\?\" + alias);
+        }
+    }
+
+    [Fact]
+    public async Task Scan_IndexesOneOfTwoFilesNamedAlikeApartFromCapitals()
+    {
+        // A share that tells case apart can hold both. Indexed as two rows, the
+        // pair rewrote one of them on every scan and left the other stale.
+        PhotoSource source = await AddSourceAsync(_photosRoot);
+        var walker = new FixedWalker(
+            _photosRoot,
+            new ScannedFile(@"Trip\IMG_0001.jpg", 10, new DateTime(2024, 1, 1, 0, 0, 0, DateTimeKind.Utc), new DateTime(2024, 1, 1, 0, 0, 0, DateTimeKind.Utc)),
+            new ScannedFile(@"Trip\img_0001.jpg", 20, new DateTime(2024, 2, 1, 0, 0, 0, DateTimeKind.Utc), new DateTime(2024, 2, 1, 0, 0, 0, DateTimeKind.Utc)));
+
+        ScanResult first = await NewHandler(walker).HandleAsync(source.Id);
+        ScanResult second = await NewHandler(walker).HandleAsync(source.Id);
+
+        Assert.Equal(1, first.Added);
+        Assert.Equal(1, first.SameNameSkipped);
+        Assert.Contains("capital letters", first.Summary, StringComparison.Ordinal);
+        Assert.Equal(@"Trip\IMG_0001.jpg", Assert.Single(await _db.Assets.AsNoTracking().ToListAsync()).RelativePath);
+
+        Assert.Equal(1, second.Unchanged);
+        Assert.Equal(0, second.Updated);
+        Assert.Equal(1, second.SameNameSkipped);
+    }
+
+    [Fact]
+    public async Task Scan_KeepsAFileRenamedOnlyInCaseAsTheSamePhoto()
+    {
+        // Why the clash above is settled by skipping rather than by telling case
+        // apart: on this machine a rename like this is the same photograph, and
+        // its faces and albums hang off the row.
+        string path = WritePhoto("beach.jpg");
+        PhotoSource source = await AddSourceAsync(_photosRoot);
+        await NewHandler().HandleAsync(source.Id);
+        int id = await _db.Assets.Select(a => a.Id).SingleAsync();
+
+        File.Move(path, Path.Combine(_photosRoot, "Beach.jpg"));
+        ScanResult second = await NewHandler().HandleAsync(source.Id);
+
+        Assert.Equal(0, second.Added);
+        Assert.Equal(0, second.Removed);
+        Assert.Equal(0, second.SameNameSkipped);
+        Assert.Equal(id, await _db.Assets.Select(a => a.Id).SingleAsync());
+    }
+
+    private ScanPhotoSourceHandler NewHandler(IMediaFileWalker walker) =>
+        new(_index,
+            _assets,
+            walker,
+            _thumbnails,
+            new SqliteDecisionReader(_db),
+            new SqliteDecisionRepository(_db));
+
+    /// <summary>A walk of a share this machine cannot make: the files are given.</summary>
+    private sealed class FixedWalker(string root, params ScannedFile[] files) : IMediaFileWalker
+    {
+        public MediaWalk Walk(string path, CancellationToken cancellationToken = default) =>
+            new(root, RootUnreadable: false, [], files);
+    }
+
+    [Fact]
     public async Task Scan_SkipsTheAppsOwnFoldersInsideTheWorkingFolder()
     {
         // The working folder doubles as a photo source when set-up points at a

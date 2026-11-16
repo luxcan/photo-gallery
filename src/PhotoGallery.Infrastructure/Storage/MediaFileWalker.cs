@@ -41,7 +41,7 @@ public sealed class MediaFileWalker : IMediaFileWalker
         // and an empty folder both produce no files, and this is the only call
         // that can tell them apart, so it has to happen before anything is
         // yielded and its answer has to survive into the walk.
-        if (!TryList(normalisedRoot, out DirectoryListing rootListing))
+        if (!TryList(new DirectoryInfo(normalisedRoot), out DirectoryListing rootListing))
         {
             return MediaWalk.Unreachable(normalisedRoot);
         }
@@ -84,14 +84,17 @@ public sealed class MediaFileWalker : IMediaFileWalker
                     continue;
                 }
 
-                if (TryList(child, out DirectoryListing childListing))
-                {
-                    pending.Push(childListing);
-                }
-                else
+                // Listed through the entry itself, never through a path rebuilt
+                // from its name: rebuilt, "2016." opens as its look-alike "2016"
+                // and lists that folder a second time under the same names.
+                if (HasNameWindowsRewrites(child) || !TryList(directory, out DirectoryListing childListing))
                 {
                     // Everything below here is now unknown, not absent.
                     unreadable.Add(child);
+                }
+                else
+                {
+                    pending.Push(childListing);
                 }
             }
 
@@ -160,6 +163,31 @@ public sealed class MediaFileWalker : IMediaFileWalker
     }
 
     /// <summary>
+    /// True for a folder whose name Windows changes whenever it is opened by
+    /// path - one ending in a dot or a space, which a Mac, Linux or a NAS can
+    /// make and Windows then reads as the folder without them.
+    /// </summary>
+    /// <remarks>
+    /// The folder itself can be listed, but nothing inside it can be reached
+    /// afterwards: every later pass opens a photo by its path, and
+    /// "2016.\a.jpg" opens "2016\a.jpg" - a different photo, or none. So it is
+    /// skipped and named as unread, which keeps it from listing its look-alike a
+    /// second time and keeps it from making anything under it look gone.
+    /// </remarks>
+    internal static bool HasNameWindowsRewrites(string fullPath)
+    {
+        try
+        {
+            return !string.Equals(Path.GetFullPath(fullPath), fullPath, StringComparison.Ordinal);
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException
+                                      or PathTooLongException)
+        {
+            return true;
+        }
+    }
+
+    /// <summary>
     /// Lists a directory's children in one go, or reports that it would not open.
     /// </summary>
     /// <remarks>
@@ -173,13 +201,13 @@ public sealed class MediaFileWalker : IMediaFileWalker
     /// would leave out hidden and system files and turn a folder that refuses to
     /// open into an empty one - and both would read as files that had gone.</para>
     /// </remarks>
-    private static bool TryList(string directory, out DirectoryListing listing)
+    private static bool TryList(DirectoryInfo directory, out DirectoryListing listing)
     {
         try
         {
             var directories = new List<DirectoryInfo>();
             var files = new List<FileInfo>();
-            foreach (FileSystemInfo entry in new DirectoryInfo(directory).EnumerateFileSystemInfos())
+            foreach (FileSystemInfo entry in directory.EnumerateFileSystemInfos())
             {
                 if (entry is DirectoryInfo child)
                 {
@@ -191,7 +219,7 @@ public sealed class MediaFileWalker : IMediaFileWalker
                 }
             }
 
-            listing = new DirectoryListing(directory, directories, files);
+            listing = new DirectoryListing(directory.FullName, directories, files);
             return true;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)

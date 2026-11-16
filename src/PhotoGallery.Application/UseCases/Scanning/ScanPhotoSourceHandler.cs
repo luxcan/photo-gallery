@@ -97,7 +97,7 @@ public sealed class ScanPhotoSourceHandler
         // picture's content, so the new bytes will be written under a new name
         // and these would otherwise stay on disk with nothing referring to them.
         var superseded = new List<string>();
-        int added = 0, updated = 0, unchanged = 0, seen = 0;
+        int added = 0, updated = 0, unchanged = 0, seen = 0, sameNameSkipped = 0;
         string reportedFolder = string.Empty;
         var pacer = new ProgressPacer(_clock);
         bool cancelled = false;
@@ -120,8 +120,19 @@ public sealed class ScanPhotoSourceHandler
                     continue;
                 }
 
+                // One row per path, compared the way Windows compares them. A
+                // share that tells case apart can hold "IMG_0001.jpg" and
+                // "img_0001.jpg" side by side, and both would land on one row
+                // and rewrite it on every scan. The first is kept and the other
+                // reported; telling them apart instead would make a file
+                // renamed only in case on this machine lose its faces and albums.
+                if (!seenPaths.Add(file.RelativePath))
+                {
+                    sameNameSkipped++;
+                    continue;
+                }
+
                 seen++;
-                seenPaths.Add(file.RelativePath);
 
                 if (known.TryGetValue(file.RelativePath, out AssetSignature signature))
                 {
@@ -291,7 +302,8 @@ public sealed class ScanPhotoSourceHandler
             photoSourceId, source.Path, added, updated, removed, unchanged,
             stopwatch.Elapsed, cancelled, WasUnavailable: false,
             FoldersNotRead: unreadable.Length, Kept: kept,
-            WalkElapsed: walkStopwatch.Elapsed);
+            WalkElapsed: walkStopwatch.Elapsed,
+            SameNameSkipped: sameNameSkipped);
     }
 
     /// <summary>
@@ -383,12 +395,21 @@ public sealed class ScanPhotoSourceHandler
         }
     }
 
-    private static string[] RelativePrefixes(MediaWalk walk) =>
-        [.. walk.UnreadableFolders
-            .Select(folder => Path.GetRelativePath(walk.Root, folder))
-            .Where(relative => relative != "."
-                && !relative.StartsWith("..", StringComparison.Ordinal))
-            .Select(relative => Flatten(relative) + '/')];
+    private static string[] RelativePrefixes(MediaWalk walk)
+    {
+        // Cut as text rather than with Path.GetRelativePath, which opens the
+        // name the way Windows does: an unread "2016." would come back as
+        // "2016" and shield the rows of the real folder beside it from ever
+        // being found gone.
+        string root = Path.EndsInDirectorySeparator(walk.Root)
+            ? walk.Root
+            : walk.Root + Path.DirectorySeparatorChar;
+
+        return [.. walk.UnreadableFolders
+            .Where(folder => folder.Length > root.Length
+                && folder.StartsWith(root, StringComparison.OrdinalIgnoreCase))
+            .Select(folder => Flatten(folder[root.Length..]) + '/')];
+    }
 
     private static bool IsUnderUnreadableFolder(string relativePath, string[] prefixes)
     {
