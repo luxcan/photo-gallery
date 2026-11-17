@@ -352,15 +352,104 @@ public sealed class SharingSectionTests
     {
         string section = Section();
 
-        int asked = section.IndexOf("Take changes from a new computer?", StringComparison.Ordinal);
+        int asked = section.IndexOf("A new computer wants to sync", StringComparison.Ordinal);
         Assert.True(asked > 0, "the screen does not ask about a new computer");
 
-        int take = section.IndexOf("Content=\"Take changes\"", asked, StringComparison.Ordinal);
-        int refuse = section.IndexOf("Content=\"Not this one\"", asked, StringComparison.Ordinal);
+        int take = section.IndexOf("Content=\"Sync\"", asked, StringComparison.Ordinal);
+        int refuse = section.IndexOf(
+            "Content=\"Don't sync with this computer\"", asked, StringComparison.Ordinal);
         Assert.True(take > asked && refuse > asked, "the question has no answer to give");
 
         Assert.Contains("TakeChangesAfterAllCommand", section);
-        Assert.Contains("Content=\"Take its changes\"", section);
+        Assert.Contains("Content=\"Sync with this computer\"", section);
+    }
+
+    /// <summary>
+    /// Every computer in the list can be renamed from its own row, by a button
+    /// that says what it is to a screen reader as well as by its pencil.
+    /// </summary>
+    [Fact]
+    public void EachOtherComputerHasARenameButton()
+    {
+        string section = Section();
+
+        int list = section.IndexOf("ItemsSource=\"{Binding Sharing.Machines}\"", StringComparison.Ordinal);
+        Assert.True(list > 0, "the screen does not list the other computers");
+
+        int rename = section.IndexOf("RenameMachineCommand", list, StringComparison.Ordinal);
+        Assert.True(rename > list, "a row of the list offers no rename");
+        Assert.Contains("AutomationProperties.Name=\"{Binding RenameLabel}\"", section);
+        Assert.Contains("{Binding CanBeNamed", section);
+    }
+
+    /// <summary>
+    /// The pencil asks in the app's own dialog: the window hands the screen
+    /// the question, the question keeps answers to the column a name is kept
+    /// in, and Return in the box renames.
+    /// </summary>
+    /// <remarks>
+    /// The view-model tests answer with a script, so none of them would notice
+    /// the window never handing over the real question - the pencil would do
+    /// nothing at all - or a box that took more than the column keeps.
+    /// </remarks>
+    [Fact]
+    public void TheRenameQuestionIsTheAppsOwnDialog()
+    {
+        string codeBehind = File.ReadAllText(AppMarkup.PathTo("Shell", "MainWindow.xaml.cs"));
+        Assert.Contains(
+            "_viewModel.Sharing.NameQuestion = new MachineNameQuestion(this);",
+            codeBehind,
+            StringComparison.Ordinal);
+
+        string question = File.ReadAllText(AppMarkup.PathTo("Shell", "MachineNameQuestion.cs"));
+        Assert.Contains("AppDialog.AskForText(", question, StringComparison.Ordinal);
+        Assert.Contains("maxLength: KnownMachine.NameLength", question, StringComparison.Ordinal);
+
+        string dialog = File.ReadAllText(AppMarkup.PathTo("Shell", "AppDialog.xaml.cs"));
+        int start = dialog.IndexOf("public static string? AskForText(", StringComparison.Ordinal);
+        int end = dialog.IndexOf("\r\n    }\r\n", start, StringComparison.Ordinal);
+        Assert.True(start > 0 && end > start, "the dialog that asks for a name cannot be found");
+
+        Assert.Matches(
+            @"AddButton\(\s*confirm,\s*isConfirm:\s*true,\s*isDefault:\s*true\s*\)",
+            dialog[start..end]);
+    }
+
+    /// <summary>
+    /// Every button on the screen wears one of the app's own styles.
+    /// </summary>
+    /// <remarks>
+    /// There is no implicit button style, so a button that names none is drawn
+    /// as a bare grey Windows button - which is how "Not this one" and "Take
+    /// its changes" looked beside their styled neighbours for as long as they
+    /// existed.
+    /// </remarks>
+    [Fact]
+    public void EveryButtonOnTheScreenHasAStyle()
+    {
+        string[] unstyled =
+        [
+            .. System.Text.RegularExpressions.Regex
+                .Matches(Section(), @"<Button\b[^>]*>", System.Text.RegularExpressions.RegexOptions.Singleline)
+                .Select(button => button.Value)
+                .Where(button => !button.Contains("Style=", StringComparison.Ordinal)),
+        ];
+
+        Assert.Empty(unstyled);
+    }
+
+    /// <summary>
+    /// The words a person reads on the Sync screen are about syncing, not about
+    /// "taking changes", which nobody outside the code says.
+    /// </summary>
+    [Fact]
+    public void TheScreenNeverSaysTakeChanges()
+    {
+        string section = Section();
+
+        Assert.DoesNotContain("Take changes", section, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Take its changes", section, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Content=\"Not this one\"", section, StringComparison.Ordinal);
     }
 
     /// <summary>

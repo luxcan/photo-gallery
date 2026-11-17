@@ -64,7 +64,7 @@ public sealed record MergeResult(
                     pairing.Likeness == PairingLikeness.FiledDifferently) is { } filed)
             {
                 return $"Nothing matched: this computer keeps its photos in {filed.Mine.Root} "
-                     + $"and {filed.MachineName} keeps them in {filed.Theirs.Root}. "
+                     + $"and {filed.CalledHere} keeps them in {filed.Theirs.Root}. "
                      + "Point both at the same folder and sync again.";
             }
 
@@ -132,7 +132,7 @@ public sealed record MergeResult(
             ? names[0]
             : $"{string.Join(", ", names[..^1])} and {names[^1]}";
 
-        return $"Nothing was taken from {who}. Say below whether to take changes from "
+        return $"Nothing was taken from {who} yet. Say below whether to sync with "
              + (names.Length == 1 ? "it." : "them.");
     }
 

@@ -192,6 +192,9 @@ public sealed partial class SharingViewModel : ObservableObject
         _log = log;
     }
 
+    /// <summary>Asks what to call another computer; set by the window.</summary>
+    public IMachineNameQuestion? NameQuestion { get; set; }
+
     public bool HasFolder => Folder.Length > 0;
 
     public bool HasProblem => Problem.Length > 0;
@@ -734,7 +737,7 @@ public sealed partial class SharingViewModel : ObservableObject
                 .. result.Offers.Select(offer => new PairingOffer(
                     offer.Mine.SharedId,
                     offer.Theirs.SharedId,
-                    $"{offer.MachineName} keeps photos in {offer.Theirs.Root}. "
+                    $"{offer.CalledHere} keeps photos in {offer.Theirs.Root}. "
                   + $"Is that the same folder as {offer.Mine.Root}?")),
             ];
 
@@ -844,8 +847,8 @@ public sealed partial class SharingViewModel : ObservableObject
                 question.MachineId,
                 question.Name,
                 take: true,
-                $"Changes from {question.Name} will be taken from now on. Sync again to "
-                + "bring them in.");
+                $"This computer will sync with {question.Name} from now on. Sync again to "
+                + "bring its changes in.");
 
     /// <summary>Leaves a computer's changes alone, and keeps leaving them.</summary>
     [RelayCommand]
@@ -856,8 +859,8 @@ public sealed partial class SharingViewModel : ObservableObject
                 question.MachineId,
                 question.Name,
                 take: false,
-                $"Nothing from {question.Name} will be taken. You can change your mind "
-                + "under The other computers.");
+                $"This computer will not sync with {question.Name}. You can change your "
+                + "mind under The other computers.");
 
     /// <summary>
     /// Takes the changes of a computer somebody earlier said "not this one" to.
@@ -874,8 +877,87 @@ public sealed partial class SharingViewModel : ObservableObject
                 row.MachineId,
                 row.Name,
                 take: true,
-                $"Changes from {row.Name} will be taken from now on. Sync again to bring "
-                + "them in.");
+                $"This computer will sync with {row.Name} from now on. Sync again to bring "
+                + "its changes in.");
+
+    /// <summary>
+    /// Asks what to call another computer here, until a name is kept or the
+    /// question is cancelled.
+    /// </summary>
+    /// <remarks>
+    /// A name another computer already goes by is asked again with the reason
+    /// under the box and the name still in it, rather than kept: two rows
+    /// reading the same are what somebody answers for twice.
+    /// </remarks>
+    [RelayCommand]
+    private async Task RenameMachineAsync(MachineRow? row)
+    {
+        if (row?.OwnName is not string ownName || NameQuestion is not IMachineNameQuestion question)
+        {
+            return;
+        }
+
+        string typed = row.NameToEdit ?? ownName;
+        string? problem = null;
+
+        while (question.AskName(typed, ownName, problem) is string answer)
+        {
+            MachineNaming? naming = await NameAsync(row.MachineId, answer).ConfigureAwait(true);
+
+            if (naming != MachineNaming.NameTaken)
+            {
+                return;
+            }
+
+            typed = answer;
+            problem = "Another computer is already called "
+                      + $"{KnownMachine.FamiliarNameFrom(answer, ownName) ?? ownName}.";
+        }
+    }
+
+    /// <summary>
+    /// Keeps a name for another computer, and reads the screen again.
+    /// </summary>
+    /// <returns>How it went, or null where it could not be saved and the status says why.</returns>
+    private async Task<MachineNaming?> NameAsync(Guid machineId, string typed)
+    {
+        await _gate.WaitAsync().ConfigureAwait(true);
+        IsBusy = true;
+
+        try
+        {
+            MachineNaming naming = await Task.Run(async () =>
+            {
+                using IServiceScope scope = _scopeFactory.CreateScope();
+                return await scope.ServiceProvider
+                    .GetRequiredService<NameMachineHandler>()
+                    .HandleAsync(machineId, typed)
+                    .ConfigureAwait(false);
+            }).ConfigureAwait(true);
+
+            if (naming == MachineNaming.Named)
+            {
+                await ReadAsync().ConfigureAwait(true);
+            }
+
+            return naming;
+        }
+        catch (Exception ex) when (LibraryFailure.IsExpected(ex))
+        {
+            Status = $"That could not be saved: {ex.Message}";
+            return null;
+        }
+        catch (ArgumentException ex)
+        {
+            Status = $"That could not be saved: {ex.Message}";
+            return null;
+        }
+        finally
+        {
+            IsBusy = false;
+            _gate.Release();
+        }
+    }
 
     private async Task DecideAsync(Guid machineId, string name, bool take, string said)
     {
@@ -894,7 +976,7 @@ public sealed partial class SharingViewModel : ObservableObject
             }).ConfigureAwait(true);
 
             Status = said;
-            _log.Append(take ? $"taking changes from {name}" : $"not taking changes from {name}");
+            _log.Append(take ? $"syncing with {name}" : $"not syncing with {name}");
 
             await ReadAsync().ConfigureAwait(true);
         }
@@ -934,7 +1016,7 @@ public sealed partial class SharingViewModel : ObservableObject
 
         if (!newcomer.SharesItsName)
         {
-            return $"Take changes from {newcomer.Name}?";
+            return $"{newcomer.Name} has left changes in the sync folder.";
         }
 
         string when = newcomer.SharedUtc is DateTime shared
@@ -944,9 +1026,13 @@ public sealed partial class SharingViewModel : ObservableObject
                 shared.ToLocalTime())
             : "has not shared any changes yet";
 
-        return $"Another computer is also calling itself {newcomer.Name}. Take changes from this "
-               + $"one, which {when}? If you cannot tell which is the real {newcomer.Name}, "
-               + "choose Not this one. You can change your mind under The other computers.";
+        // By the name the two share, which may be what a computer calls itself
+        // or what somebody here calls one.
+        string alike = newcomer.NameItShares ?? newcomer.Name;
+
+        return $"Another computer here also goes by {alike}. Sync with this one, which "
+               + $"{when}? If you cannot tell which is the real {alike}, choose Don't sync "
+               + "with this computer. You can change your mind under The other computers.";
     }
 
     /// <summary>The read itself, without the gate, so callers holding it can use it.</summary>
@@ -992,11 +1078,13 @@ public sealed partial class SharingViewModel : ObservableObject
 
                 return new MachineRow(
                     machine.Name,
-                    ignored ? "not taking its changes" : machine.Recency(now),
+                    ignored ? "not syncing" : machine.Recency(now),
                     !machine.Merged && !ignored)
                 {
                     MachineId = machine.MachineId,
                     Ignored = ignored,
+                    OwnName = machine.OwnName,
+                    FamiliarName = machine.FamiliarName,
                 };
             }),
         ];

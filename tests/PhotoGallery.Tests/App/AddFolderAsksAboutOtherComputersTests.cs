@@ -148,6 +148,49 @@ public sealed class AddFolderAsksAboutOtherComputersTests : IDisposable
         Assert.Contains(Source().SharedId, new[] { mum.SharedSourceId, copy.SharedSourceId });
     }
 
+    /// <summary>
+    /// A computer somebody here has already named is asked about by that name,
+    /// and the yes takes its changes and keeps the name.
+    /// </summary>
+    [Fact]
+    public async Task SayingSameFolder_ToAComputerNamedHere_TakesItsChangesAndKeepsTheName()
+    {
+        using Library mum = AnotherComputerKeeping(_photos);
+        Remember(mum.MachineId, "Mum's laptop", familiarName: "Kitchen laptop");
+        _questions.SyncFolder = _shared;
+
+        await AddAsync(_photos);
+
+        PairingProposal asked = Assert.Single(_questions.Proposals);
+        Assert.Equal("Kitchen laptop", asked.CalledHere);
+        Assert.False(asked.SharesItsName);
+
+        KnownMachine known = Read(db => db.KnownMachines.AsNoTracking().Single());
+        Assert.Equal(MachineTrust.Trusted, known.Trust);
+        Assert.Equal("Kitchen laptop", known.FamiliarName);
+        Assert.Equal("Mum's laptop", known.Name);
+    }
+
+    /// <summary>
+    /// A computer calling itself the name somebody here gave another is a
+    /// look-alike, so "Same folder" takes changes from neither.
+    /// </summary>
+    [Fact]
+    public async Task SayingSameFolder_ToAComputerCallingItselfANameGivenHere_TakesNoChanges()
+    {
+        Guid kitchen = Guid.NewGuid();
+        Remember(kitchen, "LAPTOP-AB12CD", familiarName: "Kitchen laptop");
+        using Library copy = AnotherComputerKeeping(_photos, "copy", "Kitchen laptop");
+        _questions.SyncFolder = _shared;
+
+        await AddAsync(_photos);
+
+        PairingProposal asked = Assert.Single(_questions.Proposals);
+        Assert.True(asked.SharesItsName);
+        Assert.Equal(copy.SharedSourceId, Source().SharedId);
+        Assert.Equal(kitchen, Read(db => db.KnownMachines.AsNoTracking().Single()).MachineId);
+    }
+
     [Fact]
     public async Task SayingNo_TakesNothingFromThatComputer()
     {
@@ -218,9 +261,11 @@ public sealed class AddFolderAsksAboutOtherComputersTests : IDisposable
     /// published it.
     /// </summary>
     /// <param name="library">Where its own library lives, for a second one.</param>
-    private Library AnotherComputerKeeping(string folder, string library = "mum")
+    /// <param name="name">What it calls itself, where that is not Mum's laptop.</param>
+    private Library AnotherComputerKeeping(
+        string folder, string library = "mum", string name = "Mum's laptop")
     {
-        var mum = new Library(Path.Combine(_root, library), "Mum's laptop", Guid.NewGuid());
+        var mum = new Library(Path.Combine(_root, library), name, Guid.NewGuid());
         mum.SharesThrough(_shared);
         mum.Reaches(folder);
         mum.Publishing.HandleAsync().GetAwaiter().GetResult();
@@ -240,6 +285,24 @@ public sealed class AddFolderAsksAboutOtherComputersTests : IDisposable
     }
 
     private int Pairings() => Read(db => db.PairedSources.Count());
+
+    /// <summary>
+    /// A computer this library has met but nobody here has answered for, with
+    /// a name somebody here gave it.
+    /// </summary>
+    private void Remember(Guid machineId, string name, string familiarName) =>
+        Read(db =>
+        {
+            db.KnownMachines.Add(new KnownMachine
+            {
+                MachineId = machineId,
+                Name = name,
+                FamiliarName = familiarName,
+                Trust = MachineTrust.Undecided,
+            });
+
+            return db.SaveChanges();
+        });
 
     private PhotoGallery.Domain.Library.PhotoSource Source() =>
         Read(db => db.PhotoSources.AsNoTracking().Single(source => source.Path == _photos));

@@ -467,6 +467,26 @@ public sealed class SqliteDecisionRepository : IDecisionRepository
         _db.ChangeTracker.Clear();
     }
 
+    public async Task<bool> NameAsync(
+        Guid machineId,
+        string? familiarName,
+        CancellationToken cancellationToken = default)
+    {
+        KnownMachine? known = await _db.KnownMachines
+            .FirstOrDefaultAsync(row => row.MachineId == machineId, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (known is null)
+        {
+            return false;
+        }
+
+        known.FamiliarName = familiarName;
+        await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        _db.ChangeTracker.Clear();
+        return true;
+    }
+
     // ---------------------------------------------------------------- people
 
     private async Task<(int Gained, int Renamed, int Deleted)> ApplyPeopleAsync(

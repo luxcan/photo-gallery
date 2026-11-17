@@ -50,7 +50,7 @@ public sealed class UnconfirmedComputersTests : IDisposable
 
         // And it says why nothing came, and asks.
         Assert.Equal(["Mum's laptop"], shared.Merged.Unconfirmed);
-        Assert.Contains("Say below whether to take changes", shared.Summary, StringComparison.Ordinal);
+        Assert.Contains("Say below whether to sync with", shared.Summary, StringComparison.Ordinal);
         Assert.False(shared.Merged.UpToDate);
 
         SharingStatus status = await Dad.Overview.HandleAsync();
@@ -197,7 +197,7 @@ public sealed class UnconfirmedComputersTests : IDisposable
 
         Assert.True(claims.SharesItsName);
         Assert.Contains(
-            "Another computer is also calling itself Mum's laptop",
+            "Another computer here also goes by Mum's laptop",
             SharingViewModel.AskingAbout(claims),
             StringComparison.Ordinal);
     }
@@ -211,7 +211,8 @@ public sealed class UnconfirmedComputersTests : IDisposable
             Trust = MachineTrust.Undecided,
         };
 
-        Assert.Equal("Take changes from Gran's laptop?", SharingViewModel.AskingAbout(gran));
+        Assert.Equal(
+            "Gran's laptop has left changes in the sync folder.", SharingViewModel.AskingAbout(gran));
     }
 
     /// <summary>
@@ -242,7 +243,7 @@ public sealed class UnconfirmedComputersTests : IDisposable
 
             string question = SharingViewModel.AskingAbout(machine);
             Assert.Contains(
-                "Another computer is also calling itself Mum's laptop", question, StringComparison.Ordinal);
+                "Another computer here also goes by Mum's laptop", question, StringComparison.Ordinal);
             Assert.Contains("which last shared changes on", question, StringComparison.Ordinal);
         });
     }

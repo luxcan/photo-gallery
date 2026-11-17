@@ -1,4 +1,5 @@
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Input;
 
@@ -96,6 +97,97 @@ public partial class AppDialog : Window
 
         dialog.ShowOverOwner();
         return dialog._confirmed;
+    }
+
+    /// <summary>
+    /// Asks for a name, and returns what was typed or null where it was
+    /// cancelled.
+    /// </summary>
+    /// <param name="text">What the box starts with, chosen whole so typing replaces it.</param>
+    /// <param name="emptyHint">Shown faintly in the box while it is empty.</param>
+    /// <param name="confirm">What the agreeing button says.</param>
+    /// <param name="maxLength">The longest answer the box takes.</param>
+    /// <param name="problem">
+    /// Why the last answer was not taken, said under the box, or null.
+    /// </param>
+    /// <remarks>
+    /// Return agrees, unlike <see cref="Confirm"/>: nothing is lost by a name
+    /// kept by mistake, and a box somebody has just typed into is finished
+    /// with Return everywhere else.
+    /// </remarks>
+    public static string? AskForText(
+        Window? owner,
+        string title,
+        string text,
+        string emptyHint,
+        string confirm,
+        int maxLength,
+        string? problem = null)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maxLength);
+
+        AppDialog dialog = Build(owner, title, string.Empty, DialogTone.Question);
+        dialog.Glyph.Visibility = Visibility.Collapsed;
+        dialog.MessageText.Visibility = Visibility.Collapsed;
+        dialog.Entry.Visibility = Visibility.Visible;
+        dialog.EntryHint.Text = emptyHint;
+        dialog.EntryBox.Text = text;
+        dialog.EntryBox.MaxLength = maxLength;
+        AutomationProperties.SetName(dialog.EntryBox, title);
+
+        if (!string.IsNullOrEmpty(problem))
+        {
+            dialog.EntryProblem.Text = problem;
+            dialog.EntryProblem.Visibility = Visibility.Visible;
+        }
+
+        // In the order every other dialog here puts them, so the two buttons
+        // are where they always are.
+        dialog.AddButton(confirm, isConfirm: true, isDefault: true);
+        dialog.AddButton(Decline, isConfirm: false, isDefault: false);
+
+        dialog.Loaded += (_, _) =>
+        {
+            dialog.EntryBox.Focus();
+            dialog.EntryBox.SelectAll();
+            dialog.LineUpHint();
+        };
+
+        dialog.ShowOverOwner();
+        return dialog._confirmed ? dialog.EntryBox.Text : null;
+    }
+
+    /// <summary>
+    /// The watermark is for an empty box only, and the reason the last answer
+    /// was not taken goes as soon as it is being answered.
+    /// </summary>
+    private void OnEntryChanged(object sender, TextChangedEventArgs e)
+    {
+        EntryHint.Visibility = EntryBox.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
+
+        if (IsLoaded)
+        {
+            EntryProblem.Visibility = Visibility.Collapsed;
+        }
+    }
+
+    /// <summary>
+    /// Puts the watermark where the box puts its first letter.
+    /// </summary>
+    /// <remarks>
+    /// Asked of the box rather than worked out from its padding: the template's
+    /// own placeholder sits at the padding, and typed text a dozen pixels
+    /// further in, so a hint placed by arithmetic read as a different line.
+    /// </remarks>
+    private void LineUpHint()
+    {
+        Rect caret = EntryBox.GetRectFromCharacterIndex(0);
+
+        if (!caret.IsEmpty)
+        {
+            Point start = EntryBox.TranslatePoint(new Point(caret.X, 0), Entry);
+            EntryHint.Margin = new Thickness(start.X, 0, 10, 0);
+        }
     }
 
     /// <summary>

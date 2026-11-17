@@ -104,5 +104,80 @@ public sealed class FindSameFolderElsewhereTests : IDisposable
         Assert.Empty(found.Proposals);
     }
 
+    [Fact]
+    public async Task AComputerNamedHere_IsAskedAboutByThatName()
+    {
+        await MumKeepsTheShareDadIsAddingAsync();
+        await Dad.Naming.HandleAsync(Mum.MachineId, "Kitchen laptop");
+
+        PairingProposal proposal =
+            Assert.Single((await OnDad.HandleAsync(Dad.SharedSourceId)).Proposals);
+
+        Assert.Equal(Mum.MachineId, proposal.MachineId);
+        Assert.Equal("Mum's laptop", proposal.MachineName);
+        Assert.Equal("Kitchen laptop", proposal.FamiliarName);
+        Assert.Equal("Kitchen laptop", proposal.CalledHere);
+        Assert.False(proposal.SharesItsName);
+    }
+
+    /// <summary>
+    /// A file calling itself what this computer calls one of the house's
+    /// laptops - by the name given it here, or by its own - is a look-alike,
+    /// so a yes to the folder is not a yes to either computer.
+    /// </summary>
+    [Theory]
+    [InlineData("Kitchen laptop")]
+    [InlineData("kitchen LAPTOP")]
+    [InlineData("Mum's laptop")]
+    public async Task AFileCallingItselfANameMumGoesByHere_IsALookAlike(string plantedName)
+    {
+        await MumKeepsTheShareDadIsAddingAsync();
+        await Dad.Naming.HandleAsync(Mum.MachineId, "Kitchen laptop");
+
+        Library planted = _house.Stranger(plantedName);
+        planted.Reaches(@"\\nas\Photos");
+        await planted.Publishing.HandleAsync();
+
+        SameFolderElsewhere found = await OnDad.HandleAsync(Dad.SharedSourceId);
+
+        PairingProposal copy = Assert.Single(
+            found.Proposals, proposal => proposal.MachineId == planted.MachineId);
+        Assert.True(copy.SharesItsName);
+        Assert.Null(copy.FamiliarName);
+
+        PairingProposal hers = Assert.Single(
+            found.Proposals, proposal => proposal.MachineId == Mum.MachineId);
+        Assert.True(hers.SharesItsName);
+        Assert.Equal("Kitchen laptop", hers.CalledHere);
+    }
+
+    [Fact]
+    public async Task AnotherComputerWithANameOfItsOwn_IsNoLookAlike()
+    {
+        await MumKeepsTheShareDadIsAddingAsync();
+        await Dad.Naming.HandleAsync(Mum.MachineId, "Kitchen laptop");
+
+        Library spare = _house.Stranger("LAPTOP-AB12CD");
+        spare.Reaches(@"\\nas\Photos");
+        await spare.Publishing.HandleAsync();
+
+        SameFolderElsewhere found = await OnDad.HandleAsync(Dad.SharedSourceId);
+
+        Assert.Equal(2, found.Proposals.Count);
+        Assert.All(found.Proposals, proposal => Assert.False(proposal.SharesItsName));
+    }
+
+    /// <summary>
+    /// Mum, trusted on Dad's laptop, has published the share Dad is adding
+    /// under the same path.
+    /// </summary>
+    private async Task MumKeepsTheShareDadIsAddingAsync()
+    {
+        _house.Sharing();
+        Mum.Reaches(@"\\nas\Photos");
+        Dad.Reaches(@"\\nas\Photos");
+        await Mum.Publishing.HandleAsync();
+    }
+
     public void Dispose() => _house.Dispose();
 }

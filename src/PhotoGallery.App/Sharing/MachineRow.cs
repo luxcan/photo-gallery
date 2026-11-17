@@ -24,4 +24,25 @@ public sealed record MachineRow(string Name, string Recency, bool Waiting)
     /// says and offers to undo.
     /// </summary>
     public bool Ignored { get; init; }
+
+    /// <summary>
+    /// What it calls itself, or null for a computer not written down here,
+    /// which cannot be given a name of its own yet.
+    /// </summary>
+    public string? OwnName { get; init; }
+
+    /// <summary>The name somebody here gave it, or null where it has none.</summary>
+    public string? FamiliarName { get; init; }
+
+    /// <summary>Whether the row offers to rename it.</summary>
+    public bool CanBeNamed => OwnName is not null;
+
+    /// <summary>
+    /// What the rename box starts with: the name it goes by, never the
+    /// description a computer not synced with yet is shown under.
+    /// </summary>
+    public string? NameToEdit => FamiliarName ?? OwnName;
+
+    /// <summary>What the pencil is called to somebody who cannot see it.</summary>
+    public string RenameLabel => $"Rename {NameToEdit ?? Name}";
 }

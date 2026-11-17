@@ -852,6 +852,10 @@ namespace PhotoGallery.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("FamiliarName")
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
+
                     b.Property<DateTime?>("LastMergedUtc")
                         .HasColumnType("TEXT");
 

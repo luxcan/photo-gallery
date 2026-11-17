@@ -477,8 +477,12 @@ public static class DecisionMerge
                 continue;
             }
 
-            proposals.AddRange(SourcePairing.Propose(
-                mine.Sources, them.Sources, them.Machine.Name, links));
+            // Each tied to the computer that keeps the folder, so whatever is
+            // said of it is said of that computer and never of another whose
+            // file happens to list the same folder.
+            proposals.AddRange(SourcePairing
+                .Propose(mine.Sources, them.Sources, them.Machine.Name, links)
+                .Select(proposal => proposal with { MachineId = them.Machine.Id }));
         }
 
         return proposals;

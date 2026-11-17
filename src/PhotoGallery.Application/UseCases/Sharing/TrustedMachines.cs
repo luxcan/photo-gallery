@@ -19,12 +19,18 @@ namespace PhotoGallery.Application.UseCases.Sharing;
 public sealed class TrustedMachines
 {
     private readonly Dictionary<Guid, MachineTrust> _said = [];
+    private readonly Dictionary<Guid, string> _familiar = [];
 
     private TrustedMachines(IEnumerable<KnownMachine> known)
     {
         foreach (KnownMachine machine in known)
         {
             _said[machine.MachineId] = machine.Trust;
+
+            if (machine.FamiliarName is string familiar)
+            {
+                _familiar[machine.MachineId] = familiar;
+            }
         }
     }
 
@@ -44,4 +50,19 @@ public sealed class TrustedMachines
     /// <summary>Whether somebody here said "not this one".</summary>
     public bool Ignores(Guid machine) =>
         _said.TryGetValue(machine, out MachineTrust trust) && trust == MachineTrust.Ignored;
+
+    /// <summary>
+    /// The name somebody here gave a computer, or null where it has none.
+    /// </summary>
+    public string? FamiliarName(Guid machine) => _familiar.GetValueOrDefault(machine);
+
+    /// <summary>
+    /// What to call a computer on screen: the name somebody here gave it, else
+    /// the one its own file gives.
+    /// </summary>
+    public string CalledHere(MachineIdentity machine)
+    {
+        ArgumentNullException.ThrowIfNull(machine);
+        return FamiliarName(machine.Id) ?? machine.Name;
+    }
 }

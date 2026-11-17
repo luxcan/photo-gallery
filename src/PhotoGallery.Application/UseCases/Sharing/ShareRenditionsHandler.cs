@@ -622,7 +622,7 @@ public sealed class ShareRenditionsHandler
             [
                 .. published.Sets
                     .Where(set => !set.LandsFacesByOverlap && !trust.Ignores(set.Machine.Id))
-                    .Select(set => set.Machine.Name)
+                    .Select(set => trust.CalledHere(set.Machine))
                     .Distinct(StringComparer.CurrentCultureIgnoreCase)
                     .Order(StringComparer.CurrentCultureIgnoreCase),
             ],

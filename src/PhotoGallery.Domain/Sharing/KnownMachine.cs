@@ -18,6 +18,20 @@ public sealed class KnownMachine
     public required string Name { get; set; }
 
     /// <summary>
+    /// What somebody here chose to call it, or null to go by <see cref="Name"/>.
+    /// </summary>
+    /// <remarks>
+    /// Kept on this computer only. No file in the sync folder can set it and
+    /// none carries it: a laptop that calls itself LAPTOP-AB12CD is "Kitchen
+    /// laptop" here because somebody here said so, and a planted file cannot
+    /// take that name by calling itself it.
+    /// </remarks>
+    public string? FamiliarName { get; set; }
+
+    /// <summary>What the screen calls it: the familiar name if it has one.</summary>
+    public string CalledHere => FamiliarName ?? Name;
+
+    /// <summary>
     /// When this library last took that machine's answers.
     /// </summary>
     /// <remarks>
@@ -65,6 +79,56 @@ public sealed class KnownMachine
         }
 
         return name.Length <= NameLength ? name : name[..NameLength].TrimEnd();
+    }
+
+    /// <summary>
+    /// The familiar name somebody typed, as it is kept: trimmed and cut to the
+    /// column, or null where it is blank or is only the computer's own name.
+    /// </summary>
+    /// <remarks>
+    /// Blank means "go back to what it calls itself", which is what clearing
+    /// the box says - and a familiar name equal to the computer's own would be
+    /// a copy that goes stale the day the computer is renamed there.
+    /// </remarks>
+    public static string? FamiliarNameFrom(string? typed, string ownName)
+    {
+        string name = typed?.Trim() ?? string.Empty;
+
+        if (name.Length > NameLength)
+        {
+            name = name[..NameLength].TrimEnd();
+        }
+
+        return name.Length == 0 || string.Equals(name, ownName, StringComparison.Ordinal)
+            ? null
+            : name;
+    }
+
+    /// <summary>
+    /// Every name this computer goes by here: what it calls itself, and the
+    /// name given here where it has one.
+    /// </summary>
+    public IEnumerable<string> NamesGoneBy() =>
+        FamiliarName is null ? [Name] : [Name, FamiliarName];
+
+    /// <summary>
+    /// The name this computer and another could be taken for each other by,
+    /// or null where they share none.
+    /// </summary>
+    /// <remarks>
+    /// Any name either goes by against any name the other does. A file calling
+    /// itself what this screen calls the kitchen laptop reads as that laptop
+    /// just as a copy of its own name does, and a name given here that another
+    /// computer calls itself puts two rows of that name on screen. One rule,
+    /// so that the Sync screen, the same-folder question and the rename box
+    /// never disagree about whether two computers look alike.
+    /// </remarks>
+    public string? NameSharedWith(KnownMachine other)
+    {
+        ArgumentNullException.ThrowIfNull(other);
+
+        return NamesGoneBy().FirstOrDefault(mine =>
+            other.NamesGoneBy().Any(theirs => SameName(mine, theirs)));
     }
 
     /// <summary>Whether two computers go by the same name, as a person reads it.</summary>

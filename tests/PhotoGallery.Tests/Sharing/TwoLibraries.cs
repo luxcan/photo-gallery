@@ -79,6 +79,20 @@ internal sealed class TwoLibraries : IDisposable
     }
 
     /// <summary>
+    /// A machine writing into the same folder that nobody here has said to
+    /// sync with, under whatever name its file gives.
+    /// </summary>
+    public Library Stranger(string name)
+    {
+        var stranger = new Library(
+            Path.Combine(_root, $"stranger-{_others.Count}"), name, Mum.SharedSourceId);
+
+        stranger.SharesThrough(SharedFolder);
+        _others.Add(stranger);
+        return stranger;
+    }
+
+    /// <summary>
     /// Points every machine at the folder between them, as a house whose
     /// computers have already said to take each other's changes.
     /// </summary>
@@ -210,6 +224,9 @@ internal sealed class Library : IDisposable
 
     /// <summary>Saying whether to take another computer's changes, as the Sync screen does.</summary>
     public DecideMachineHandler Deciding => field ??= new DecideMachineHandler(Index, Writing);
+
+    /// <summary>Giving another computer a name here, as the Sync screen's pencil does.</summary>
+    public NameMachineHandler Naming => field ??= new NameMachineHandler(Index, Decisions, Writing);
 
     /// <summary>This library's own working folder, on a real disk.</summary>
     public WorkingFolder Working => field ??= CreateWorking();

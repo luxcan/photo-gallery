@@ -134,4 +134,18 @@ public interface IDecisionRepository
         string? name,
         MachineTrust trust,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gives another computer the name somebody here chose for it, or takes it
+    /// away with null.
+    /// </summary>
+    /// <remarks>
+    /// The one write to <see cref="KnownMachine.FamiliarName"/>: nothing a sync
+    /// does touches it.
+    /// </remarks>
+    /// <returns>False where the computer is not written down here.</returns>
+    Task<bool> NameAsync(
+        Guid machineId,
+        string? familiarName,
+        CancellationToken cancellationToken = default);
 }

@@ -63,8 +63,11 @@ public sealed class MergeDecisionsHandler
         FetchedDecisions everything =
             await _exchange.FetchAsync(cancellationToken).ConfigureAwait(false);
 
+        TrustedMachines trust =
+            await TrustedMachines.ReadAsync(_decisions, cancellationToken).ConfigureAwait(false);
+
         (FetchedDecisions fetched, IReadOnlyList<string> unconfirmed) = await TrustedOnlyAsync(
-            machine, everything, cancellationToken).ConfigureAwait(false);
+            machine, everything, trust, cancellationToken).ConfigureAwait(false);
 
         if (fetched.Sets.Count == 0)
         {
@@ -108,14 +111,45 @@ public sealed class MergeDecisionsHandler
         return new MergeResult(
             true,
             string.Empty,
-            outcome,
+            CalledHere(outcome, trust),
             fetched.Sets.Count + unconfirmed.Count,
             fetched.Unreadable,
-            pairings)
+            CalledHere(pairings, trust))
         {
             Unconfirmed = unconfirmed,
         };
     }
+
+    /// <summary>
+    /// The refusals, with each computer named as the screen names it.
+    /// </summary>
+    /// <remarks>
+    /// Only for saying: the merge and the machines it remembered have already
+    /// been given the names the files carry, which is what a computer calls
+    /// itself and must stay so.
+    /// </remarks>
+    private static MergeOutcome CalledHere(MergeOutcome outcome, TrustedMachines trust) =>
+        outcome with
+        {
+            Refused =
+            [
+                .. outcome.Refused.Select(refused => refused with
+                {
+                    Machine = refused.Machine with { Name = trust.CalledHere(refused.Machine) },
+                }),
+            ],
+        };
+
+    /// <summary>
+    /// The folders worth asking about, each with the name somebody here gave
+    /// the computer that keeps it.
+    /// </summary>
+    private static IReadOnlyList<PairingProposal> CalledHere(
+        IReadOnlyList<PairingProposal> pairings, TrustedMachines trust) =>
+    [
+        .. pairings.Select(pairing =>
+            pairing with { FamiliarName = trust.FamiliarName(pairing.MachineId) }),
+    ];
 
     /// <summary>
     /// The sets of the computers somebody here has said to take changes from,
@@ -132,11 +166,9 @@ public sealed class MergeDecisionsHandler
         TrustedOnlyAsync(
             MachineIdentity machine,
             FetchedDecisions fetched,
+            TrustedMachines trust,
             CancellationToken cancellationToken)
     {
-        TrustedMachines trust =
-            await TrustedMachines.ReadAsync(_decisions, cancellationToken).ConfigureAwait(false);
-
         List<DecisionSet> trusted = [];
         List<string> unconfirmed = [];
 
@@ -156,7 +188,7 @@ public sealed class MergeDecisionsHandler
             }
 
             await _repository.MeetAsync(them.Machine, cancellationToken).ConfigureAwait(false);
-            unconfirmed.Add(them.Machine.Name);
+            unconfirmed.Add(trust.CalledHere(them.Machine));
         }
 
         return (fetched with { Sets = trusted }, unconfirmed);

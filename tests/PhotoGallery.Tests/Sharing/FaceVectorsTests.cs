@@ -659,6 +659,28 @@ public sealed class FaceVectorsTests : IDisposable
     }
 
     /// <summary>
+    /// The laptop to update is named as somebody here named it, since that is
+    /// the name they will look for it by.
+    /// </summary>
+    [Fact]
+    public async Task FacesWaitingOnAComputerNamedHere_SayThatName()
+    {
+        Mum.Face(Mum.Prepared(@"2019\a.jpg", "aa11.jpg"), Head);
+        await Mum.Naming.HandleAsync(Dad.MachineId, "Study desktop");
+
+        await Dad.Exchange.PublishAsync(DecisionSet.Empty(
+            new MachineIdentity(Dad.MachineId, Dad.Name, "1.0.0", 1), Monday));
+
+        PoolResult given = await Mum.Pooling.GiveAsync();
+
+        Assert.Equal(["Study desktop"], given.FacesWaitFor);
+        Assert.Equal(
+            "This computer's faces are not shared yet. Update Photo Gallery on Study desktop, "
+            + "then sync it once.",
+            given.FacesWaitingNotice);
+    }
+
+    /// <summary>
     /// Answers that cannot be read this time cannot say how their computer lands
     /// faces, so the faces wait for them too.
     /// </summary>

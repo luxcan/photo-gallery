@@ -28,6 +28,7 @@
         <RowDefinition Height="Auto" />
         <RowDefinition Height="Auto" />
         <RowDefinition Height="Auto" />
+        <RowDefinition Height="Auto" />
       </Grid.RowDefinitions>
       <Grid.ColumnDefinitions>
         <ColumnDefinition Width="Auto" />
@@ -46,7 +47,24 @@
                  Style="{DynamicResource BodyText}" Margin="0,8,0,0"
                  TextWrapping="Wrap" />
 
-      <StackPanel x:Name="Buttons" Grid.Row="2" Grid.Column="1"
+      <!-- Only for a dialog that asks for a name. The watermark is what an
+           empty box goes back to, so clearing it needs no sentence to say so. -->
+      <StackPanel x:Name="Entry" Grid.Row="2" Grid.Column="1" Margin="0,14,0,0"
+                  Visibility="Collapsed">
+        <Grid>
+          <TextBox x:Name="EntryBox" Style="{DynamicResource InputTextBox}"
+                   TextChanged="OnEntryChanged" />
+          <TextBlock x:Name="EntryHint" IsHitTestVisible="False" Margin="12,0,10,0"
+                     VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                     FontSize="{Binding FontSize, ElementName=EntryBox}"
+                     Foreground="{DynamicResource Editor.Placeholder}" />
+        </Grid>
+        <TextBlock x:Name="EntryProblem" Style="{DynamicResource HintText}" Margin="0,6,0,0"
+                   TextWrapping="Wrap" Foreground="{DynamicResource Status.Danger}"
+                   Visibility="Collapsed" />
+      </StackPanel>
+
+      <StackPanel x:Name="Buttons" Grid.Row="3" Grid.Column="1"
                   Orientation="Horizontal" HorizontalAlignment="Right"
                   Margin="0,22,0,0" />
     </Grid>

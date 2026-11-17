@@ -2697,10 +2697,10 @@
                             Visibility="{Binding Sharing.HasNewcomers,
                                          Converter={StaticResource BoolToVisibility}}">
                   <TextBlock Style="{DynamicResource FieldLabel}"
-                             Text="Take changes from a new computer?" />
+                             Text="A new computer wants to sync" />
                   <TextBlock Style="{DynamicResource HintText}" Margin="0,0,0,8"
                              TextWrapping="Wrap"
-                             Text="A computer this one has not synced with before has left changes in the sync folder. Nothing from it is used until you say so. If you do not recognise it, choose Not this one." />
+                             Text="Nothing from it is used until you say so. If you do not recognise it, choose Don't sync with this computer." />
 
                   <ItemsControl ItemsSource="{Binding Sharing.Newcomers}">
                     <ItemsControl.ItemTemplate>
@@ -2709,17 +2709,18 @@
                                 BorderBrush="{DynamicResource Panel.Border}" BorderThickness="1"
                                 CornerRadius="4" Padding="12,9" Margin="0,0,0,8">
                           <DockPanel>
-                            <Button DockPanel.Dock="Right" MinWidth="110" Margin="8,0,0,0"
+                            <Button DockPanel.Dock="Right" Style="{DynamicResource SecondaryButton}"
+                                    MinWidth="110" Margin="8,0,0,0"
                                     VerticalAlignment="Center"
-                                    Content="Not this one"
+                                    Content="Don't sync with this computer"
                                     ToolTip="Leave this computer's changes alone"
                                     Command="{Binding DataContext.Sharing.NotThisOneCommand,
                                               RelativeSource={RelativeSource AncestorType=Window}}"
                                     CommandParameter="{Binding}" />
                             <Button DockPanel.Dock="Right" Style="{DynamicResource PrimaryButton}"
-                                    MinWidth="120" Margin="12,0,0,0" VerticalAlignment="Center"
-                                    Content="Take changes"
-                                    ToolTip="Take this computer's changes from now on"
+                                    MinWidth="96" Margin="12,0,0,0" VerticalAlignment="Center"
+                                    Content="Sync"
+                                    ToolTip="Sync with this computer from now on"
                                     Command="{Binding DataContext.Sharing.TakeChangesCommand,
                                               RelativeSource={RelativeSource AncestorType=Window}}"
                                     CommandParameter="{Binding}" />
@@ -2858,12 +2859,26 @@
                       <Border BorderBrush="{DynamicResource Panel.Border}"
                               BorderThickness="0,0,0,1" Padding="0,8">
                         <DockPanel>
-                          <!-- Only on a computer somebody said "not this one"
-                               to, so that answer is never the last word. -->
-                          <Button DockPanel.Dock="Right" Margin="12,0,0,0"
+                          <!-- A name somebody here will recognise, kept on this
+                               computer only. Not offered for a computer not
+                               written down yet, which has no name to go back to. -->
+                          <Button DockPanel.Dock="Right" Margin="8,0,0,0"
                                   VerticalAlignment="Center"
-                                  Content="Take its changes"
-                                  ToolTip="Take this computer's changes from now on"
+                                  Style="{DynamicResource LinkButton}"
+                                  Content="&#xE70F;" FontFamily="Segoe MDL2 Assets" FontSize="13"
+                                  ToolTip="{Binding RenameLabel}"
+                                  AutomationProperties.Name="{Binding RenameLabel}"
+                                  Command="{Binding DataContext.Sharing.RenameMachineCommand,
+                                            RelativeSource={RelativeSource AncestorType=Window}}"
+                                  CommandParameter="{Binding}"
+                                  Visibility="{Binding CanBeNamed,
+                                               Converter={StaticResource BoolToVisibility}}" />
+                          <!-- Only on a computer somebody said "don't sync" to,
+                               so that answer is never the last word. -->
+                          <Button DockPanel.Dock="Right" Style="{DynamicResource SecondaryButton}"
+                                  Margin="12,0,0,0" VerticalAlignment="Center"
+                                  Content="Sync with this computer"
+                                  ToolTip="Sync with this computer from now on"
                                   Command="{Binding DataContext.Sharing.TakeChangesAfterAllCommand,
                                             RelativeSource={RelativeSource AncestorType=Window}}"
                                   CommandParameter="{Binding}"

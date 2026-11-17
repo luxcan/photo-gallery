@@ -144,16 +144,27 @@ public sealed class GetSharingHandler
             // Named once its changes were taken, or where somebody has to
             // answer for it by name - and merged is whether its changes were
             // ever taken, not whether it is written down.
-            string name = row is not null && (merged || row.Trust != MachineTrust.Trusted)
-                ? row.Name
-                : "A computer this library has not taken changes from yet";
+            //
+            // A name somebody here gave it is said whatever else is true: they
+            // chose it to recognise the computer by.
+            string name = row is not null && (row.FamiliarName is not null || merged || row.Trust != MachineTrust.Trusted)
+                ? row.CalledHere
+                : "A computer this library has not synced with yet";
 
             // Against every computer written down, trusted, refused or not
             // answered yet: on a new laptop the real one and a copy planted
             // beside it are both unanswered, and two rows with one name are
             // what somebody says yes to twice.
-            bool sharesItsName = row is not null && known.Any(other =>
-                other.MachineId != machine && KnownMachine.SameName(other.Name, row.Name));
+            //
+            // And by the names somebody here gave them as well as their own:
+            // a file calling itself what this screen already calls the kitchen
+            // laptop puts two rows of that name on it just the same.
+            string? sharedName = row is null
+                ? null
+                : known
+                    .Where(other => other.MachineId != machine)
+                    .Select(row.NameSharedWith)
+                    .FirstOrDefault(name => name is not null);
 
             standing.Add(new MachineStanding(
                 name,
@@ -162,7 +173,9 @@ public sealed class GetSharingHandler
             {
                 MachineId = machine,
                 Trust = row?.Trust,
-                SharesItsName = sharesItsName,
+                NameItShares = sharedName,
+                OwnName = row?.Name,
+                FamiliarName = row?.FamiliarName,
             });
         }
 

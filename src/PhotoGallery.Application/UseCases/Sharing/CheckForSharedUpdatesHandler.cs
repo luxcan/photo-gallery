@@ -117,7 +117,7 @@ public sealed class CheckForSharedUpdatesHandler
                     continue;
                 }
 
-                names.Add(machine.Name);
+                names.Add(machine.CalledHere);
             }
             else
             {

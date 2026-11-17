@@ -55,8 +55,7 @@ public sealed record PairingProposal(
     public bool CanPair => Likeness != PairingLikeness.FiledDifferently;
 
     /// <summary>
-    /// The computer that keeps <see cref="Theirs"/>, where the asker needs to
-    /// know which one; empty otherwise.
+    /// The computer that keeps <see cref="Theirs"/>, by the id it gives itself.
     /// </summary>
     /// <remarks>
     /// Carried for the question adding a folder asks, whose yes also means
@@ -77,4 +76,18 @@ public sealed record PairingProposal(
     /// that two are calling themselves the same thing.
     /// </remarks>
     public bool SharesItsName { get; init; }
+
+    /// <summary>
+    /// The name somebody here gave the computer that keeps <see cref="Theirs"/>,
+    /// or null where it has none.
+    /// </summary>
+    /// <remarks>
+    /// Beside <see cref="MachineName"/> rather than in place of it: that one is
+    /// what the computer calls itself, which is what is written down for a
+    /// computer met through this question and what two look-alikes share.
+    /// </remarks>
+    public string? FamiliarName { get; init; }
+
+    /// <summary>What a question calls that computer.</summary>
+    public string CalledHere => FamiliarName ?? MachineName;
 }

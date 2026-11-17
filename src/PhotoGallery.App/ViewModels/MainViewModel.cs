@@ -1199,7 +1199,7 @@ public sealed partial class MainViewModel : ObservableObject
                         .ConfigureAwait(true);
                 }
 
-                Append($"  same folder as {same.Theirs.Root} on {same.MachineName}");
+                Append($"  same folder as {same.Theirs.Root} on {same.CalledHere}");
             }
         }
         // An argument refused is a file in the sync folder with no identity

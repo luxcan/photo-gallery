@@ -43,6 +43,9 @@ public sealed class UpgradingALibraryTests : IDisposable
     /// <summary>The last release before another computer had to be confirmed.</summary>
     private const string BeforeComputersWereConfirmed = "UpgradeToEfCore10";
 
+    /// <summary>The last release before another computer could be named here.</summary>
+    private const string BeforeFamiliarNames = "ForgetDeletedPeople";
+
     private readonly string _root;
     private readonly GalleryDbContext _db;
 
@@ -260,6 +263,32 @@ public sealed class UpgradingALibraryTests : IDisposable
 
         TrustedMachines trust = await TrustedMachines.ReadAsync(new SqliteDecisionReader(_db));
         Assert.True(trust.Takes(dad));
+    }
+
+    /// <summary>
+    /// A computer written down before names could be given here keeps its own
+    /// name and its answer, and has no name given here.
+    /// </summary>
+    [Fact]
+    public async Task EveryComputerAlreadyKnownGoesByItsOwnNameAfterTheUpgrade()
+    {
+        _db.GetService<IMigrator>().Migrate(BeforeFamiliarNames);
+
+        Guid dad = Guid.NewGuid();
+        Sql($"""
+             INSERT INTO KnownMachines (MachineId, Name, LastMergedUtc, Trust)
+             VALUES ('{dad.ToString().ToUpperInvariant()}', 'Dad''s laptop', '2026-10-01 00:00:00', 2);
+             """);
+
+        Upgrade();
+
+        KnownMachine known = _db.KnownMachines.Single(m => m.MachineId == dad);
+        Assert.Null(known.FamiliarName);
+        Assert.Equal("Dad's laptop", known.CalledHere);
+        Assert.Equal(MachineTrust.Ignored, known.Trust);
+
+        TrustedMachines trust = await TrustedMachines.ReadAsync(new SqliteDecisionReader(_db));
+        Assert.True(trust.Ignores(dad));
     }
 
     [Fact]

@@ -100,16 +100,23 @@ public sealed class FindSameFolderElsewhereHandler
         IReadOnlyList<KnownMachine> known =
             await _decisions.KnownMachinesAsync(cancellationToken).ConfigureAwait(false);
 
+        // The names somebody here gave them too: a file calling itself what
+        // this computer already calls the kitchen laptop reads as that laptop.
         (Guid Id, string Name)[] names =
         [
             .. known.Select(other => (other.MachineId, other.Name)),
+            .. known
+                .Where(other => other.FamiliarName is not null)
+                .Select(other => (other.MachineId, other.CalledHere)),
             .. fetched.Sets
                 .Where(other => other.Machine.Id != machine.Id)
                 .Select(other => (other.Machine.Id, other.Machine.Name)),
         ];
 
         bool SharesItsName(MachineIdentity them) =>
-            names.Any(other => other.Id != them.Id && KnownMachine.SameName(other.Name, them.Name));
+            names.Any(other => other.Id != them.Id
+                && (KnownMachine.SameName(other.Name, them.Name)
+                    || KnownMachine.SameName(other.Name, trust.CalledHere(them))));
 
         return new SameFolderElsewhere(
             SyncFolderChosen: true,
@@ -122,6 +129,7 @@ public sealed class FindSameFolderElsewhereHandler
                         {
                             MachineId = them.Machine.Id,
                             SharesItsName = SharesItsName(them.Machine),
+                            FamiliarName = trust.FamiliarName(them.Machine.Id),
                         }))
                     .Where(proposal => proposal.CanPair && !taken.Contains(proposal.Theirs.SharedId))
                     .OrderBy(proposal => proposal.Likeness),

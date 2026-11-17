@@ -212,6 +212,55 @@ public sealed class PairingTwoLibrariesTests : IDisposable
         Assert.Contains("Point both at the same folder", merged.Summary);
     }
 
+    /// <summary>
+    /// A refused computer is reported by the name somebody here gave it, and
+    /// is still written down by the name it gives itself.
+    /// </summary>
+    [Fact]
+    public async Task ARefusedComputerNamedHere_IsReportedByThatName()
+    {
+        Apart();
+        NameAFaceOnMum();
+        await Dad.Naming.HandleAsync(Mum.MachineId, "Kitchen laptop");
+
+        await Mum.Publishing.HandleAsync();
+        MergeResult merged = await Dad.Merging.HandleAsync();
+
+        RefusedSet refused = Assert.Single(merged.Outcome.Refused);
+        Assert.Equal(RefusalReason.NoSourceInCommon, refused.Reason);
+        Assert.Equal(Mum.MachineId, refused.Machine.Id);
+        Assert.Equal("Kitchen laptop", refused.Machine.Name);
+        Assert.Contains("Nothing was taken from Kitchen laptop", merged.Summary, StringComparison.Ordinal);
+        Assert.DoesNotContain("Mum's laptop", merged.Summary, StringComparison.Ordinal);
+
+        PairingProposal offer = Assert.Single(merged.Pairings);
+        Assert.Equal(Mum.MachineId, offer.MachineId);
+        Assert.Equal("Kitchen laptop", offer.CalledHere);
+
+        Assert.Equal("Mum's laptop", (await MumOnDadsLaptopAsync()).Name);
+    }
+
+    [Fact]
+    public async Task AComputerNamedHere_FiledAtADifferentDepth_IsReportedByThatName()
+    {
+        Mum.Reaches(@"\\nas\Photos");
+        Dad.Reaches(@"\\nas\Photos\Family");
+        NameAFaceOnMum();
+        await Dad.Naming.HandleAsync(Mum.MachineId, "Kitchen laptop");
+
+        await Mum.Publishing.HandleAsync();
+        MergeResult merged = await Dad.Merging.HandleAsync();
+
+        PairingProposal filed = Assert.Single(merged.Pairings);
+        Assert.Equal(PairingLikeness.FiledDifferently, filed.Likeness);
+        Assert.Equal(Mum.MachineId, filed.MachineId);
+        Assert.Equal("Kitchen laptop", filed.CalledHere);
+        Assert.Equal("Mum's laptop", filed.MachineName);
+        Assert.Contains("and Kitchen laptop keeps them in", merged.Summary, StringComparison.Ordinal);
+
+        Assert.Equal("Mum's laptop", (await MumOnDadsLaptopAsync()).Name);
+    }
+
     [Fact]
     public async Task AConfirmedPairIsNotOfferedAgain()
     {
@@ -265,6 +314,11 @@ public sealed class PairingTwoLibrariesTests : IDisposable
 
         Dad.Face(Dad.Photo(@"2019\a.jpg"), Head);
     }
+
+    /// <summary>Dad's row for Mum, as it is kept rather than as it is shown.</summary>
+    private Task<KnownMachine> MumOnDadsLaptopAsync() =>
+        Dad.Db.KnownMachines.AsNoTracking()
+            .SingleAsync(machine => machine.MachineId == Mum.MachineId);
 
     public void Dispose() => _house.Dispose();
 }
