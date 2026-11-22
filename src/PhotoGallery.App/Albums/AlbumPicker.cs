@@ -215,8 +215,20 @@ public sealed partial class AlbumPicker : ObservableObject
     /// <summary>Whether there is a count to show.</summary>
     public bool IsNarrowed => Narrowed.Length > 0;
 
-    /// <summary>Whether there is an album to be taken out of.</summary>
-    public bool IsInOne => CurrentName.Length > 0;
+    /// <summary>Whether there is an album to be taken out of, and this list offers it.</summary>
+    public bool IsInOne => CurrentName.Length > 0 && OffersTakeOut;
+
+    /// <summary>
+    /// Whether this opening carries its own way out of the current album.
+    /// </summary>
+    /// <remarks>
+    /// Off for a batch ticked on an album's wall. Its bar has a way out worded
+    /// for many photographs, and this row's "Take it out of" speaks of one.
+    /// </remarks>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsInOne))]
+    [NotifyCanExecuteChangedFor(nameof(TakeOutCommand))]
+    private bool _offersTakeOut = true;
 
     /// <summary>Named, so the way out cannot be pressed without reading which.</summary>
     public string TakeOutLabel => $"Take it out of {CurrentName}";
@@ -234,14 +246,19 @@ public sealed partial class AlbumPicker : ObservableObject
     /// Whether to draw beside whatever asked rather than in the middle. See
     /// <see cref="IsAnchored"/>.
     /// </param>
+    /// <param name="offersTakeOut">
+    /// Whether to offer taking the photograph out of <paramref name="current"/>.
+    /// </param>
     public void Open(
         IReadOnlyList<AlbumSummary> all,
         int current,
         string prompt,
         string hint,
         string? makeTip = null,
-        bool anchored = false)
+        bool anchored = false,
+        bool offersTakeOut = true)
     {
+        OffersTakeOut = offersTakeOut;
         _current = current;
         Prompt = prompt;
         Hint = hint;

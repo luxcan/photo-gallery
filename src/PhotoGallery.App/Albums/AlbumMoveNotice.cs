@@ -17,6 +17,10 @@ namespace PhotoGallery.App.Albums;
 /// </remarks>
 internal static class AlbumMoveNotice
 {
+    /// <summary>"1 photograph" or "12 photographs", as every album sentence counts them.</summary>
+    public static string Photographs(int count) =>
+        count == 1 ? "1 photograph" : $"{count:N0} photographs";
+
     /// <param name="album">The album they went into.</param>
     /// <param name="placed">How many were asked for.</param>
     /// <param name="result">What the write reported, including where they came from.</param>
@@ -29,7 +33,7 @@ internal static class AlbumMoveNotice
             return string.Empty;
         }
 
-        string count = placed == 1 ? "1 photograph" : $"{placed:N0} photographs";
+        string count = Photographs(placed);
 
         if (result.Moved == 0 || result.From.Count == 0)
         {

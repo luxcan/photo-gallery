@@ -8,6 +8,7 @@ using PhotoGallery.App.Imaging;
 using PhotoGallery.App.Shell;
 using PhotoGallery.Application.Ports;
 using PhotoGallery.Application.UseCases.Gallery;
+using PhotoGallery.Domain.Albums;
 
 namespace PhotoGallery.App.Albums;
 
@@ -256,6 +257,7 @@ public sealed partial class AlbumsViewModel : ObservableObject, IViewerGrid
         _store = store;
         _photos = new TileWindow(store);
         _suggestionGrid = new TileWindow(store);
+        Choice = new PhotoChoice(_photos);
         SuggestionStrip = new ProposalStrip(this);
         Collections = new CollectionsViewModel(scopeFactory, store);
         Collections.Changed += OnCollectionsChanged;
@@ -337,6 +339,14 @@ public sealed partial class AlbumsViewModel : ObservableObject, IViewerGrid
 
     public TileWindow Photos => _photos;
 
+    /// <summary>The photographs ticked on the open album's wall.</summary>
+    /// <remarks>
+    /// The same rule the library's wall chooses by, so a click, a Shift run and
+    /// the bar mean the same thing on both. It belongs to the open album: going
+    /// back to the albums, or into another one, lets go of it.
+    /// </remarks>
+    public PhotoChoice Choice { get; }
+
     /// <summary>What the viewer walks when a proposal is opened from the strip.</summary>
     public TileWindow SuggestionGrid => _suggestionGrid;
 
@@ -378,6 +388,7 @@ public sealed partial class AlbumsViewModel : ObservableObject, IViewerGrid
 
     void IViewerGrid.Dropped(GalleryTile tile)
     {
+        Choice.Forget(tile.Item.Id);
         OnPropertyChanged(nameof(PhotoCount));
         OnPropertyChanged(nameof(HasPhotos));
     }
@@ -882,7 +893,7 @@ public sealed partial class AlbumsViewModel : ObservableObject, IViewerGrid
         People.Clear();
         foreach (PersonDirectoryEntry person in people)
         {
-            People.Add(Choice(
+            People.Add(TickLine(
                 person.Id,
                 person.DisplayName,
                 person.Photos,
@@ -904,7 +915,7 @@ public sealed partial class AlbumsViewModel : ObservableObject, IViewerGrid
         foreach (PlaceDirectoryEntry place in places
             .Where(entry => entry.Filter.Scope == PlaceScope.Place))
         {
-            Places.Add(Choice(
+            Places.Add(TickLine(
                 place.Filter.PlaceId,
                 place.Name,
                 place.Photos,
@@ -924,7 +935,7 @@ public sealed partial class AlbumsViewModel : ObservableObject, IViewerGrid
     }
 
     /// <summary>One tickable line, counted the way both lists count.</summary>
-    private TickChoice Choice(int id, string name, int photos, bool isChosen)
+    private TickChoice TickLine(int id, string name, int photos, bool isChosen)
     {
         var choice = new TickChoice(
             id, name, photos == 1 ? "1 photo" : $"{photos:N0} photos", isChosen);
@@ -1534,7 +1545,7 @@ public sealed partial class AlbumsViewModel : ObservableObject, IViewerGrid
             return "None added.";
         }
 
-        string count = added == 1 ? "1 photograph" : $"{added:N0} photographs";
+        string count = AlbumMoveNotice.Photographs(added);
 
         if (result.From.Count == 0)
         {
@@ -1830,6 +1841,105 @@ public sealed partial class AlbumsViewModel : ObservableObject, IViewerGrid
     /// <summary>Forgets a message that belongs to the last time this was open.</summary>
     public void Reopened() => Status = string.Empty;
 
+    /// <summary>Takes everything ticked out of the open album.</summary>
+    /// <remarks>
+    /// The batch form of the viewer's own way out, and the same write. Out of
+    /// something the app suggested it is a refusal and is remembered; out of an
+    /// album the user made it is only a rearrangement - and the line says which,
+    /// as the viewer's does. The photographs themselves stay in the library.
+    ///
+    /// <para>Public because the shell starts it: it asks first and runs this
+    /// under the overlay, as it does for filing and deleting a batch.</para>
+    /// </remarks>
+    public async Task TakeOutChosenAsync()
+    {
+        if (Selected is not AlbumItem album)
+        {
+            return;
+        }
+
+        IReadOnlyList<int> ids = Choice.Ids;
+
+        if (ids.Count == 0)
+        {
+            return;
+        }
+
+        try
+        {
+            using (IServiceScope scope = _scopeFactory.CreateScope())
+            {
+                await scope.ServiceProvider
+                    .GetRequiredService<IAlbumRepository>()
+                    .RemoveAsync(album.Id, ids)
+                    .ConfigureAwait(true);
+            }
+
+            string photographs = AlbumMoveNotice.Photographs(ids.Count);
+
+            // Said before the page is read again, so a read that fails leaves
+            // its own line rather than having this written over it.
+            Status = album.Summary.Origin == AlbumOrigin.Made
+                ? $"{photographs} taken out of {album.Name}."
+                : $"{photographs} taken out of {album.Name}. "
+                    + "They will not be suggested for those days again.";
+
+            await CatchUpAfterChosenChangedAsync(album.Id).ConfigureAwait(true);
+        }
+        catch (Exception ex) when (LibraryFailure.IsExpected(ex))
+        {
+            Status = $"That could not be done: {ex.Message}";
+        }
+    }
+
+    /// <summary>
+    /// Catches the open album up after the ticked photographs were deleted.
+    /// </summary>
+    /// <remarks>
+    /// Runs under the same overlay the deletion did, which is what keeps the
+    /// deleted pictures off the page before it comes down.
+    /// </remarks>
+    public async Task AfterChosenDeletedAsync(PhotoRemovalResult result)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+
+        if (result.Deleted == 0 || Selected is not AlbumItem album)
+        {
+            Choice.StopChoosing();
+            return;
+        }
+
+        await CatchUpAfterChosenChangedAsync(album.Id).ConfigureAwait(true);
+    }
+
+    /// <summary>
+    /// Leaves choosing and reads the album again, after a batch ticked on its
+    /// wall was filed, taken out or deleted.
+    /// </summary>
+    /// <remarks>
+    /// Its photographs as well as the albums, because re-reading the albums
+    /// keeps the open one open and deliberately leaves its page alone. And the
+    /// library is told, because its wall was not the one that changed and would
+    /// otherwise come back showing the old memberships and the deleted pictures.
+    ///
+    /// <para>Public because a batch filed through the library's album picker is
+    /// settled by the wall it was ticked on, and this is that wall.</para>
+    /// </remarks>
+    /// <param name="albumId">The album the batch was ticked in.</param>
+    public async Task CatchUpAfterChosenChangedAsync(int albumId)
+    {
+        Choice.StopChoosing();
+
+        await ReloadAsync().ConfigureAwait(true);
+
+        if (Selected?.Id == albumId)
+        {
+            await LoadPhotosAsync(albumId).ConfigureAwait(true);
+        }
+
+        LibraryChanged?.Invoke(this, EventArgs.Empty);
+    }
+
     /// <summary>Re-reads the open album after its originals changed folders.</summary>
     public async Task SettleAfterOriginalsMovedAsync(string status)
     {
@@ -1996,6 +2106,13 @@ public sealed partial class AlbumsViewModel : ObservableObject, IViewerGrid
             _rebuilding = false;
         }
 
+        // Quietly, under the guard above, so it has to be said here: an album
+        // that has gone takes what was ticked in it with it.
+        if (Selected is null)
+        {
+            Choice.StopChoosing();
+        }
+
         _ = LoadCoversAsync();
     }
 
@@ -2121,6 +2238,9 @@ public sealed partial class AlbumsViewModel : ObservableObject, IViewerGrid
 
         EditedName = newValue?.Name ?? string.Empty;
 
+        // What was ticked was ticked in the album being left.
+        Choice.StopChoosing();
+
         if (newValue is not null)
         {
             _ = LoadPhotosAsync(newValue.Id);
@@ -2181,6 +2301,7 @@ public sealed partial class AlbumsViewModel : ObservableObject, IViewerGrid
                     }
 
                     _photos.Fill(Array.Empty<GalleryTile>());
+                    Choice.KeepOnlyWhatIsShowing();
                     OnPropertyChanged(nameof(PhotoCount));
                     OnPropertyChanged(nameof(HasPhotos));
                     return;
@@ -2206,7 +2327,13 @@ public sealed partial class AlbumsViewModel : ObservableObject, IViewerGrid
                 return;
             }
 
-            _photos.Fill([.. page.Items.Select(item => new GalleryTile(item))]);
+            // Put back on the new tiles, because the old ones have just been
+            // thrown away; and whatever the album no longer holds is let go.
+            _photos.Fill([.. page.Items.Select(item => new GalleryTile(item)
+            {
+                IsChosen = Choice.Contains(item.Id),
+            })]);
+            Choice.KeepOnlyWhatIsShowing();
             OnPropertyChanged(nameof(PhotoCount));
             OnPropertyChanged(nameof(HasPhotos));
 

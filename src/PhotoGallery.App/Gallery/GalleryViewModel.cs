@@ -204,6 +204,7 @@ public sealed partial class GalleryViewModel : ObservableObject
             closed: () => FacingBeingNamed = null);
 
         Albums = new AlbumPicker(PutInAlbumAsync, TakeOutOfAlbumAsync, thumbnails: thumbnails);
+        Choice = new PhotoChoice(_window);
     }
 
     /// <summary>
@@ -354,32 +355,8 @@ public sealed partial class GalleryViewModel : ObservableObject
 
     // ------------------------------------------------------- choosing several
 
-    /// <summary>
-    /// The photographs ticked on the wall, by the id everything downstream
-    /// wants.
-    /// </summary>
-    /// <remarks>
-    /// Held here rather than read off the tiles, because a tile does not live
-    /// long enough to hold it: <see cref="TileWindow.Fill"/> replaces every one
-    /// of them whenever the query runs again - a search, a folder, a reload
-    /// after a deletion. <see cref="GalleryTile.IsChosen"/> is the mirror the
-    /// wall draws, put back from this set whenever tiles are built.
-    ///
-    /// <para>Ids rather than tiles for the same reason, and because they are
-    /// already what both things this feature does take: a list of asset ids.</para>
-    /// </remarks>
-    private readonly HashSet<int> _chosen = [];
-
-    /// <summary>
-    /// The photograph a run taken with Shift is measured from.
-    /// </summary>
-    /// <remarks>
-    /// The tile itself, never its position. <see cref="TileWindow.Fill"/> hands
-    /// out fresh indices on every rebuild - a resize alone changes how many sit
-    /// in a row - so a number kept between two clicks would pick out a different
-    /// run than the one under the pointer.
-    /// </remarks>
-    private GalleryTile? _anchor;
+    /// <summary>The photographs ticked on this wall.</summary>
+    public PhotoChoice Choice { get; }
 
     /// <summary>
     /// The photographs the album picker is open about.
@@ -391,66 +368,15 @@ public sealed partial class GalleryViewModel : ObservableObject
     /// </remarks>
     private IReadOnlyList<int> _placing = [];
 
-    /// <summary>Whether that list came from the wall rather than the viewer.</summary>
-    private bool _placingIsBatch;
-
     /// <summary>
-    /// Whether clicking a photograph ticks it rather than opening it.
+    /// What catches the wall up once a batch has been filed, or null when the
+    /// list is the viewer's one photograph.
     /// </summary>
     /// <remarks>
-    /// A mode rather than a modifier. Clicking a picture to see it large is a
-    /// settled rule of this screen, so the way to choose several cannot be a
-    /// different click on the same tile - and a modifier nothing on screen
-    /// mentions is a feature only the person who wrote it knows about.
+    /// Handed in by whichever wall the batch was ticked on, because only that
+    /// wall knows how to read itself again - the library's or an open album's.
     /// </remarks>
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(
-        nameof(HasChosen),
-        nameof(ChosenSummary),
-        nameof(DeleteChosenCaption),
-        nameof(EverythingChosen))]
-    private bool _isChoosing;
-
-    public int ChosenCount => _chosen.Count;
-
-    public bool HasChosen => _chosen.Count > 0;
-
-    /// <summary>
-    /// Whether everything on the wall is already ticked, so Select all has
-    /// nothing left to do.
-    /// </summary>
-    /// <remarks>
-    /// Read by the strip to switch Select all off once it would do nothing. A
-    /// control that stays lit and then does nothing when pressed is how somebody
-    /// concludes there is no way out of a selection - which is exactly what
-    /// happened: the obvious gesture after Select all is to press it again, and
-    /// it was a silent no-op. Switched off, the eye goes to Select none instead,
-    /// which is the control that does have something to do.
-    /// </remarks>
-    public bool EverythingChosen => _chosen.Count > 0 && _chosen.Count == _window.Tiles.Count;
-
-    /// <summary>Whether Select all would change anything.</summary>
-    public bool CanChooseEverything => _window.Tiles.Count > 0 && !EverythingChosen;
-
-    /// <summary>How many are ticked, said in the strip beside the count.</summary>
-    public string ChosenSummary => _chosen.Count switch
-    {
-        0 => "None chosen",
-        1 => "1 chosen",
-        _ => $"{_chosen.Count:N0} chosen",
-    };
-
-    /// <summary>
-    /// What the delete button says, with the count in it.
-    /// </summary>
-    /// <remarks>
-    /// The same shape the duplicates screen's own delete uses. A button that
-    /// says how many it is about to destroy is the last place the number can be
-    /// noticed before the question is asked.
-    /// </remarks>
-    public string DeleteChosenCaption => _chosen.Count == 1
-        ? "Delete 1 photo"
-        : $"Delete {_chosen.Count:N0} photos";
+    private Func<Task>? _afterPlacing;
 
     /// <summary>
     /// Says what is on screen and, plainly, what is still missing - a grid of
@@ -1344,10 +1270,7 @@ public sealed partial class GalleryViewModel : ObservableObject
             return;
         }
 
-        if (_chosen.Remove(tile.Item.Id))
-        {
-            NotifyChosen();
-        }
+        Choice.Forget(tile.Item.Id);
 
         TotalCount = Math.Max(0, TotalCount - 1);
         NotifyCounts();
@@ -1474,7 +1397,7 @@ public sealed partial class GalleryViewModel : ObservableObject
         }
 
         _placing = [tile.Item.Id];
-        _placingIsBatch = false;
+        _afterPlacing = null;
 
         Albums.Open(
             await AllAlbumsAsync().ConfigureAwait(true),
@@ -1492,37 +1415,71 @@ public sealed partial class GalleryViewModel : ObservableObject
     /// step would be a second place to get the wording, the filter and the
     /// make-a-new-one box wrong.
     ///
-    /// <para>No current album is named, because forty photographs may have come
-    /// from forty places. The picker's way out of an album hides itself when
-    /// there is no one album to leave.</para>
+    /// <para>No current album is named, because forty photographs on the
+    /// library's wall may have come from forty places.</para>
     /// </remarks>
     [RelayCommand]
-    private async Task MoveChosenToAlbumAsync()
+    private Task MoveChosenToAlbumAsync() =>
+        OfferAlbumsForAsync(Choice.Ids, current: 0, AfterPlacingFromTheWallAsync);
+
+    /// <summary>
+    /// Opens the picker on a batch ticked on any wall.
+    /// </summary>
+    /// <remarks>
+    /// Public because an open album's wall files its own ticked photographs
+    /// through this same picker: one list, one wording, one make-a-new-one box.
+    /// The album it is ticked in is named as the current one, so it is marked in
+    /// the list; the picker's own way out of it is not offered, because the bar
+    /// already carries one that is worded for many.
+    /// </remarks>
+    /// <param name="assetIds">The photographs to file.</param>
+    /// <param name="current">The album they are all in, or 0 when there is none.</param>
+    /// <param name="afterwards">How the wall they were ticked on catches up.</param>
+    public async Task OfferAlbumsForAsync(
+        IReadOnlyList<int> assetIds, int current, Func<Task> afterwards)
     {
-        if (_chosen.Count == 0)
+        ArgumentNullException.ThrowIfNull(assetIds);
+        ArgumentNullException.ThrowIfNull(afterwards);
+
+        if (assetIds.Count == 0)
         {
             return;
         }
 
-        _placing = [.. _chosen];
-        _placingIsBatch = true;
+        _placing = assetIds;
+        _afterPlacing = afterwards;
 
         Albums.Open(
             await AllAlbumsAsync().ConfigureAwait(true),
-            0,
-            _chosen.Count == 1
+            current,
+            assetIds.Count == 1
                 ? "Put this photograph in an album"
-                : $"Put these {_chosen.Count:N0} photographs in an album",
+                : $"Put these {assetIds.Count:N0} photographs in an album",
             "A photograph belongs to one album, so choosing another moves it.",
-            _chosen.Count == 1
+            assetIds.Count == 1
                 ? "Create an album with this name and put the photograph in it"
-                : $"Create an album with this name and put the {_chosen.Count:N0} "
+                : $"Create an album with this name and put the {assetIds.Count:N0} "
                     + "ticked photographs in it",
 
             // Beside the bar it was asked from. The photographs being filed are
             // ticked on the wall right behind this, and a centred panel over a
             // shade covers the one thing worth looking at while answering.
-            anchored: true);
+            anchored: true,
+            offersTakeOut: false);
+    }
+
+    /// <summary>How many photographs the picker is open about.</summary>
+    /// <remarks>
+    /// What the shell's question counts. Read from the batch handed in rather
+    /// than from any one wall, because the batch may be an album's.
+    /// </remarks>
+    public int PlacingCount => _placing.Count;
+
+    /// <summary>The library's wall, caught up after its batch was filed.</summary>
+    private async Task AfterPlacingFromTheWallAsync()
+    {
+        Choice.StopChoosing();
+        await LoadAsync().ConfigureAwait(true);
     }
 
     private async Task<IReadOnlyList<AlbumSummary>> AllAlbumsAsync()
@@ -1556,7 +1513,7 @@ public sealed partial class GalleryViewModel : ObservableObject
         // somewhere is a write and then a whole wall rebuilt, and that needs the
         // overlay - which belongs to the shell, for the reason keeping a
         // duplicate group does.
-        if (_placingIsBatch)
+        if (_afterPlacing is not null)
         {
             PlacingChosen?.Invoke(this, name);
             return Task.CompletedTask;
@@ -1575,10 +1532,16 @@ public sealed partial class GalleryViewModel : ObservableObject
     /// </remarks>
     public async Task PlaceChosenAsync(string name)
     {
+        // Captured before the write, which clears nothing but is awaited: the
+        // batch being settled is the one the question was asked about.
+        Func<Task>? afterwards = _afterPlacing;
+
         await PlaceAsync(name).ConfigureAwait(true);
 
-        StopChoosing();
-        await LoadAsync().ConfigureAwait(true);
+        if (afterwards is not null)
+        {
+            await afterwards().ConfigureAwait(true);
+        }
     }
 
     /// <summary>
@@ -1619,7 +1582,7 @@ public sealed partial class GalleryViewModel : ObservableObject
             // viewer's arrows work again the moment the list closes. A batch
             // needs none of this: it has just read the whole wall again under the
             // overlay.
-            if (!_placingIsBatch)
+            if (_afterPlacing is null)
             {
                 if (OpenTile is GalleryTile tile && placing.Contains(tile.Item.Id))
                 {
@@ -2582,15 +2545,14 @@ public sealed partial class GalleryViewModel : ObservableObject
                     // here with the set already emptied, so this only carries a
                     // choice across a rebuild the user did not ask for - a
                     // resize, or the grid catching up with a pass.
-                    IsChosen = _chosen.Contains(item.Id),
+                    IsChosen = Choice.Contains(item.Id),
                 }));
                 _window.MarkPrepared(await listing.ConfigureAwait(true));
 
                 // Anything ticked that this query no longer shows is dropped.
                 // Acting on a photograph the wall has stopped showing would be
                 // acting on something nobody can see.
-                _chosen.IntersectWith(_window.Tiles.Select(tile => tile.Item.Id));
-                NotifyChosen();
+                Choice.KeepOnlyWhatIsShowing();
 
                 TotalCount = page.TotalCount;
                 NotifyCounts();
@@ -3040,174 +3002,15 @@ public sealed partial class GalleryViewModel : ObservableObject
     {
         // One place decides what a click on a photograph means, so the two
         // answers cannot drift apart or both happen.
-        if (IsChoosing)
+        if (Choice.IsChoosing)
         {
-            Tick(tile);
+            Choice.Toggle(tile);
             return;
         }
 
         _viewerSource = null;
         IsDecidingSuggestion = false;
         Open(tile);
-    }
-
-    /// <summary>Ticks a photograph, or unticks one already ticked.</summary>
-    private void Tick(GalleryTile? tile)
-    {
-        if (tile is null)
-        {
-            return;
-        }
-
-        if (!_chosen.Remove(tile.Item.Id))
-        {
-            _chosen.Add(tile.Item.Id);
-        }
-
-        tile.IsChosen = _chosen.Contains(tile.Item.Id);
-        _anchor = tile;
-        NotifyChosen();
-    }
-
-    /// <summary>
-    /// Ticks a photograph from the circle drawn on it, starting the mode if it
-    /// is not already on.
-    /// </summary>
-    /// <remarks>
-    /// The way in as well as the way to add one more. Choosing used to begin at
-    /// a pill at the far end of the strip, and a mode you must find a button for
-    /// before any picture will answer is a step nobody guesses at - it was
-    /// reported as the app having no way to choose several at all. The circle on
-    /// the tile means both things at once.
-    ///
-    /// <para>Deliberately not <see cref="OpenPhoto"/>'s job. That one is the
-    /// rule about what a click on a <em>picture</em> means, and it must go on
-    /// meaning "show me this one" while the mode is off.</para>
-    /// </remarks>
-    [RelayCommand]
-    private void ChoosePhoto(GalleryTile? tile) => ChoosePhoto(tile, extend: false);
-
-    /// <summary>
-    /// The same, and with Shift held, everything from the last one ticked to
-    /// this one.
-    /// </summary>
-    public void ChoosePhoto(GalleryTile? tile, bool extend)
-    {
-        if (tile is null)
-        {
-            return;
-        }
-
-        IsChoosing = true;
-
-        if (extend && _anchor is not null && !ReferenceEquals(_anchor, tile))
-        {
-            TickRun(_anchor, tile);
-            return;
-        }
-
-        Tick(tile);
-    }
-
-    /// <summary>Ticks every photograph between two of them, both ends included.</summary>
-    /// <remarks>
-    /// Adds rather than toggles. A run is what somebody means to have chosen, so
-    /// one already ticked inside it stays ticked rather than being switched off
-    /// by the gesture that was meant to include it.
-    ///
-    /// <para>The anchor stays where it was, so a second Shift-click stretches
-    /// the same run rather than starting a new one from wherever the last
-    /// ended - which is what every other list on this machine does.</para>
-    /// </remarks>
-    private void TickRun(GalleryTile from, GalleryTile to)
-    {
-        int first = _window.IndexOf(from);
-        int last = _window.IndexOf(to);
-
-        // A tile the wall no longer holds - a reload between the two clicks -
-        // has no run to measure from, so the second click is simply a tick.
-        if (first < 0 || last < 0)
-        {
-            Tick(to);
-            return;
-        }
-
-        if (first > last)
-        {
-            (first, last) = (last, first);
-        }
-
-        for (int at = first; at <= last; at++)
-        {
-            GalleryTile tile = _window[at];
-
-            _chosen.Add(tile.Item.Id);
-            tile.IsChosen = true;
-        }
-
-        NotifyChosen();
-    }
-
-    /// <summary>
-    /// Ticks everything the wall is showing.
-    /// </summary>
-    /// <remarks>
-    /// Every tile, not every visible one: the whole query is in memory - only
-    /// the pictures follow the viewport - so "all" can honestly mean all of
-    /// what is on this wall. What is filtered out was never on it.
-    /// </remarks>
-    [RelayCommand]
-    private void ChooseEverything()
-    {
-        foreach (GalleryTile tile in _window.Tiles)
-        {
-            _chosen.Add(tile.Item.Id);
-            tile.IsChosen = true;
-        }
-
-        NotifyChosen();
-    }
-
-    /// <summary>Unticks everything, leaving the mode on.</summary>
-    [RelayCommand]
-    private void ChooseNothing() => Forget();
-
-    /// <summary>
-    /// Leaves the mode, which is also what Escape does.
-    /// </summary>
-    /// <remarks>
-    /// Switching off forgets what was ticked. Keeping it would mean a wall that
-    /// looks untouched and still has forty photographs spoken for, and the next
-    /// press of Delete would be about pictures nobody could see were chosen.
-    /// </remarks>
-    [RelayCommand]
-    public void StopChoosing()
-    {
-        Forget();
-        IsChoosing = false;
-    }
-
-    private void Forget()
-    {
-        _chosen.Clear();
-        _anchor = null;
-
-        foreach (GalleryTile tile in _window.Tiles)
-        {
-            tile.IsChosen = false;
-        }
-
-        NotifyChosen();
-    }
-
-    private void NotifyChosen()
-    {
-        OnPropertyChanged(nameof(ChosenCount));
-        OnPropertyChanged(nameof(HasChosen));
-        OnPropertyChanged(nameof(ChosenSummary));
-        OnPropertyChanged(nameof(DeleteChosenCaption));
-        OnPropertyChanged(nameof(EverythingChosen));
-        OnPropertyChanged(nameof(CanChooseEverything));
     }
 
     /// <summary>
@@ -3428,8 +3231,8 @@ public sealed partial class GalleryViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Reads what deleting everything ticked would cost, for the question the
-    /// shell is about to ask.
+    /// Reads what deleting a batch of ticked photographs would cost, for the
+    /// question the shell is about to ask.
     /// </summary>
     /// <remarks>
     /// Off the dispatcher, and that is not an optimisation. Describing one
@@ -3440,10 +3243,17 @@ public sealed partial class GalleryViewModel : ObservableObject
     /// <para>A photograph that cannot be read is left out rather than failing
     /// the whole question: the others can still be deleted, and one unreadable
     /// row should not stand between the user and the rest of their tidying.</para>
+    ///
+    /// <para>Takes the ids rather than reading this wall's choice, because an
+    /// open album's wall deletes its ticked photographs through the same
+    /// question.</para>
     /// </remarks>
-    public async Task<IReadOnlyList<PhotoToRemove>> DescribeChosenDeletionAsync()
+    public async Task<IReadOnlyList<PhotoToRemove>> DescribeBatchDeletionAsync(
+        IReadOnlyCollection<int> assetIds)
     {
-        int[] ids = [.. _chosen];
+        ArgumentNullException.ThrowIfNull(assetIds);
+
+        int[] ids = [.. assetIds];
 
         if (ids.Length == 0)
         {
@@ -3489,7 +3299,7 @@ public sealed partial class GalleryViewModel : ObservableObject
     {
         ArgumentNullException.ThrowIfNull(result);
 
-        StopChoosing();
+        Choice.StopChoosing();
 
         if (result.Deleted > 0)
         {
@@ -3669,11 +3479,27 @@ public sealed partial class GalleryViewModel : ObservableObject
         // Choosing a folder answers a different question from choosing a person
         // or a place, and quietly combining them would show "every photo of my
         // son" minus most of them with nothing on screen saying why.
+        //
+        // A typed description is dropped for the same reason, and it was the one
+        // left behind: its answer is at most a few hundred photographs from the
+        // whole library, so a folder chosen after it showed only the ones that
+        // happened to fall in that folder - usually none - beside a tree saying
+        // the folder held hundreds.
         if (value is not null)
         {
+            bool wasSearching = PersonId is not null || Place is not null || IsContentFiltered;
+
             PersonId = null;
             PersonName = string.Empty;
             ClearPlace();
+            ClearRanking();
+
+            // The box goes with the question it was asking, or it would go on
+            // saying "beach" over a folder that is no longer narrowed to beaches.
+            if (wasSearching)
+            {
+                Fill(string.Empty);
+            }
         }
 
         OnPropertyChanged(nameof(EmptyMessage));

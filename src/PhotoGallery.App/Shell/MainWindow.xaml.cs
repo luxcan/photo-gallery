@@ -16,6 +16,7 @@ using PhotoGallery.App.ViewModels;
 using PhotoGallery.Application.Ports;
 using PhotoGallery.Application.UseCases.Albums;
 using PhotoGallery.Application.UseCases.Gallery;
+using PhotoGallery.Domain.Albums;
 
 namespace PhotoGallery.App.Shell;
 
@@ -855,7 +856,15 @@ public partial class MainWindow : Window
         // Last, because it is a mode rather than something on top of the screen:
         // anything in the list above can be open over it, and Escape should put
         // that down first and leave what was ticked alone.
-        yield return (() => gallery.IsChoosing, gallery.StopChoosingCommand);
+        //
+        // An open album's only while it is the wall on screen. A choice made in
+        // an album survives a trip to another section, as the library's does,
+        // and Escape there is about what is in front of the reader - not about
+        // ticks on a page nobody can see.
+        yield return (
+            () => _viewModel.IsChoosingInAnAlbum && albums.Choice.IsChoosing,
+            albums.Choice.StopChoosingCommand);
+        yield return (() => gallery.Choice.IsChoosing, gallery.Choice.StopChoosingCommand);
     }
 
     private void OnDuplicateInspectorKeyDown(object sender, KeyEventArgs e)
@@ -1447,14 +1456,14 @@ public partial class MainWindow : Window
     {
         try
         {
-            int count = _viewModel.Gallery.ChosenCount;
+            int count = _viewModel.Gallery.PlacingCount;
 
             if (count == 0)
             {
                 return;
             }
 
-            string photographs = count == 1 ? "1 photograph" : $"{count:N0} photographs";
+            string photographs = AlbumMoveNotice.Photographs(count);
 
             if (!AppDialog.Confirm(
                 this,
@@ -1492,15 +1501,81 @@ public partial class MainWindow : Window
     {
         if (sender is FrameworkElement { DataContext: GalleryTile tile })
         {
-            _viewModel.Gallery.ChoosePhoto(
+            _viewModel.Choosing?.ChoosePhoto(
                 tile, extend: Keyboard.Modifiers.HasFlag(ModifierKeys.Shift));
         }
     }
 
-    private async void OnDeleteChosenPhotosClicked(object sender, RoutedEventArgs e) =>
+    /// <summary>
+    /// The bar's delete: whatever the wall on screen has ticked, through the
+    /// one question every delete asks.
+    /// </summary>
+    private async void OnDeleteChosenPhotosClicked(object sender, RoutedEventArgs e)
+    {
+        GalleryViewModel gallery = _viewModel.Gallery;
+
+        if (_viewModel.IsChoosingInAnAlbum)
+        {
+            AlbumsViewModel albums = _viewModel.Albums;
+
+            await ConfirmAndDeleteAsync(
+                () => gallery.DescribeBatchDeletionAsync(albums.Choice.Ids),
+                albums.AfterChosenDeletedAsync);
+
+            return;
+        }
+
         await ConfirmAndDeleteAsync(
-            _viewModel.Gallery.DescribeChosenDeletionAsync,
-            _viewModel.Gallery.AfterChosenDeletedAsync);
+            () => gallery.DescribeBatchDeletionAsync(gallery.Choice.Ids),
+            gallery.AfterChosenDeletedAsync);
+    }
+
+    /// <summary>
+    /// The bar's way out of an open album: asks, then takes everything ticked
+    /// out of it under the overlay.
+    /// </summary>
+    /// <remarks>
+    /// Asked first, as filing a batch is, because out of an album the app
+    /// suggested this is a refusal that is remembered - a batch of them is not
+    /// something to do by a slip of the pointer. The question says which of the
+    /// two it is, and that the pictures themselves stay in the library.
+    /// </remarks>
+    private async void OnTakeOutChosenClicked(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            AlbumsViewModel albums = _viewModel.Albums;
+            int count = albums.Choice.ChosenCount;
+
+            if (count == 0 || albums.Selected is not AlbumItem album)
+            {
+                return;
+            }
+
+            string photographs = AlbumMoveNotice.Photographs(count);
+            string remembered = album.Summary.Origin == AlbumOrigin.Made
+                ? string.Empty
+                : " This album was suggested, so they will not be suggested for those days again.";
+
+            if (!AppDialog.Confirm(
+                this,
+                $"Take {photographs} out of {album.Name}?",
+                "They stay in the library; only the album lets go of them." + remembered,
+                "Take out"))
+            {
+                return;
+            }
+
+            await _viewModel.UnderOverlayAsync(
+                $"Taking out of {album.Name}",
+                count == 1 ? "1 photograph..." : $"{count:N0} photographs...",
+                albums.TakeOutChosenAsync);
+        }
+        catch (Exception ex) when (LibraryFailure.IsExpected(ex))
+        {
+            DiagnosticLog.Write("could not take the chosen photographs out of an album", ex);
+        }
+    }
 
     /// <summary>
     /// Deletes the photograph a proposal was found in, from the review screen.

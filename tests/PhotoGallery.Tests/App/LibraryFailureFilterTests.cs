@@ -83,7 +83,7 @@ public sealed class LibraryFailureFilterTests
     [InlineData("Gallery", "GalleryViewModel.cs", "private async Task AssignOpenFaceAsync")]
     [InlineData("Gallery", "GalleryViewModel.cs", "private async Task TurnPhotoAsync")]
     [InlineData("Gallery", "GalleryViewModel.cs", "public async Task<PhotoToRemove?> DescribeDeletionAsync")]
-    [InlineData("Gallery", "GalleryViewModel.cs", "public async Task<IReadOnlyList<PhotoToRemove>> DescribeChosenDeletionAsync")]
+    [InlineData("Gallery", "GalleryViewModel.cs", "public async Task<IReadOnlyList<PhotoToRemove>> DescribeBatchDeletionAsync")]
     [InlineData("ViewModels", "MainViewModel.cs", "public async Task<PhotoRemovalResult> DeletePhotosAsync")]
     public void TheViewersWritesAskLibraryFailure(string folder, string file, string signature)
     {

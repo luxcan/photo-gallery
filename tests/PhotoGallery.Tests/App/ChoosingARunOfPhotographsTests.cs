@@ -71,13 +71,13 @@ public sealed class ChoosingARunOfPhotographsTests : IDisposable
     {
         IReadOnlyList<GalleryTile> wall = await WallAsync();
 
-        Assert.False(_gallery.IsChoosing);
+        Assert.False(_gallery.Choice.IsChoosing);
 
-        _gallery.ChoosePhotoCommand.Execute(wall[3]);
+        _gallery.Choice.ChoosePhotoCommand.Execute(wall[3]);
 
-        Assert.True(_gallery.IsChoosing);
+        Assert.True(_gallery.Choice.IsChoosing);
         Assert.True(wall[3].IsChosen);
-        Assert.Equal(1, _gallery.ChosenCount);
+        Assert.Equal(1, _gallery.Choice.ChosenCount);
     }
 
     /// <summary>And pressing the same circle again unticks it.</summary>
@@ -86,15 +86,15 @@ public sealed class ChoosingARunOfPhotographsTests : IDisposable
     {
         IReadOnlyList<GalleryTile> wall = await WallAsync();
 
-        _gallery.ChoosePhotoCommand.Execute(wall[3]);
-        _gallery.ChoosePhotoCommand.Execute(wall[3]);
+        _gallery.Choice.ChoosePhotoCommand.Execute(wall[3]);
+        _gallery.Choice.ChoosePhotoCommand.Execute(wall[3]);
 
         Assert.False(wall[3].IsChosen);
-        Assert.Equal(0, _gallery.ChosenCount);
+        Assert.Equal(0, _gallery.Choice.ChosenCount);
 
         // Still choosing: unticking the last one is not the way out of the mode.
         // That is Cancel, and it says so.
-        Assert.True(_gallery.IsChoosing);
+        Assert.True(_gallery.Choice.IsChoosing);
     }
 
     /// <summary>Shift takes everything between the two, both ends included.</summary>
@@ -103,10 +103,10 @@ public sealed class ChoosingARunOfPhotographsTests : IDisposable
     {
         IReadOnlyList<GalleryTile> wall = await WallAsync();
 
-        _gallery.ChoosePhoto(wall[4], extend: false);
-        _gallery.ChoosePhoto(wall[9], extend: true);
+        _gallery.Choice.ChoosePhoto(wall[4], extend: false);
+        _gallery.Choice.ChoosePhoto(wall[9], extend: true);
 
-        Assert.Equal(6, _gallery.ChosenCount);
+        Assert.Equal(6, _gallery.Choice.ChosenCount);
         Assert.All(wall.Skip(4).Take(6), tile => Assert.True(tile.IsChosen));
         Assert.False(wall[3].IsChosen);
         Assert.False(wall[10].IsChosen);
@@ -118,10 +118,10 @@ public sealed class ChoosingARunOfPhotographsTests : IDisposable
     {
         IReadOnlyList<GalleryTile> wall = await WallAsync();
 
-        _gallery.ChoosePhoto(wall[9], extend: false);
-        _gallery.ChoosePhoto(wall[4], extend: true);
+        _gallery.Choice.ChoosePhoto(wall[9], extend: false);
+        _gallery.Choice.ChoosePhoto(wall[4], extend: true);
 
-        Assert.Equal(6, _gallery.ChosenCount);
+        Assert.Equal(6, _gallery.Choice.ChosenCount);
         Assert.All(wall.Skip(4).Take(6), tile => Assert.True(tile.IsChosen));
     }
 
@@ -138,13 +138,13 @@ public sealed class ChoosingARunOfPhotographsTests : IDisposable
     {
         IReadOnlyList<GalleryTile> wall = await WallAsync();
 
-        _gallery.ChoosePhoto(wall[6], extend: false);
+        _gallery.Choice.ChoosePhoto(wall[6], extend: false);
         Assert.True(wall[6].IsChosen);
 
-        _gallery.ChoosePhoto(wall[4], extend: false);
-        _gallery.ChoosePhoto(wall[9], extend: true);
+        _gallery.Choice.ChoosePhoto(wall[4], extend: false);
+        _gallery.Choice.ChoosePhoto(wall[9], extend: true);
 
-        Assert.Equal(6, _gallery.ChosenCount);
+        Assert.Equal(6, _gallery.Choice.ChosenCount);
         Assert.True(wall[6].IsChosen);
     }
 
@@ -161,11 +161,11 @@ public sealed class ChoosingARunOfPhotographsTests : IDisposable
     {
         IReadOnlyList<GalleryTile> wall = await WallAsync();
 
-        _gallery.ChoosePhoto(wall[4], extend: false);
-        _gallery.ChoosePhoto(wall[6], extend: true);
-        _gallery.ChoosePhoto(wall[9], extend: true);
+        _gallery.Choice.ChoosePhoto(wall[4], extend: false);
+        _gallery.Choice.ChoosePhoto(wall[6], extend: true);
+        _gallery.Choice.ChoosePhoto(wall[9], extend: true);
 
-        Assert.Equal(6, _gallery.ChosenCount);
+        Assert.Equal(6, _gallery.Choice.ChosenCount);
         Assert.All(wall.Skip(4).Take(6), tile => Assert.True(tile.IsChosen));
     }
 
@@ -182,9 +182,9 @@ public sealed class ChoosingARunOfPhotographsTests : IDisposable
     {
         IReadOnlyList<GalleryTile> wall = await WallAsync();
 
-        _gallery.ChoosePhoto(wall[7], extend: true);
+        _gallery.Choice.ChoosePhoto(wall[7], extend: true);
 
-        Assert.Equal(1, _gallery.ChosenCount);
+        Assert.Equal(1, _gallery.Choice.ChosenCount);
         Assert.True(wall[7].IsChosen);
     }
 
@@ -203,13 +203,13 @@ public sealed class ChoosingARunOfPhotographsTests : IDisposable
     {
         IReadOnlyList<GalleryTile> wall = await WallAsync();
 
-        _gallery.ChoosePhoto(wall[4], extend: false);
+        _gallery.Choice.ChoosePhoto(wall[4], extend: false);
 
         // The wall again, from scratch: every tile on it is a new object.
         await _gallery.LoadAsync();
         IReadOnlyList<GalleryTile> after = Wall();
 
-        _gallery.ChoosePhoto(after[9], extend: true);
+        _gallery.Choice.ChoosePhoto(after[9], extend: true);
 
         Assert.True(after[9].IsChosen);
         Assert.False(after[5].IsChosen);
@@ -227,12 +227,12 @@ public sealed class ChoosingARunOfPhotographsTests : IDisposable
     {
         IReadOnlyList<GalleryTile> wall = await WallAsync();
 
-        _gallery.ChoosePhoto(wall[4], extend: false);
-        _gallery.StopChoosingCommand.Execute(null);
+        _gallery.Choice.ChoosePhoto(wall[4], extend: false);
+        _gallery.Choice.StopChoosingCommand.Execute(null);
 
-        _gallery.ChoosePhoto(wall[9], extend: true);
+        _gallery.Choice.ChoosePhoto(wall[9], extend: true);
 
-        Assert.Equal(1, _gallery.ChosenCount);
+        Assert.Equal(1, _gallery.Choice.ChosenCount);
         Assert.True(wall[9].IsChosen);
         Assert.False(wall[5].IsChosen);
     }
@@ -247,13 +247,13 @@ public sealed class ChoosingARunOfPhotographsTests : IDisposable
     {
         IReadOnlyList<GalleryTile> wall = await WallAsync();
 
-        _gallery.IsChoosing = true;
-        _gallery.ChooseEverythingCommand.Execute(null);
+        _gallery.Choice.IsChoosing = true;
+        _gallery.Choice.ChooseEverythingCommand.Execute(null);
 
-        Assert.Equal(Pictures, _gallery.ChosenCount);
+        Assert.Equal(Pictures, _gallery.Choice.ChosenCount);
         Assert.All(wall, tile => Assert.True(tile.IsChosen));
-        Assert.True(_gallery.EverythingChosen);
-        Assert.False(_gallery.CanChooseEverything);
+        Assert.True(_gallery.Choice.EverythingChosen);
+        Assert.False(_gallery.Choice.CanChooseEverything);
     }
 
     /// <summary>

@@ -372,15 +372,6 @@ public sealed partial class MainViewModel : ObservableObject
                 _ = RememberSortOrderAsync();
             }
 
-            // The bar is the shell's, because it floats over every screen and
-            // has to know which one is open; the mode it follows is the wall's.
-            // So the two are joined here rather than by a binding that could
-            // only see one of them.
-            if (e.PropertyName == nameof(GalleryViewModel.IsChoosing))
-            {
-                NotifyChoosingBar();
-            }
-
             // The corner above the viewer's own buttons while it is open.
             if (e.PropertyName == nameof(GalleryViewModel.IsViewerOpen))
             {
@@ -436,6 +427,21 @@ public sealed partial class MainViewModel : ObservableObject
         People.UpdateSuggestionsAsync = () => Suggestions.RunNowAsync();
         Duplicates.LibraryChanged += OnLibraryChanged;
         Albums.LibraryChanged += OnLibraryChanged;
+
+        // The bar is the shell's, because it floats over every screen and has
+        // to know which one is open; the mode it follows is a wall's. So the
+        // walls are joined to it here rather than by a binding that could only
+        // see one of them - and an album opening or closing changes which wall
+        // the bar belongs to.
+        Gallery.Choice.PropertyChanged += OnChoiceChanged;
+        Albums.Choice.PropertyChanged += OnChoiceChanged;
+        Albums.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(AlbumsViewModel.HasSelected))
+            {
+                NotifyChoosingBar();
+            }
+        };
         Albums.Looking += OnAlbumsLooking;
         Albums.LookedEnough += OnAlbumsLookedEnough;
     }
@@ -851,7 +857,54 @@ public sealed partial class MainViewModel : ObservableObject
     /// keeps what is still on the wall - so this hides the bar rather than
     /// ending the mode.</para>
     /// </remarks>
-    public bool ShowChoosingBar => ShowLibrary && Gallery.IsChoosing;
+    public bool ShowChoosingBar => Choosing?.IsChoosing == true;
+
+    /// <summary>
+    /// The choice the bar is about: the wall on screen, if it can choose.
+    /// </summary>
+    /// <remarks>
+    /// The library's wall, or an open album's. One bar for both, so the two
+    /// cannot come to word the same thing differently.
+    /// </remarks>
+    public PhotoChoice? Choosing =>
+        ShowLibrary ? Gallery.Choice
+        : ShowAlbums && Albums.HasSelected ? Albums.Choice
+        : null;
+
+    /// <summary>Whether the bar is about an album's wall, which can also take photographs out.</summary>
+    public bool IsChoosingInAnAlbum => ReferenceEquals(Choosing, Albums.Choice);
+
+    private void OnChoiceChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(PhotoChoice.IsChoosing))
+        {
+            NotifyChoosingBar();
+        }
+    }
+
+    /// <summary>
+    /// Opens the album picker on whatever the bar's wall has ticked.
+    /// </summary>
+    /// <remarks>
+    /// Here because this is the one place that holds both: the picker is the
+    /// library's, and the batch may be an album's - in which case the album is
+    /// named as the current one, and it is the album's wall that catches up.
+    /// </remarks>
+    [RelayCommand]
+    private Task PutChosenInAlbumAsync()
+    {
+        if (IsChoosingInAnAlbum && Albums.Selected is AlbumItem album)
+        {
+            int albumId = album.Id;
+
+            return Gallery.OfferAlbumsForAsync(
+                Albums.Choice.Ids,
+                albumId,
+                () => Albums.CatchUpAfterChosenChangedAsync(albumId));
+        }
+
+        return Gallery.MoveChosenToAlbumCommand.ExecuteAsync(null);
+    }
 
     /// <summary>How tall the bar is, and so what has to be kept clear of it.</summary>
     private const double ChoosingBarHeight = 52;
@@ -3265,10 +3318,21 @@ public sealed partial class MainViewModel : ObservableObject
     /// The same wiring the People screen needs, and for the same reason: told
     /// nothing, the viewer's arrows would walk the library instead of the twelve
     /// pictures the user is actually looking at.
+    ///
+    /// <para>While the album's wall is choosing, the same click ticks instead,
+    /// as it does on the library's.</para>
     /// </remarks>
     [RelayCommand]
-    private void OpenAlbumPhoto(GalleryTile? tile) =>
+    private void OpenAlbumPhoto(GalleryTile? tile)
+    {
+        if (Albums.Choice.IsChoosing)
+        {
+            Albums.Choice.Toggle(tile);
+            return;
+        }
+
         Gallery.OpenFrom(Albums, tile);
+    }
 
     /// <summary>
     /// Opens one of an album's proposals, stepping through the proposals.
@@ -3356,6 +3420,8 @@ public sealed partial class MainViewModel : ObservableObject
     /// <summary>The bar, and the two things that have to keep out of its way.</summary>
     private void NotifyChoosingBar()
     {
+        OnPropertyChanged(nameof(Choosing));
+        OnPropertyChanged(nameof(IsChoosingInAnAlbum));
         OnPropertyChanged(nameof(ShowChoosingBar));
         OnPropertyChanged(nameof(NoticeMargin));
         OnPropertyChanged(nameof(WallMargin));

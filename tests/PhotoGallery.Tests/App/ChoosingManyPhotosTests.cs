@@ -54,7 +54,7 @@ public sealed class ChoosingManyPhotosTests : IDisposable
 
         Assert.True(_gallery.IsViewerOpen);
         Assert.False(tile.IsChosen);
-        Assert.Equal(0, _gallery.ChosenCount);
+        Assert.Equal(0, _gallery.Choice.ChosenCount);
     }
 
     /// <summary>With it on, the same click ticks it instead.</summary>
@@ -62,14 +62,14 @@ public sealed class ChoosingManyPhotosTests : IDisposable
     public void WithTheModeOn_AClickTicksThePhotograph()
     {
         GalleryTile tile = Tile(1, "a.jpg");
-        _gallery.IsChoosing = true;
+        _gallery.Choice.IsChoosing = true;
 
         _gallery.OpenPhotoCommand.Execute(tile);
 
         Assert.False(_gallery.IsViewerOpen);
         Assert.True(tile.IsChosen);
-        Assert.Equal(1, _gallery.ChosenCount);
-        Assert.Equal("1 chosen", _gallery.ChosenSummary);
+        Assert.Equal(1, _gallery.Choice.ChosenCount);
+        Assert.Equal("1 chosen", _gallery.Choice.ChosenSummary);
     }
 
     /// <summary>And clicking it again unticks it.</summary>
@@ -77,14 +77,14 @@ public sealed class ChoosingManyPhotosTests : IDisposable
     public void ClickingATickedPhotographAgainUnticksIt()
     {
         GalleryTile tile = Tile(1, "a.jpg");
-        _gallery.IsChoosing = true;
+        _gallery.Choice.IsChoosing = true;
 
         _gallery.OpenPhotoCommand.Execute(tile);
         _gallery.OpenPhotoCommand.Execute(tile);
 
         Assert.False(tile.IsChosen);
-        Assert.Equal(0, _gallery.ChosenCount);
-        Assert.False(_gallery.HasChosen);
+        Assert.Equal(0, _gallery.Choice.ChosenCount);
+        Assert.False(_gallery.Choice.HasChosen);
     }
 
     /// <summary>The delete button carries the count, in both numbers.</summary>
@@ -94,13 +94,13 @@ public sealed class ChoosingManyPhotosTests : IDisposable
     [Fact]
     public void TheDeleteButtonSaysHowManyItWouldDestroy()
     {
-        _gallery.IsChoosing = true;
+        _gallery.Choice.IsChoosing = true;
 
         _gallery.OpenPhotoCommand.Execute(Tile(1, "a.jpg"));
-        Assert.Equal("Delete 1 photo", _gallery.DeleteChosenCaption);
+        Assert.Equal("Delete 1 photo", _gallery.Choice.DeleteChosenCaption);
 
         _gallery.OpenPhotoCommand.Execute(Tile(2, "b.jpg"));
-        Assert.Equal("Delete 2 photos", _gallery.DeleteChosenCaption);
+        Assert.Equal("Delete 2 photos", _gallery.Choice.DeleteChosenCaption);
     }
 
     /// <summary>Leaving the mode forgets what was ticked.</summary>
@@ -118,38 +118,38 @@ public sealed class ChoosingManyPhotosTests : IDisposable
     [Fact]
     public void LeavingTheModeForgetsWhatWasTicked()
     {
-        _gallery.IsChoosing = true;
+        _gallery.Choice.IsChoosing = true;
         _gallery.OpenPhotoCommand.Execute(Tile(1, "a.jpg"));
 
-        _gallery.StopChoosingCommand.Execute(null);
+        _gallery.Choice.StopChoosingCommand.Execute(null);
 
-        Assert.False(_gallery.IsChoosing);
-        Assert.Equal(0, _gallery.ChosenCount);
-        Assert.False(_gallery.HasChosen);
-        Assert.Equal("None chosen", _gallery.ChosenSummary);
+        Assert.False(_gallery.Choice.IsChoosing);
+        Assert.Equal(0, _gallery.Choice.ChosenCount);
+        Assert.False(_gallery.Choice.HasChosen);
+        Assert.Equal("None chosen", _gallery.Choice.ChosenSummary);
     }
 
     /// <summary>Clearing unticks everything and stays in the mode.</summary>
     [Fact]
     public void ClearingUnticksEverythingAndStaysInTheMode()
     {
-        _gallery.IsChoosing = true;
+        _gallery.Choice.IsChoosing = true;
         _gallery.OpenPhotoCommand.Execute(Tile(1, "a.jpg"));
 
-        _gallery.ChooseNothingCommand.Execute(null);
+        _gallery.Choice.ChooseNothingCommand.Execute(null);
 
-        Assert.True(_gallery.IsChoosing);
-        Assert.Equal(0, _gallery.ChosenCount);
-        Assert.False(_gallery.HasChosen);
+        Assert.True(_gallery.Choice.IsChoosing);
+        Assert.Equal(0, _gallery.Choice.ChosenCount);
+        Assert.False(_gallery.Choice.HasChosen);
     }
 
     /// <summary>Nothing is ticked to begin with, and the strip says so.</summary>
     [Fact]
     public void NothingIsTickedToBeginWith()
     {
-        Assert.False(_gallery.IsChoosing);
-        Assert.False(_gallery.HasChosen);
-        Assert.Equal("None chosen", _gallery.ChosenSummary);
+        Assert.False(_gallery.Choice.IsChoosing);
+        Assert.False(_gallery.Choice.HasChosen);
+        Assert.Equal("None chosen", _gallery.Choice.ChosenSummary);
     }
 
     /// <summary>
@@ -192,13 +192,13 @@ public sealed class ChoosingManyPhotosTests : IDisposable
     {
         string bar = Bar(File.ReadAllText(AppMarkup.PathTo("Shell", "MainWindow.xaml")));
 
-        Assert.Contains("Gallery.ChosenSummary", bar, StringComparison.Ordinal);
-        Assert.Contains("Gallery.ChooseEverythingCommand", bar, StringComparison.Ordinal);
-        Assert.Contains("Gallery.ChooseNothingCommand", bar, StringComparison.Ordinal);
-        Assert.Contains("Gallery.MoveChosenToAlbumCommand", bar, StringComparison.Ordinal);
-        Assert.Contains("Gallery.DeleteChosenCaption", bar, StringComparison.Ordinal);
+        Assert.Contains("Choosing.ChosenSummary", bar, StringComparison.Ordinal);
+        Assert.Contains("Choosing.ChooseEverythingCommand", bar, StringComparison.Ordinal);
+        Assert.Contains("Choosing.ChooseNothingCommand", bar, StringComparison.Ordinal);
+        Assert.Contains("PutChosenInAlbumCommand", bar, StringComparison.Ordinal);
+        Assert.Contains("Choosing.DeleteChosenCaption", bar, StringComparison.Ordinal);
         Assert.Contains("OnDeleteChosenPhotosClicked", bar, StringComparison.Ordinal);
-        Assert.Contains("Gallery.StopChoosingCommand", bar, StringComparison.Ordinal);
+        Assert.Contains("Choosing.StopChoosingCommand", bar, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -278,7 +278,7 @@ public sealed class ChoosingManyPhotosTests : IDisposable
         Assert.DoesNotContain("Content=\"Clear\"", window, StringComparison.Ordinal);
 
         Assert.Contains(
-            "IsEnabled=\"{Binding Gallery.CanChooseEverything}\"",
+            "IsEnabled=\"{Binding Choosing.CanChooseEverything}\"",
             bar,
             StringComparison.Ordinal);
 
@@ -327,7 +327,7 @@ public sealed class ChoosingManyPhotosTests : IDisposable
 
         Assert.DoesNotContain("Gallery.ChoosingLabel", window, StringComparison.Ordinal);
         Assert.DoesNotContain(
-            "IsChecked=\"{Binding Gallery.IsChoosing", window, StringComparison.Ordinal);
+            "IsChecked=\"{Binding Gallery.Choice.IsChoosing", window, StringComparison.Ordinal);
 
         // The way out stays, and says what leaving costs.
         string bar = Bar(window);
@@ -357,7 +357,7 @@ public sealed class ChoosingManyPhotosTests : IDisposable
 
         int album = bar.IndexOf("Content=\"Put in album\"", StringComparison.Ordinal);
         int delete = bar.IndexOf(
-            "Content=\"{Binding Gallery.DeleteChosenCaption}\"", StringComparison.Ordinal);
+            "Content=\"{Binding Choosing.DeleteChosenCaption}\"", StringComparison.Ordinal);
 
         Assert.True(album > 0 && delete > album, "the two actions are not where they were");
 
@@ -368,7 +368,7 @@ public sealed class ChoosingManyPhotosTests : IDisposable
         // stands between them, so the control that undoes the mode and the one
         // that destroys photographs are not neighbours.
         int way = bar.IndexOf(
-            "Command=\"{Binding Gallery.StopChoosingCommand}\"", StringComparison.Ordinal);
+            "Command=\"{Binding Choosing.StopChoosingCommand}\"", StringComparison.Ordinal);
         int rule = bar.IndexOf("Background=\"{DynamicResource Separator}\"", delete, StringComparison.Ordinal);
 
         Assert.True(way > delete, "the way out is no longer last");
@@ -420,7 +420,7 @@ public sealed class ChoosingManyPhotosTests : IDisposable
         // view pair, and the row of chips under them.
         int stopped = Regex.Matches(
             header,
-            @"IsEnabled=""\{Binding Gallery\.IsChoosing,\s*"
+            @"IsEnabled=""\{Binding Gallery\.Choice\.IsChoosing,\s*"
             + @"Converter=\{StaticResource InverseBool\}\}""").Count;
 
         Assert.Equal(5, stopped);
@@ -431,7 +431,7 @@ public sealed class ChoosingManyPhotosTests : IDisposable
         // and half fades is two rules where one will do.
         int hidden = Regex.Matches(
             header,
-            @"Visibility=""\{Binding Gallery\.IsChoosing,\s*"
+            @"Visibility=""\{Binding Gallery\.Choice\.IsChoosing,\s*"
             + @"Converter=\{StaticResource InverseBoolToVisibility\}\}""").Count;
 
         Assert.Equal(0, hidden);
@@ -496,10 +496,10 @@ public sealed class ChoosingManyPhotosTests : IDisposable
     [Fact]
     public void SelectAllIsOffWhenTheWallIsEmpty()
     {
-        _gallery.IsChoosing = true;
+        _gallery.Choice.IsChoosing = true;
 
-        Assert.False(_gallery.CanChooseEverything);
-        Assert.False(_gallery.EverythingChosen);
+        Assert.False(_gallery.Choice.CanChooseEverything);
+        Assert.False(_gallery.Choice.EverythingChosen);
     }
 
     /// <summary>A ticked photograph is marked on the picture itself.</summary>
@@ -540,7 +540,7 @@ public sealed class ChoosingManyPhotosTests : IDisposable
         string? asked = null;
         gallery.PlacingChosen += (_, name) => asked = name;
 
-        gallery.IsChoosing = true;
+        gallery.Choice.IsChoosing = true;
         gallery.OpenPhotoCommand.Execute(Tile(1, "a.jpg"));
         gallery.OpenPhotoCommand.Execute(Tile(2, "b.jpg"));
 
@@ -562,7 +562,7 @@ public sealed class ChoosingManyPhotosTests : IDisposable
     {
         GalleryViewModel gallery = WithAlbums(new OneAlbum());
 
-        gallery.IsChoosing = true;
+        gallery.Choice.IsChoosing = true;
         gallery.OpenPhotoCommand.Execute(Tile(1, "a.jpg"));
         gallery.OpenPhotoCommand.Execute(Tile(2, "b.jpg"));
 
