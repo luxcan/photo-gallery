@@ -397,6 +397,10 @@ and the first local confirmation in that era replaces it.
 re-derived in seconds from data the machine already has. The gazetteer is
 compiled into the executable, so naming 69 places costs nothing.
 
+> **Superseded:** the Duplicates screen no longer sets copies aside; it deletes
+> them (see [05](05-duplicates.md)), which is the "Deleting is fine" case below.
+> The quarantine reasoning here is kept for copies an earlier version set aside.
+
 **Quarantine does not travel, because the files already do.** Setting a
 duplicate aside moves it out of the shared folder into one machine's working
 folder; the next scan on every other machine finds it gone and reconciles. A

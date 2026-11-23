@@ -127,7 +127,8 @@ thumbs/           two renditions per photo, sharded 2 chars deep
   a3/a3f1c2d4-p.jpg    preview 1024px
 models/           imported by hand today; extraction and download are 09's
                   unbuilt half
-quarantine/       duplicates set aside, with a manifest for whoever opens it
+quarantine/       duplicates set aside by earlier versions, with a manifest;
+                  nothing puts new copies here now (duplicates are deleted, 05)
 logs/             diagnostic.log, off by default, previous run kept beside it
 ```
 

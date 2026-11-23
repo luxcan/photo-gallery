@@ -1,7 +1,7 @@
 # 05 — Duplicates
 
-**Status: ✅ Done — detect, review and quarantine. Restore is built and tested but
-deliberately unwired; see the acceptance list.**
+**Status: ✅ Done — detect, review and delete. Quarantine and restore are built and
+tested but no longer wired to anything; see "Resolving now deletes" below.**
 
 Twelve years of copying photos between phones, cards and folders leaves a lot of
 the same picture.
@@ -10,8 +10,7 @@ the same picture.
 
 ## Goal
 
-Find duplicates, show them side by side, and move the redundant ones somewhere
-reversible.
+Find duplicates, show them side by side, and remove the redundant ones.
 
 ## Depends on
 
@@ -57,6 +56,15 @@ Four parts, and the feature is all four — not just the first.
 | **Review** | Pairs side by side from the local tiles, so it is instant. Resolution, size, folder, and which copy is proposed. |
 | **Quarantine** | Move, never delete. Redundant copies go to a dated folder mirroring their original subpaths. |
 | **Restore** | Because the quarantine preserves each relative path, undo is mechanical. A manifest is written beside it. |
+
+**Superseded: resolving now deletes.** The last two rows describe the first
+version. The Duplicates screen's Delete buttons now go through the same path as
+deleting a photograph from the viewer: the copies that are not ticked go to the
+Recycle Bin on a local fixed disk, or are deleted permanently on a network share
+or removable drive, and the confirmation says which before anything happens.
+`QuarantineDuplicatesHandler`, `RestoreQuarantineHandler` and `IQuarantineStore`
+are kept and tested but no screen calls them. `QuarantinedUtc` still keeps any
+copy an earlier version set aside out of the library and away from the scan.
 
 ### Which copy survives
 
@@ -135,13 +143,14 @@ loop: comparing all 11,481 took **7 seconds** in the exploration.
       calls it**: the user asked for the control to come off the Duplicates
       screen. It is kept and kept tested because restoring by hand works the same
       way, and putting the control back is one line of wiring.
-- [x] Nothing is ever deleted **by this feature**. Deleting a photograph outright
-      arrived alongside it as a separate, explicitly asked-for action with its own
-      warning, and is not something duplicate resolution can reach.
+- [x] ~~Nothing is ever deleted **by this feature**.~~ **Superseded:** resolving a
+      group now deletes the copies that are not ticked, through the same
+      confirmed delete as the viewer (Recycle Bin where Windows has one,
+      permanent on a share, and the app says which first).
 
 ---
 
 ## Out of scope
 
-Deleting anything. Automatic resolution without review. Duplicate videos in the
-first cut.
+Automatic resolution without review. Duplicate videos in the first cut.
+(Deleting was out of scope for the first version; resolving now deletes.)
