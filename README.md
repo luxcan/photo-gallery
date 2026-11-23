@@ -1,56 +1,64 @@
 # Photo Gallery
 
-A Windows desktop app that makes a large personal photo and video collection
-searchable: by person, by place, by date, by folder, and by what is in the
-picture. It is built for one person's library on their own PC, with the photos
-left where they already are (this PC, a USB drive, a network share).
+It started with a simple question from my wife: "Can I see all the photos of
+the kids, the way my phone does?" Android and iOS have done this for years,
+but our family photos live on a NAS, not in the cloud. So I built it.
 
-Nothing is uploaded anywhere. Every pass - previews, faces, places, search -
-runs on the PC, and the originals are never modified or moved unless you ask.
+Photo Gallery is a Windows desktop app that makes a large photo and video
+collection searchable by person, place, date, folder and what is in the
+picture. The photos stay where they are: on the PC, a USB drive or a network
+share.
+
+Nothing is uploaded. Previews, faces, places and search all run on the PC,
+and the originals are never changed or moved unless you ask.
 
 ## What it does
 
-- **Library** - one wall of every photo and video, with filter chips (photos,
-  videos, not in an album, nobody named) and a search box for names, places
-  and descriptions.
-- **People** - finds faces, suggests who they are, and learns as you confirm
-  or correct. Every photo of one person is one click away.
-- **Places** - reads GPS coordinates and names them from a gazetteer built
-  into the app; no online lookup.
-- **Search by description** - "birthday cake", "beach at sunset" - matched
+- **Library** - every photo and video on one wall, with filter chips (photos,
+  videos, not in an album, no faces named) and one search box for names,
+  places and descriptions.
+- **People** - finds faces, suggests who they are and learns from your
+  answers. See every photo of a person in one click, and add a year of birth
+  to group them by age.
+- **Places** - names each photo's GPS location from a gazetteer built into
+  the app, with no online lookup.
+- **Search by description** - "birthday cake", "beach at sunset": matched
   against what the picture shows, not its file name.
-- **Albums** - suggests trips and periods from dates and places; keep a
-  suggestion, refuse it, or make your own. Collections shelve albums together.
-- **Duplicates** - finds exact and near-identical copies, suggests the best of
-  a burst, and sets the rest aside in a quarantine folder rather than deleting
-  them.
-- **Sync** - several laptops in one house share their *decisions* (who is in a
-  picture, what an album is called, which previews exist) through one shared
-  folder. Each machine keeps its own library; no database is ever opened by two
-  machines.
-- **Updates** - the app checks this repository's releases and offers a newer
-  version when one exists.
+- **Albums** - suggests trips and periods from dates and places. Keep a
+  suggestion, refuse it or make your own; collections group albums together.
+- **Duplicates** - finds exact and near-identical copies and suggests which
+  shot of a burst to keep, and why. The copies you do not keep go to the
+  Recycle Bin, or are deleted permanently on a network share; the app tells
+  you which before you confirm.
+- **Sync** - laptops in one house stay in step through a shared folder.
+  Names, albums, photo rotations and previews travel; the original photos
+  never do. A new computer is ignored until you accept it, and changes are
+  applied only when you press Sync. Each machine keeps its own library.
+- **Updates** - checks this repository's releases and offers a newer version
+  when there is one.
 
 ## Getting started
 
 1. Download `PhotoGallery.exe` from the latest release. It is a single
-   self-contained file: no installer and no .NET runtime needed.
-2. Run it and choose a **working folder**. That is where the app keeps its
-   index, previews and logs. A folder on the PC's own disk is best.
-3. Add one or more **photo sources**, the folders your pictures live in, and
-   let the first scan run. The first scan reads every file once; later scans
-   only look at what changed.
+   self-contained file: no installer, no .NET runtime.
+2. Run it and choose a **working folder** for the app's index, previews and
+   logs. A folder on the PC's own disk is best.
+3. Add one or more **photo sources** (the folders your photos are in) and let
+   the first scan run. It reads every file once; later scans only check what
+   changed.
 
 ### Optional features: faces and search by description
 
-These need model files that are not bundled, because of their licences. Get
-them yourself, then open **Settings → Optional features** and point the app at
-the folder holding them. The app matches the files by size and checks each one
-by its SHA-256 digest, so their names do not matter.
+These need model files that are not bundled, for licence reasons. In
+**Settings → Search features**, press **Download** for a feature and save the
+files into the folder shown under Step 1, or choose a folder that already has
+them. The feature turns on once its files are there. Files are recognised by
+size and verified by SHA-256, so their names do not matter.
 
 | Feature | Files | Size | Licence |
 |---|---|---|---|
-| Faces and people | InsightFace `buffalo_l`: `det_10g.onnx`, `w600k_r50.onnx`, `2d106det.onnx` | ~196 MB | Non-commercial research use only |
+| Faces and people | InsightFace `buffalo_l`: `det_10g.onnx`, `w600k_r50.onnx` | ~191 MB | Non-commercial research use only |
+| Eyes open (best of a burst, needs Faces) | InsightFace `buffalo_l`: `2d106det.onnx` | ~5 MB | Non-commercial research use only |
 | Search by description | OpenAI CLIP ViT-L/14 ONNX export (visual, textual, vocabulary, merges) | ~1.7 GB | CLIP is MIT; the ONNX export is the Immich project's and states no licence of its own |
 
 Places need no download.
